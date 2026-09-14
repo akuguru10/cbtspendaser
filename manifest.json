@@ -1,0 +1,16 @@
+{
+  "name": "CBT Sekolah",
+  "short_name": "CBT Sekolah",
+  "description": "Portal ujian online berbasis komputer (CBT) — Guru & Siswa",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f4f6fb",
+  "theme_color": "#4a5cf0",
+  "icons": [
+    { "src": "icons/logo-test-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/logo-test-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/logo-test-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
