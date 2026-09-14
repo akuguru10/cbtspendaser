@@ -1487,6 +1487,18 @@ function terapkanBranding(branding) {
       ? tagGambarAman_(logoUrl, '', 'Logo')
       : `<i class="fa-solid fa-graduation-cap"></i>`;
   });
+
+  // Ikon "Layar Utama" (Add to Home Screen di HP) & judul aplikasi iOS ikut
+  // memakai logo/nama terbaru begitu guru menyimpannya di Pengaturan >
+  // Identitas Aplikasi -- kalau logo belum pernah diisi, tetap pakai ikon
+  // bawaan (logo sementara "TEST") yang sudah disiapkan di folder icons/,
+  // supaya tetap ada ikon walau belum sempat diganti.
+  const favicon = document.getElementById('app-favicon');
+  const appleIcon = document.getElementById('app-apple-icon');
+  const appleTitle = document.getElementById('app-apple-title');
+  if (favicon) favicon.href = logoUrl || 'icons/logo-test-32.png';
+  if (appleIcon) appleIcon.href = logoUrl || 'icons/apple-touch-icon.png';
+  if (appleTitle) appleTitle.content = nama;
 }
 
 async function muatBrandingGlobal() {
@@ -1708,6 +1720,8 @@ const UI = {
   gantiTabGuru(tabId) {
     document.querySelectorAll('#guru-portal .nav-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tabId));
     document.querySelectorAll('#guru-portal .main > section').forEach(s => s.classList.toggle('hidden', s.id !== tabId));
+    if (tabId === 'tab-dashboard') Guru.muatDashboard();
+    if (tabId === 'tab-bank-soal') Guru.muatBankSoal();
     if (tabId === 'tab-ujian') Guru.muatDaftarUjian();
     if (tabId === 'tab-rekap') Guru.muatPilihanUjianUntukSelect('pilih-ujian-rekap');
     if (tabId === 'tab-analisis') Guru.muatPilihanUjianUntukSelect('pilih-ujian-analisis');
@@ -1744,6 +1758,7 @@ const UI = {
     clearInterval(state.autoRefreshHandle);
     if (!modeServerAktif()) return;
     const refreshMap = {
+      'tab-dashboard': () => Guru.muatDashboard(),
       'tab-bank-soal': () => Guru.muatBankSoal(),
       'tab-ujian': () => Guru.muatDaftarUjian(),
       'tab-siswa': () => Guru.muatDaftarSiswa(),
@@ -2061,8 +2076,73 @@ const UI = {
 const Guru = {
   async init() {
     await muatTemaGlobal();
-    Guru.muatBankSoal();
-    UI.mulaiAutoRefreshGuru('tab-bank-soal');
+    Guru.muatDashboard();
+    UI.mulaiAutoRefreshGuru('tab-dashboard');
+  },
+
+  // ---------------- DASHBOARD ----------------
+  // Halaman pertama yang dilihat guru setelah masuk: kartu-kartu ringkasan
+  // (jumlah soal, ujian, siswa, dll), Aksi Cepat, dan daftar Ujian Terbaru.
+  // Menarik ulang Bank Soal/Ujian/Siswa supaya angkanya selalu terbaru --
+  // fungsi-fungsi itu juga tetap merender tab masing-masing di belakang
+  // layar (aman dipanggil walau tab-nya sedang tidak aktif).
+  async muatDashboard() {
+    const sapaan = document.getElementById('dashboard-sapaan');
+    if (sapaan) sapaan.textContent = state.user && state.user.nama ? `Halo, ${state.user.nama} 👋` : 'Dashboard';
+    await Promise.all([Guru.muatBankSoal(), Guru.muatDaftarUjian(), Guru.muatDaftarSiswa()]);
+    Guru.renderDashboard();
+  },
+
+  renderDashboard() {
+    const cont = document.getElementById('dashboard-cards');
+    const contUjian = document.getElementById('dashboard-ujian-terbaru');
+    if (!cont) return;
+
+    const soal = state.guru.bankSoal || [];
+    const ujian = state.guru.ujianList || [];
+    const siswa = state.guru.daftarSiswa || [];
+
+    const soalAktif = soal.filter(s => (s.status || 'aktif') !== 'arsip');
+    const jumlahMapel = new Set(soalAktif.map(s => s.kategori || '(tanpa kategori)')).size;
+    const ujianAktif = ujian.filter(u => u.status === 'aktif').length;
+    const now = new Date();
+    const ujianBerlangsung = ujian.filter(u => u.status === 'aktif' && u.mulai && u.selesai && new Date(u.mulai) <= now && now <= new Date(u.selesai)).length;
+    const siswaOnline = siswa.filter(s => s.online).length;
+    const serverAktif = modeServerAktif();
+
+    const kartu = [
+      { ico: 'fa-layer-group', label: 'Total Bank Soal', nilai: soalAktif.length, sub: `di ${jumlahMapel} mapel`, tab: 'tab-bank-soal', warna: 'var(--c-primary)' },
+      { ico: 'fa-bolt', label: 'Ujian Berlangsung', nilai: ujianBerlangsung, sub: 'sedang aktif saat ini', tab: 'tab-pemantauan', warna: 'var(--c-success)' },
+      { ico: 'fa-calendar-days', label: 'Ujian Dijadwalkan', nilai: ujian.length, sub: `${ujianAktif} berstatus aktif`, tab: 'tab-ujian', warna: 'var(--c-secondary)' },
+      { ico: 'fa-users', label: 'Siswa Terdaftar', nilai: siswa.length, sub: `${siswaOnline} sedang login`, tab: 'tab-siswa', warna: 'var(--c-accent)' },
+      { ico: 'fa-triangle-exclamation', label: 'Log Pelanggaran', nilai: '→', sub: 'lihat per ujian', tab: 'tab-pelanggaran', warna: 'var(--c-danger)' },
+      { ico: 'fa-database', label: 'Mode Penyimpanan', nilai: serverAktif ? 'Server' : 'Lokal', sub: serverAktif ? 'Tersambung ke Google Sheets' : 'Data hanya di perangkat ini', tab: 'tab-pengaturan', warna: '#131b31' }
+    ];
+
+    cont.innerHTML = kartu.map(k => `
+      <div class="dash-card" style="--dash-warna:${k.warna}" onclick="UI.gantiTabGuru('${k.tab}')">
+        <div class="dash-card-ico"><i class="fa-solid ${k.ico}"></i></div>
+        <div class="dash-card-body">
+          <div class="dash-card-nilai">${k.nilai}</div>
+          <div class="dash-card-label">${k.label}</div>
+          <div class="dash-card-sub">${k.sub}</div>
+        </div>
+      </div>`).join('');
+
+    if (!contUjian) return;
+    if (ujian.length === 0) {
+      contUjian.innerHTML = '<p class="subtitle" style="margin:0">Belum ada ujian dibuat. Klik "Buat Ujian Baru" di atas untuk memulai.</p>';
+      return;
+    }
+    const terbaru = ujian.slice().reverse().slice(0, 5);
+    contUjian.innerHTML = `<table class="ledger"><thead><tr><th>Judul</th><th>Token</th><th>Jadwal</th><th>Status</th></tr></thead><tbody>` +
+      terbaru.map(u => `
+        <tr style="cursor:pointer" onclick="UI.gantiTabGuru('tab-ujian')">
+          <td><strong>${escapeHtml_(u.judul)}</strong></td>
+          <td><code>${u.token}</code></td>
+          <td style="font-size:.8rem">${formatTanggal(u.mulai)}<br>s/d ${formatTanggal(u.selesai)}</td>
+          <td><span class="badge ${u.status === 'aktif' ? 'ok' : 'no'}">${u.status}</span></td>
+        </tr>`).join('') + `</tbody></table>`;
   },
 
   // ---------------- BANK SOAL ----------------
@@ -3499,6 +3579,7 @@ const Guru = {
     const activeSection = document.querySelector('#guru-portal .main > section:not(.hidden)');
     const tabId = activeSection ? activeSection.id : null;
     const aksi = {
+      'tab-dashboard': () => Guru.muatDashboard(),
       'tab-bank-soal': () => Guru.muatBankSoal(),
       'tab-ujian': () => Guru.muatDaftarUjian(),
       'tab-siswa': () => Guru.muatDaftarSiswa(),
