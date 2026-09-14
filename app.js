@@ -3855,9 +3855,25 @@ const ExamEngine = {
     const statusEl = document.getElementById('hasil-status');
     const isLulus = lulus === true || String(lulus) === 'true';
     statusEl.textContent = isLulus ? 'LULUS' : 'PERLU REMEDIAL';
-    statusEl.style.background = isLulus ? 'rgba(47,125,94,.12)' : 'rgba(178,58,52,.12)';
+    statusEl.style.background = isLulus ? 'rgba(22,163,74,.12)' : 'rgba(224,67,61,.12)';
     statusEl.style.color = isLulus ? 'var(--c-success)' : 'var(--c-danger)';
     document.getElementById('hasil-instruksi').textContent = isLulus ? 'Selamat! Anda telah menyelesaikan ujian ini.' : 'Silakan hubungi guru mata pelajaran untuk instruksi remedial.';
+
+    // Ikon lingkaran (centang utk lulus, seru utk perlu remedial) + ring skor
+    // melingkar yang terisi sesuai persentase nilai (0-100) -- murni kosmetik,
+    // dianimasikan lewat transisi CSS pada stroke-dashoffset.
+    const iconWrap = document.getElementById('hasil-icon-wrap');
+    const icon = document.getElementById('hasil-icon');
+    iconWrap.classList.toggle('gagal', !isLulus);
+    icon.className = isLulus ? 'fa-solid fa-check' : 'fa-solid fa-triangle-exclamation';
+    const ring = document.getElementById('hasil-skor-progress');
+    const keliling = 2 * Math.PI * 52;
+    const persen = Math.max(0, Math.min(100, Number(nilai) || 0));
+    ring.style.stroke = isLulus ? 'var(--c-success)' : 'var(--c-danger)';
+    ring.style.strokeDashoffset = keliling; // mulai kosong dulu...
+    requestAnimationFrame(() => {
+      ring.style.strokeDashoffset = String(keliling * (1 - persen / 100));
+    });
   }
 };
 
