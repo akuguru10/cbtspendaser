@@ -4,6 +4,26 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <title>CBT — Sistem Ujian Online</title>
+
+<!-- ======================= LOGO / IKON APLIKASI (PWA) =======================
+     Supaya saat halaman ini "Ditambahkan ke Layar Utama" (Add to Home Screen)
+     di HP, ikon aplikasi otomatis muncul -- bukan cuma screenshot polos.
+     Berkas ikon ada di folder icons/ (logo SEMENTARA berlabel "TEST", lihat
+     README bagian "Ganti Logo Aplikasi"). Kalau guru sudah menyimpan logo
+     asli lewat Portal Guru > Pengaturan > Identitas Aplikasi, id="app-favicon"
+     dan id="app-apple-icon" di bawah ini otomatis diganti ke logo itu juga
+     (lihat terapkanBranding() di app.js) -- supaya ikon Layar Utama ikut
+     memakai logo terbaru, tidak perlu edit file ini secara manual lagi. -->
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/logo-test-32.png" id="app-favicon">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/logo-test-192.png">
+<link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png" id="app-apple-icon">
+<meta name="theme-color" content="#4a5cf0">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="CBT Sekolah" id="app-apple-title">
+<meta name="mobile-web-app-capable" content="yes">
+
 <link rel="stylesheet" href="style.css">
 <!-- Font Awesome: ikon sidebar & tombol (gaya dashboard modern) -->
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
@@ -115,7 +135,8 @@
     </div>
 
     <nav class="nav-scroll">
-      <button class="nav-tab active" data-tab="tab-bank-soal" onclick="UI.gantiTabGuru('tab-bank-soal')"><i class="fa-solid fa-layer-group nav-ico"></i><span>Bank Soal</span></button>
+      <button class="nav-tab active" data-tab="tab-dashboard" onclick="UI.gantiTabGuru('tab-dashboard')"><i class="fa-solid fa-gauge-high nav-ico"></i><span>Dashboard</span></button>
+      <button class="nav-tab" data-tab="tab-bank-soal" onclick="UI.gantiTabGuru('tab-bank-soal')"><i class="fa-solid fa-layer-group nav-ico"></i><span>Bank Soal</span></button>
       <button class="nav-tab" data-tab="tab-ujian" onclick="UI.gantiTabGuru('tab-ujian')"><i class="fa-solid fa-calendar-days nav-ico"></i><span>Kelola Ujian</span></button>
       <button class="nav-tab" data-tab="tab-rekap" onclick="UI.gantiTabGuru('tab-rekap')"><i class="fa-solid fa-clipboard-check nav-ico"></i><span>Rekap Nilai</span></button>
       <button class="nav-tab" data-tab="tab-analisis" onclick="UI.gantiTabGuru('tab-analisis')"><i class="fa-solid fa-chart-pie nav-ico"></i><span>Analisis Soal</span></button>
@@ -139,8 +160,50 @@
   </aside>
 
   <main class="main">
+    <!-- ---------- TAB: DASHBOARD ---------- -->
+    <section id="tab-dashboard">
+      <h2 id="dashboard-sapaan">Dashboard</h2>
+      <p class="subtitle">Ringkasan cepat aplikasi CBT — pantau bank soal, ujian, dan siswa dari satu tempat.</p>
+
+      <div class="dash-grid" id="dashboard-cards">
+        <div class="dash-card dash-card-skeleton">Memuat ringkasan...</div>
+      </div>
+
+      <div class="dash-section-head">
+        <h3>Aksi Cepat</h3>
+      </div>
+      <div class="aksi-cards-grid dash-aksi-grid">
+        <div class="aksi-card aksi-card-utama" onclick="UI.gantiTabGuru('tab-bank-soal')">
+          <div class="aksi-card-ico"><i class="fa-solid fa-layer-group"></i></div>
+          <div class="aksi-card-judul">Kelola Bank Soal</div>
+          <div class="aksi-card-desc">Tambah soal manual, atau import dari Excel/Word.</div>
+        </div>
+        <div class="aksi-card" onclick="UI.bukaModalUjian()">
+          <div class="aksi-card-ico"><i class="fa-solid fa-calendar-plus"></i></div>
+          <div class="aksi-card-judul">Buat Ujian Baru</div>
+          <div class="aksi-card-desc">Jadwalkan ujian baru dari soal yang sudah ada.</div>
+        </div>
+        <div class="aksi-card" onclick="UI.bukaModalSiswa()">
+          <div class="aksi-card-ico"><i class="fa-solid fa-user-plus"></i></div>
+          <div class="aksi-card-judul">Tambah Siswa</div>
+          <div class="aksi-card-desc">Daftarkan akun siswa baru secara manual.</div>
+        </div>
+        <div class="aksi-card" onclick="UI.gantiTabGuru('tab-rekap')">
+          <div class="aksi-card-ico"><i class="fa-solid fa-clipboard-check"></i></div>
+          <div class="aksi-card-judul">Lihat Rekap Nilai</div>
+          <div class="aksi-card-desc">Cek hasil &amp; status kelulusan siswa per ujian.</div>
+        </div>
+      </div>
+
+      <div class="dash-section-head">
+        <h3>Ujian Terbaru</h3>
+        <button type="button" class="secondary small" onclick="UI.gantiTabGuru('tab-ujian')">Lihat Semua &rarr;</button>
+      </div>
+      <div class="panel" id="dashboard-ujian-terbaru">Memuat...</div>
+    </section>
+
     <!-- ---------- TAB: BANK SOAL ---------- -->
-    <section id="tab-bank-soal">
+    <section id="tab-bank-soal" class="hidden">
       <h2>Bank Soal</h2>
       <p class="subtitle">Kelola soal per Mapel: pilihan ganda, pilihan ganda kompleks, benar/salah, mencocokkan, dan essay.</p>
 
