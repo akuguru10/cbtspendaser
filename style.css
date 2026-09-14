@@ -504,6 +504,15 @@ table.ledger td.aksi { display: flex; gap: .4rem; flex-wrap: wrap; }
 .question-card img { cursor: zoom-in; }
 .question-card img:hover { outline: 2px solid var(--c-secondary); outline-offset: 2px; }
 
+/* Placeholder rapi kalau sebuah gambar (soal/opsi/logo) gagal dimuat setelah semua pola
+   hotlink Drive dicoba (lihat listener "error" global di app.js) -- jauh lebih enak dilihat
+   daripada ikon bawaan browser "gambar rusak". */
+.gambar-gagal-muat {
+  display: flex; align-items: center; justify-content: center; text-align: center;
+  min-height: 70px; padding: .8rem; background: var(--c-bg); border: 1px dashed var(--c-line);
+  border-radius: var(--radius); color: var(--c-muted); font-size: .78rem; margin: .5rem 0;
+}
+
 /* ---------- Lightbox "Perbesar Gambar" (dibuka siswa dgn klik gambar soal) ---------- */
 .gambar-lightbox {
   position: fixed; inset: 0; z-index: 970; background: rgba(10, 12, 20, .92);
