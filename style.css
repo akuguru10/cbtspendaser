@@ -609,13 +609,57 @@ table.ledger td.aksi { display: flex; gap: .4rem; flex-wrap: wrap; }
 /* ============================================================================
    HASIL UJIAN
    ============================================================================ */
-#hasil-screen { min-height: 100vh; display: flex; align-items: center; justify-content: center; background: var(--c-bg); }
-.hasil-card {
-  background: var(--c-surface); border-radius: var(--radius-lg); padding: 2.4rem; max-width: 440px; width: 100%;
-  text-align: center; border-top: 5px solid var(--c-accent); box-shadow: 0 20px 50px rgba(10,14,30,.15);
+#hasil-screen {
+  min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 1.5rem;
+  background:
+    radial-gradient(circle at 12% 10%, rgba(255,255,255,.10), transparent 45%),
+    radial-gradient(circle at 88% 88%, rgba(255,255,255,.08), transparent 45%),
+    linear-gradient(135deg, var(--c-sidebar), var(--c-primary));
 }
-.hasil-card .nilai-besar { font-family: var(--font-display); font-size: 3.4rem; font-weight: 700; margin: .6rem 0; }
-.hasil-card .status-lulus { font-weight: 700; padding: .3rem .9rem; border-radius: 20px; display: inline-block; margin-bottom: 1rem; }
+.hasil-card {
+  background: var(--c-surface); border-radius: var(--radius-lg); padding: 2.6rem 2.2rem; max-width: 420px; width: 100%;
+  text-align: center; box-shadow: 0 24px 60px rgba(10,14,30,.32);
+  animation: hasil-muncul .35s cubic-bezier(.2,.8,.3,1);
+}
+@keyframes hasil-muncul { from { opacity: 0; transform: translateY(14px) scale(.98); } to { opacity: 1; transform: none; } }
+
+.hasil-icon-wrap {
+  width: 64px; height: 64px; border-radius: 50%; margin: 0 auto .9rem;
+  display: flex; align-items: center; justify-content: center; font-size: 1.6rem;
+  background: rgba(22,163,74,.12); color: var(--c-success);
+}
+.hasil-icon-wrap.gagal { background: rgba(224,67,61,.12); color: var(--c-danger); }
+
+.hasil-eyebrow {
+  margin: 0; font-size: .74rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--c-muted);
+}
+.hasil-judul {
+  margin: .25rem 0 1rem; font-family: var(--font-display); font-size: 1.25rem; font-weight: 700; color: var(--c-text);
+}
+
+.hasil-card .status-lulus {
+  font-weight: 700; font-size: .78rem; letter-spacing: .03em; padding: .35rem 1rem;
+  border-radius: var(--radius-pill); display: inline-block; margin-bottom: 1.4rem;
+}
+
+.skor-ring { position: relative; width: 148px; height: 148px; margin: 0 auto 1.4rem; }
+.skor-ring-svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+.skor-ring-bg { fill: none; stroke: var(--c-bg); stroke-width: 10; }
+.skor-ring-progress {
+  fill: none; stroke: var(--c-success); stroke-width: 10; stroke-linecap: round;
+  stroke-dasharray: 326.7; stroke-dashoffset: 326.7;
+  transition: stroke-dashoffset 1s cubic-bezier(.2,.8,.2,1), stroke .3s ease;
+}
+.skor-ring-nilai {
+  position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+}
+.hasil-card .nilai-besar { font-family: var(--font-display); font-size: 2.6rem; font-weight: 800; line-height: 1; color: var(--c-text); }
+.nilai-skala { font-size: .74rem; color: var(--c-muted); margin-top: .15rem; }
+
+.hasil-instruksi { color: var(--c-muted); font-size: .88rem; line-height: 1.55; margin: 0 0 1.6rem; }
+
+.hasil-btn-beranda { width: 100%; display: inline-flex; align-items: center; justify-content: center; gap: .5rem; }
 
 /* ============================================================================
    MENU HP (drawer / panel geser dari samping)
@@ -699,8 +743,9 @@ table.ledger td.aksi { display: flex; gap: .4rem; flex-wrap: wrap; }
 }
 @media (max-width: 420px) {
   .login-card { padding: 1.6rem 1.2rem; }
-  .hasil-card { padding: 1.6rem; }
-  .hasil-card .nilai-besar { font-size: 2.6rem; }
+  .hasil-card { padding: 1.8rem 1.4rem; }
+  .skor-ring { width: 128px; height: 128px; }
+  .hasil-card .nilai-besar { font-size: 2.2rem; }
 
   .nav-actions #btn-soal-prev,
   .nav-actions #btn-soal-next { font-size: .8rem; padding: .6rem .4rem; }
