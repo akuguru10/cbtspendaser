@@ -12,7 +12,7 @@
    ============================================================================ */
 
 const CONFIG = {
-  API_URL: '', // contoh: https://script.google.com/macros/s/xxxx/exec — kosongkan untuk mode lokal
+  API_URL: 'https://script.google.com/macros/s/AKfycbz0yIElEA9irsveNpMqV_T_dYu8p8Q_pvUIifgvTyqQ3Tidp8UDfNcy6jvvRyx0HPdV/exec', // contoh: https://script.google.com/macros/s/xxxx/exec — kosongkan untuk mode lokal
   AUTOSAVE_INTERVAL_MS: 20000,   // sinkron jawaban ke server tiap 20 detik (throttle)
   PING_INTERVAL_MS: 60000,       // heartbeat device-lock tiap 60 detik
   REALTIME_POLL_MS: 8000,        // saat Mode Server aktif: tarik ulang data tiap 8 detik ("realtime")
