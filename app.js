@@ -12,7 +12,7 @@
    ============================================================================ */
 
 const CONFIG = {
-  API_URL: 'https://script.google.com/macros/s/AKfycbz0yIElEA9irsveNpMqV_T_dYu8p8Q_pvUIifgvTyqQ3Tidp8UDfNcy6jvvRyx0HPdV/exec', // contoh: https://script.google.com/macros/s/xxxx/exec — kosongkan untuk mode lokal
+  API_URL: '', // contoh: https://script.google.com/macros/s/xxxx/exec — kosongkan untuk mode lokal
   AUTOSAVE_INTERVAL_MS: 20000,   // sinkron jawaban ke server tiap 20 detik (throttle)
   PING_INTERVAL_MS: 60000,       // heartbeat device-lock tiap 60 detik
   REALTIME_POLL_MS: 8000,        // saat Mode Server aktif: tarik ulang data tiap 8 detik ("realtime")
@@ -472,17 +472,80 @@ function idFileDrive_(url) {
   const cocokId = u.match(/[?&]id=([^&]+)/);
   return cocokFile ? cocokFile[1] : (cocokId ? cocokId[1] : null);
 }
+// Beberapa pola hotlink Drive kadang tetap ditolak Google tergantung akun/wilayah/jaringan
+// (mis. "thumbnail?id=" bisa kena rate-limit, "uc?export=view" makin sering diblokir).
+// Daftar berurutan dari yang paling andal -> paling lawas, dipakai sebagai rantai
+// cadangan otomatis oleh listener "error" global di bawah supaya logo/gambar TIDAK
+// langsung tampil sebagai ikon "gambar rusak" begitu satu pola gagal.
+function kandidatUrlDrive_(fileId) {
+  return [
+    `https://lh3.googleusercontent.com/d/${fileId}=w1000`,
+    `https://drive.google.com/thumbnail?id=${fileId}&sz=w1000`,
+    `https://drive.google.com/uc?export=view&id=${fileId}`
+  ];
+}
 function normalisasiUrlGambar(url) {
   const u = String(url || '').trim();
   if (!u) return '';
   const fileId = idFileDrive_(u);
-  return fileId ? `https://drive.google.com/thumbnail?id=${fileId}&sz=w1000` : u;
+  return fileId ? kandidatUrlDrive_(fileId)[0] : u;
 }
 // Dipakai di SEMUA tempat yang menampilkan gambar (src="...") -- termasuk data lama yang
 // mungkin masih tersimpan dengan pola "uc?export=view" dari sebelum perbaikan ini.
 function urlGambarAman_(url) {
   return normalisasiUrlGambar(url);
 }
+// Versi <img ...> siap-pakai (dipasang lewat innerHTML) yang membawa penanda
+// data-drive-id/data-drive-tahap supaya listener "error" global bisa otomatis
+// mencoba pola URL Drive berikutnya kalau pola pertama gagal dimuat, dan baru
+// menyerah (tampil rapi, bukan ikon "gambar rusak") setelah semua pola dicoba.
+function tagGambarAman_(url, kelas, altText) {
+  const u = String(url || '').trim();
+  if (!u) return '';
+  const kelasAttr = kelas ? ` class="${escapeHtml_(kelas)}"` : '';
+  const altAttr = ` alt="${escapeHtml_(altText || '')}"`;
+  const fileId = idFileDrive_(u);
+  if (!fileId) return `<img${kelasAttr}${altAttr} src="${escapeHtml_(u)}">`;
+  const src = kandidatUrlDrive_(fileId)[0];
+  return `<img${kelasAttr}${altAttr} src="${escapeHtml_(src)}" data-drive-id="${escapeHtml_(fileId)}" data-drive-tahap="1">`;
+}
+// Versi untuk kasus yang mengisi <img>.src lewat JS langsung (preview upload, dsb.)
+// alih-alih lewat innerHTML -- tetap dipasangi penanda fallback yang sama.
+function pasangSrcGambarAman_(imgEl, url) {
+  const u = String(url || '').trim();
+  if (!u) { imgEl.removeAttribute('src'); imgEl.removeAttribute('data-drive-id'); return; }
+  const fileId = idFileDrive_(u);
+  if (!fileId) { imgEl.src = u; imgEl.removeAttribute('data-drive-id'); return; }
+  imgEl.dataset.driveId = fileId;
+  imgEl.dataset.driveTahap = '1';
+  imgEl.src = kandidatUrlDrive_(fileId)[0];
+}
+// Listener global (capture phase, supaya kepicu untuk <img> di mana saja termasuk yang
+// baru disisipkan lewat innerHTML): begitu sebuah <img> gagal dimuat, coba pola Drive
+// berikutnya di rantai kandidatUrlDrive_. Kalau logo (di dalam .app-logo-slot) habis
+// semua kandidat, kembalikan ke ikon bawaan. Untuk gambar lain, ganti jadi kotak
+// placeholder rapi ("Gambar tidak dapat dimuat") alih-alih ikon "gambar rusak" bawaan browser.
+document.addEventListener('error', function (ev) {
+  const img = ev.target;
+  if (!img || img.tagName !== 'IMG' || !img.dataset || !img.dataset.driveId) return;
+  const fileId = img.dataset.driveId;
+  const tahap = Number(img.dataset.driveTahap || '1');
+  const kandidat = kandidatUrlDrive_(fileId);
+  if (tahap < kandidat.length) {
+    img.dataset.driveTahap = String(tahap + 1);
+    img.src = kandidat[tahap];
+    return;
+  }
+  const slotLogo = img.closest('.app-logo-slot');
+  if (slotLogo) {
+    slotLogo.innerHTML = '<i class="fa-solid fa-graduation-cap"></i>';
+    return;
+  }
+  const placeholder = document.createElement('div');
+  placeholder.className = 'gambar-gagal-muat' + (img.className ? ' ' + img.className : '');
+  placeholder.textContent = '🖼 Gambar tidak dapat dimuat';
+  if (img.parentNode) img.parentNode.replaceChild(placeholder, img);
+}, true);
 
 // Uraikan data URI (dihasilkan mammoth.images.dataUri saat membaca gambar yang ditempel
 // langsung di dokumen Word) jadi bagian-bagian siap kirim ke action 'uploadGambar':
@@ -688,7 +751,7 @@ function renderKontenSoal(soal, opts) {
   let html = '';
   if (opts.nomor && opts.total) html += `<div class="no">Soal ${opts.nomor} dari ${opts.total}</div>`;
   html += `<div class="pertanyaan">${kontenSoalHtml(soal.pertanyaan)}</div>`;
-  if (soal.gambar) html += `<img class="gambar-soal" src="${escapeHtml_(urlGambarAman_(soal.gambar))}">`;
+  if (soal.gambar) html += tagGambarAman_(soal.gambar, 'gambar-soal', 'Gambar soal');
 
   // Setiap item opsi bisa berupa string polos (data lama) atau objek
   // { teks, gambar } (format baru yang mendukung teks berformat & gambar opsi).
@@ -701,7 +764,7 @@ function renderKontenSoal(soal, opts) {
       const onclick = interaktif ? ` onclick="ExamEngine.pilihJawabanTunggal('${soal.id}', ${i})"` : '';
       return `<label class="opsi-item ${selected ? 'selected' : ''}${interaktif ? '' : ' opsi-readonly'}"${onclick}>
         <span class="opsi-huruf">${String.fromCharCode(65 + i)}</span>
-        <span class="opsi-konten">${kontenSoalHtml(item.teks)}${item.gambar ? `<img class="opsi-gambar-tampil" src="${escapeHtml_(urlGambarAman_(item.gambar))}">` : ''}</span>
+        <span class="opsi-konten">${kontenSoalHtml(item.teks)}${item.gambar ? tagGambarAman_(item.gambar, 'opsi-gambar-tampil', 'Gambar opsi') : ''}</span>
       </label>`;
     }).join('') + '</div>';
   } else if (soal.tipe === 'checkbox') {
@@ -712,7 +775,7 @@ function renderKontenSoal(soal, opts) {
       const onclick = interaktif ? ` onclick="ExamEngine.toggleJawabanGanda('${soal.id}', ${i})"` : '';
       return `<label class="opsi-item ${selected ? 'selected' : ''}${interaktif ? '' : ' opsi-readonly'}"${onclick}>
         <span class="opsi-huruf">${selected ? '&#10003;' : String.fromCharCode(65 + i)}</span>
-        <span class="opsi-konten">${kontenSoalHtml(item.teks)}${item.gambar ? `<img class="opsi-gambar-tampil" src="${escapeHtml_(urlGambarAman_(item.gambar))}">` : ''}</span>
+        <span class="opsi-konten">${kontenSoalHtml(item.teks)}${item.gambar ? tagGambarAman_(item.gambar, 'opsi-gambar-tampil', 'Gambar opsi') : ''}</span>
       </label>`;
     }).join('') + '</div>';
   } else if (soal.tipe === 'menjodohkan') {
@@ -1421,7 +1484,7 @@ function terapkanBranding(branding) {
   document.querySelectorAll('.app-brand-nama').forEach(el => { el.textContent = nama; });
   document.querySelectorAll('.app-logo-slot').forEach(el => {
     el.innerHTML = logoUrl
-      ? `<img src="${escapeHtml_(urlGambarAman_(logoUrl))}" alt="Logo">`
+      ? tagGambarAman_(logoUrl, '', 'Logo')
       : `<i class="fa-solid fa-graduation-cap"></i>`;
   });
 }
@@ -1769,7 +1832,7 @@ const UI = {
     ['gambar', 'audio', 'video'].forEach(jenis => {
       document.getElementById(`soal-${jenis}-url`).value = soal && soal[jenis] ? soal[jenis] : '';
       const prev = document.getElementById(`soal-${jenis}-preview`);
-      if (soal && soal[jenis]) { prev.src = jenis === 'gambar' ? urlGambarAman_(soal[jenis]) : soal[jenis]; prev.classList.remove('hidden'); } else { prev.classList.add('hidden'); }
+      if (soal && soal[jenis]) { if (jenis === 'gambar') pasangSrcGambarAman_(prev, soal[jenis]); else prev.src = soal[jenis]; prev.classList.remove('hidden'); } else { prev.classList.add('hidden'); }
     });
     UI.renderModalTipeTabs();
     UI.renderFormOpsiSoal(soal);
@@ -1862,7 +1925,7 @@ const UI = {
       <div class="opsi-row-gambar">
         <input type="file" accept="image/*" class="opsi-gambar-file" onchange="Guru.uploadGambarOpsi(event)">
         <input type="hidden" class="opsi-gambar-url" value="${escapeHtml_(gambar)}">
-        <img class="opsi-gambar-preview${gambar ? '' : ' hidden'}" src="${escapeHtml_(urlGambarAman_(gambar))}">
+        ${gambar ? tagGambarAman_(gambar, 'opsi-gambar-preview', 'Pratinjau gambar opsi') : '<img class="opsi-gambar-preview hidden">'}
         <button type="button" class="secondary small opsi-hapus-gambar${gambar ? '' : ' hidden'}" onclick="UI.hapusGambarOpsi(this)">Hapus gambar</button>
       </div>
     </div>`;
@@ -2191,7 +2254,7 @@ const Guru = {
         <div class="soal-item-body">
           <div class="meta">${labelKategori(s.kategori)}${s.subkategori ? ' • ' + escapeHtml_(s.subkategori) : ''}${s.topik ? ' • ' + escapeHtml_(s.topik) : ''} • ${labelTipe(s.tipe)} • Bobot ${s.bobot} • ${labelKesulitan(s.tingkat_kesulitan)} • <span class="badge no">Arsip</span></div>
           <div>${kontenSoalHtml(s.pertanyaan)}</div>
-          ${s.gambar ? `<img src="${escapeHtml_(urlGambarAman_(s.gambar))}">` : ''}
+          ${s.gambar ? tagGambarAman_(s.gambar, '', 'Gambar soal') : ''}
           <div class="aksi">
             <button class="secondary small" onclick="Guru.kembalikanSoal('${s.id}')">↩ Kembalikan ke Bank Soal</button>
             <button class="danger small" onclick="Guru.hapusSoalPermanen('${s.id}')">🗑 Hapus Permanen</button>
@@ -2319,7 +2382,7 @@ const Guru = {
         <div class="soal-item-body">
           <div class="meta">${labelKategori(s.kategori)}${s.subkategori ? ' • ' + escapeHtml_(s.subkategori) : ''}${s.topik ? ' • ' + escapeHtml_(s.topik) : ''} • ${labelTipe(s.tipe)} • Bobot ${s.bobot} • ${labelKesulitan(s.tingkat_kesulitan)}${arsip ? ' • <span class="badge no">Arsip</span>' : ''}${dipakai ? ` • <span class="badge warn" title="${escapeHtml_(dipakai.join(', '))}">🕘 Pernah dipakai (${dipakai.length}×)</span>` : ''}</div>
           <div>${kontenSoalHtml(s.pertanyaan)}</div>
-          ${s.gambar ? `<img src="${escapeHtml_(urlGambarAman_(s.gambar))}">` : ''}
+          ${s.gambar ? tagGambarAman_(s.gambar, '', 'Gambar soal') : ''}
           ${s.audio ? `<audio controls src="${escapeHtml_(s.audio)}" style="margin-top:.5rem;max-width:320px"></audio>` : ''}
           ${s.video ? `<video controls src="${escapeHtml_(s.video)}" style="margin-top:.5rem;max-width:320px;display:block"></video>` : ''}
           <div class="aksi">
@@ -2458,7 +2521,8 @@ const Guru = {
       if (res.ok) {
         document.getElementById(`soal-${jenis}-url`).value = res.url;
         const prev = document.getElementById(`soal-${jenis}-preview`);
-        prev.src = jenis === 'gambar' ? urlGambarAman_(res.url) : res.url; prev.classList.remove('hidden');
+        if (jenis === 'gambar') pasangSrcGambarAman_(prev, res.url); else prev.src = res.url;
+        prev.classList.remove('hidden');
         toast((jenis[0].toUpperCase() + jenis.slice(1)) + ' berhasil diunggah.', 'success');
       } else {
         toast('Gagal mengunggah ' + jenis + ': ' + res.error, 'error');
@@ -2473,7 +2537,7 @@ const Guru = {
     UI.uploadGambarOpsiDariEvent(ev, (url) => {
       row.querySelector('.opsi-gambar-url').value = url;
       const prev = row.querySelector('.opsi-gambar-preview');
-      prev.src = urlGambarAman_(url); prev.classList.remove('hidden');
+      pasangSrcGambarAman_(prev, url); prev.classList.remove('hidden');
       row.querySelector('.opsi-hapus-gambar').classList.remove('hidden');
       toast('Gambar opsi berhasil diunggah.', 'success');
     });
@@ -3371,7 +3435,7 @@ const Guru = {
     document.getElementById('branding-logo-url').value = url;
     const prev = document.getElementById('branding-logo-preview');
     const btnHapus = document.getElementById('branding-logo-hapus-btn');
-    if (url) { prev.src = urlGambarAman_(url); prev.classList.remove('hidden'); btnHapus.classList.remove('hidden'); }
+    if (url) { pasangSrcGambarAman_(prev, url); prev.classList.remove('hidden'); btnHapus.classList.remove('hidden'); }
     else { prev.classList.add('hidden'); btnHapus.classList.add('hidden'); }
   },
 
@@ -3386,7 +3450,7 @@ const Guru = {
       if (res.ok) {
         document.getElementById('branding-logo-url').value = res.url;
         const prev = document.getElementById('branding-logo-preview');
-        prev.src = urlGambarAman_(res.url); prev.classList.remove('hidden');
+        pasangSrcGambarAman_(prev, res.url); prev.classList.remove('hidden');
         document.getElementById('branding-logo-hapus-btn').classList.remove('hidden');
         toast('Logo berhasil diunggah. Klik "Simpan Identitas Aplikasi" untuk menerapkannya.', 'success');
       } else {
