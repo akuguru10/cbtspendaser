@@ -1,0 +1,910 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>CBT — Sistem Ujian Online</title>
+<link rel="stylesheet" href="style.css">
+<!-- Font Awesome: ikon sidebar & tombol (gaya dashboard modern) -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+<!-- KaTeX: render persamaan matematika (LaTeX) di dalam soal -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
+<!-- SheetJS: baca file .xlsx/.csv saat guru mengimpor bank soal / daftar siswa -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<!-- Dipakai HANYA untuk MEMBACA .docx yang diunggah guru (Import dari Word) — lihat
+     Guru.importSoalDariDocx di app.js. Membuat file .docx (Unduh Template) tidak
+     butuh pustaka ini, ditulis langsung tanpa dependensi (lihat buatDocxSederhana_). -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+</head>
+<body>
+
+<div id="top-loading-bar"></div>
+<div id="toast"></div>
+
+<!-- ======================= LOGIN ======================= -->
+<div id="login-screen">
+  <div class="login-card">
+    <div class="app-logo-slot login-logo-slot"><i class="fa-solid fa-graduation-cap"></i></div>
+    <h1 class="brand app-brand-nama">CBT Sekolah</h1>
+    <p class="brand-sub">Portal ujian online — Guru &amp; Siswa</p>
+
+    <div class="role-switch">
+      <button id="btn-role-siswa" class="active" onclick="UI.pilihRole('siswa')">Portal Siswa</button>
+      <button id="btn-role-guru" onclick="UI.pilihRole('guru')">Portal Guru</button>
+    </div>
+
+    <form id="form-login" onsubmit="Auth.login(event)">
+      <div class="field">
+        <label>Username</label>
+        <input type="text" id="login-username" autocomplete="username" required>
+      </div>
+      <div class="field">
+        <label>Password</label>
+        <div style="display:flex;gap:.4rem">
+          <input type="password" id="login-password" autocomplete="current-password" required>
+          <button type="button" class="secondary icon" tabindex="-1" title="Lihat/sembunyikan sandi" onclick="toggleLihatSandi('login-password', this)">👁️</button>
+        </div>
+      </div>
+      <button type="submit" id="btn-login-submit" style="width:100%">Masuk</button>
+      <div id="login-error"></div>
+    </form>
+  </div>
+</div>
+
+<!-- ======================= MODAL: PENGATURAN SERVER ======================= -->
+<div id="modal-server" class="modal-backdrop hidden">
+  <div class="modal">
+    <h3>Pengaturan Server (Google Sheets)</h3>
+    <p class="subtitle">
+      Tempel URL Web App Google Apps Script Anda di sini supaya semua data (bank soal, data siswa,
+      ujian, hasil) otomatis tersimpan ke Google Sheets dan bisa diakses secara real-time dari
+      perangkat lain (HP, laptop, komputer lab, dst). Kosongkan &amp; simpan untuk kembali ke
+      Mode Lokal (data hanya di perangkat ini). Panduan membuat URL ini ada di README bagian
+      "Setup Backend (Google Apps Script)".
+    </p>
+    <div class="field">
+      <label>URL Web App</label>
+      <input type="text" id="server-url-input" placeholder="https://script.google.com/macros/s/xxxxx/exec">
+    </div>
+    <p id="server-status" class="subtitle"></p>
+
+    <div id="server-snippet-box" class="hidden" style="background:var(--c-bg);border:1px solid var(--c-line);border-radius:var(--radius);padding:.8rem;margin-bottom:1rem">
+      <p class="subtitle" style="margin-top:0">
+        <strong>Supaya SEMUA siswa (bukan cuma perangkat ini) otomatis ikut memakai Google
+        Sheets ini</strong> tanpa perlu mengatur apa pun di HP masing-masing — karena siswa
+        sengaja tidak diberi akses ke layar pengaturan ini — salin baris di bawah, lalu di
+        <code>app.js</code> cari baris <code>API_URL: ''</code> (dekat baris paling atas) dan
+        ganti dengan baris ini, kemudian upload ulang <code>app.js</code> ke Netlify:
+      </p>
+      <div style="display:flex;gap:.4rem;align-items:center">
+        <code id="server-snippet-text" style="flex:1;overflow-x:auto;white-space:nowrap;background:var(--c-surface);border:1px solid var(--c-line);border-radius:3px;padding:.5rem .6rem;font-size:.82rem"></code>
+        <button type="button" class="secondary small" onclick="UI.salinSnippetApiUrl()">📋 Salin</button>
+      </div>
+    </div>
+
+    <div class="modal-close-row" style="justify-content:space-between">
+      <div>
+        <button class="secondary" onclick="UI.tesKoneksiServer()">Tes Koneksi</button>
+        <button class="danger small" onclick="UI.hapusPengaturanServer()">Pakai Mode Lokal</button>
+      </div>
+      <div>
+        <button class="secondary" onclick="UI.tutupModal('modal-server')">Tutup</button>
+        <button class="accent" onclick="UI.simpanPengaturanServer()">Simpan (perangkat ini saja)</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ======================= PORTAL GURU ======================= -->
+<div id="guru-portal" class="shell hidden">
+  <div class="mobile-topbar">
+    <button type="button" class="hamburger-btn" onclick="UI.bukaMenuMobile('guru')" aria-label="Buka menu">☰</button>
+    <span class="mobile-topbar-title"><span class="app-brand-nama">CBT Sekolah</span> — Portal Guru</span>
+  </div>
+  <div class="sidebar-overlay" id="sidebar-overlay-guru" onclick="UI.tutupMenuMobile('guru')"></div>
+  <aside class="sidebar" id="sidebar-guru">
+    <button type="button" class="sidebar-close-btn" onclick="UI.tutupMenuMobile('guru')" aria-label="Tutup menu">✕</button>
+    <div class="sidebar-brand">
+      <span class="sidebar-logo app-logo-slot"><i class="fa-solid fa-graduation-cap"></i></span>
+      <span>
+        <h2 class="brand app-brand-nama">CBT Sekolah</h2>
+        <p class="brand-sub">Portal Guru</p>
+      </span>
+    </div>
+
+    <nav class="nav-scroll">
+      <button class="nav-tab active" data-tab="tab-bank-soal" onclick="UI.gantiTabGuru('tab-bank-soal')"><i class="fa-solid fa-layer-group nav-ico"></i><span>Bank Soal</span></button>
+      <button class="nav-tab" data-tab="tab-ujian" onclick="UI.gantiTabGuru('tab-ujian')"><i class="fa-solid fa-calendar-days nav-ico"></i><span>Kelola Ujian</span></button>
+      <button class="nav-tab" data-tab="tab-rekap" onclick="UI.gantiTabGuru('tab-rekap')"><i class="fa-solid fa-clipboard-check nav-ico"></i><span>Rekap Nilai</span></button>
+      <button class="nav-tab" data-tab="tab-analisis" onclick="UI.gantiTabGuru('tab-analisis')"><i class="fa-solid fa-chart-pie nav-ico"></i><span>Analisis Soal</span></button>
+      <button class="nav-tab" data-tab="tab-pelanggaran" onclick="UI.gantiTabGuru('tab-pelanggaran')"><i class="fa-solid fa-triangle-exclamation nav-ico"></i><span>Log Pelanggaran</span></button>
+      <button class="nav-tab" data-tab="tab-pemantauan" onclick="UI.gantiTabGuru('tab-pemantauan')"><i class="fa-solid fa-eye nav-ico"></i><span>Pemantauan Ujian</span></button>
+      <button class="nav-tab" data-tab="tab-siswa" onclick="UI.gantiTabGuru('tab-siswa')"><i class="fa-solid fa-users nav-ico"></i><span>Data Siswa</span></button>
+      <button class="nav-tab" data-tab="tab-login" onclick="UI.gantiTabGuru('tab-login')"><i class="fa-solid fa-lock nav-ico"></i><span>Status Login</span></button>
+      <button class="nav-tab" data-tab="tab-pengaturan" onclick="UI.gantiTabGuru('tab-pengaturan')"><i class="fa-solid fa-gear nav-ico"></i><span>Pengaturan</span></button>
+    </nav>
+
+    <button type="button" class="mode-badge" id="mode-badge-guru" onclick="UI.gantiTabGuru('tab-pengaturan')"></button>
+    <div class="sidebar-sync hidden" id="sidebar-sync-guru">
+      <div class="sidebar-sync-label">Opsi Cadangan</div>
+      <button type="button" class="secondary" title="Paksa tulis data ujian yang sedang berlangsung (jawaban/status siswa) ke Google Sheets sekarang juga, tanpa menunggu jeda otomatis ~1 menit -- pakai kalau angka di Pemantauan/Rekap/Analisis terasa belum update." onclick="Guru.paksaSinkronSekarang()"><i class="fa-solid fa-cloud-arrow-up"></i> Kirim ke Spreadsheet</button>
+      <button type="button" class="secondary" title="Tarik ulang data halaman yang sedang dibuka dari Google Sheets sekarang juga." onclick="Guru.tarikHalamanAktifSekarang()"><i class="fa-solid fa-arrows-rotate"></i> Tarik Data Terbaru</button>
+    </div>
+    <div class="sidebar-footer">
+      <div class="who">Masuk sebagai<br><strong id="guru-nama-label">-</strong></div>
+      <button class="secondary" style="width:100%" onclick="Auth.logout()"><i class="fa-solid fa-right-from-bracket"></i> Keluar</button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <!-- ---------- TAB: BANK SOAL ---------- -->
+    <section id="tab-bank-soal">
+      <h2>Bank Soal</h2>
+      <p class="subtitle">Kelola soal per Mapel: pilihan ganda, pilihan ganda kompleks, benar/salah, mencocokkan, dan essay.</p>
+
+      <!-- ============ LEVEL A: GRID MAPEL ============ -->
+      <div id="grid-mapel-view">
+        <div class="toolbar" style="margin-bottom:1rem">
+          <div></div>
+          <div class="toolbar-actions">
+            <button class="secondary icon" title="Segarkan sekarang" onclick="Guru.muatBankSoal()">🔄</button>
+            <button class="secondary" onclick="Guru.bukaModalKelolaKategori()">⚙ Kelola Kategori</button>
+            <button class="secondary" id="btn-lihat-arsip" onclick="Guru.bukaArsipSoal()">🗄 Arsip</button>
+          </div>
+        </div>
+        <div class="mapel-grid" id="grid-mapel-list">Memuat...</div>
+      </div>
+
+      <!-- ============ ARSIP LEVEL A: GRID KATEGORI YANG DIARSIPKAN (lintas Mapel) ============ -->
+      <div id="arsip-soal-view" class="hidden">
+        <div class="kelola-soal-header">
+          <button class="secondary icon" title="Kembali" onclick="Guru.kembaliKeGridMapel()">←</button>
+          <div class="kelola-soal-header-judul">
+            <h2 style="margin:0">Arsip Soal</h2>
+            <span class="subtitle" style="display:block;margin:0">Kategori/Mapel yang dihapus dari Bank Soal muncul di sini sebagai kartu tersendiri — klik kartunya untuk melihat semua soal di dalamnya, atau kembalikan/hapus permanen sekaligus 1 kategori penuh.</span>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="mapel-grid" id="grid-arsip-kategori-list">Memuat...</div>
+        </div>
+      </div>
+
+      <!-- ============ ARSIP LEVEL B: DAFTAR SOAL DALAM 1 KATEGORI ARSIP ============ -->
+      <div id="arsip-kategori-view" class="hidden">
+        <div class="kelola-soal-header">
+          <button class="secondary icon" title="Kembali ke Arsip" onclick="Guru.kembaliKeArsipGrid()">←</button>
+          <div class="kelola-soal-header-judul">
+            <h2 id="arsip-kategori-judul" style="margin:0">Kategori</h2>
+            <span class="subtitle" style="display:block;margin:0">Soal yang diarsipkan dari kategori ini. Kembalikan satu per satu, atau sekaligus lewat tombol di atas.</span>
+          </div>
+          <div class="toolbar-actions">
+            <button class="secondary" id="btn-arsip-kategori-kembalikan" onclick="Guru.kembalikanKategoriArsip()">↩ Kembalikan Semua</button>
+            <button class="danger" id="btn-arsip-kategori-hapus" onclick="Guru.hapusKategoriArsipPermanen()">🗑 Hapus Permanen Semua</button>
+          </div>
+        </div>
+        <div class="panel">
+          <div id="daftar-arsip-kategori-soal">Memuat...</div>
+        </div>
+      </div>
+
+      <!-- ============ LEVEL B: KELOLA SOAL (1 Mapel) ============ -->
+      <div id="kelola-soal-view" class="hidden">
+        <div class="kelola-soal-header">
+          <button class="secondary icon" title="Kembali" onclick="Guru.kembaliKeGridMapel()">←</button>
+          <div class="kelola-soal-header-judul">
+            <h2 id="kelola-soal-judul" style="margin:0">Mapel</h2>
+            <span class="subtitle" id="kelola-soal-token" style="display:block;margin:0"></span>
+          </div>
+          <div class="toolbar-actions">
+            <button class="secondary" onclick="Guru.pratinjauKategoriAktif()">👁 Pratinjau Semua Soal</button>
+            <button class="secondary" onclick="Guru.bukaModalKelolaKategori()">Edit Info</button>
+          </div>
+        </div>
+
+        <div class="tipe-tabs" id="tipe-tabs-list"></div>
+
+        <div class="panel">
+          <div class="aksi-cards-grid">
+            <div class="aksi-card aksi-card-utama" onclick="UI.bukaModalSoal()">
+              <div class="aksi-card-ico">✏</div>
+              <div class="aksi-card-judul">Tambah Soal Manual</div>
+              <div class="aksi-card-desc">Isi formulir soal secara manual.</div>
+            </div>
+            <div class="aksi-card" onclick="document.getElementById('input-import-soal').click()">
+              <div class="aksi-card-ico">📄</div>
+              <div class="aksi-card-judul">Import dari Excel (.xlsx)</div>
+              <div class="aksi-card-desc">Isi tabel: 1 baris = 1 soal, tinggal isi Opsi A/B/C/D &amp; kolom Kunci pakai huruf.</div>
+              <div class="aksi-card-aksi-row">
+                <button type="button" class="secondary small" onclick="event.stopPropagation();Guru.unduhTemplateSoal()">⬇ Unduh Template</button>
+                <label class="secondary small aksi-card-pilih-gambar" onclick="event.stopPropagation()">
+                  🖼 Gambar Pendukung <span id="label-jumlah-gambar-xlsx"></span>
+                  <input type="file" id="input-import-soal-gambar" accept="image/*" multiple class="hidden" onchange="UI.perbaruiLabelJumlahGambar('input-import-soal-gambar','label-jumlah-gambar-xlsx')">
+                </label>
+              </div>
+              <input type="file" id="input-import-soal" accept=".xlsx,.csv" class="hidden" onchange="Guru.importSoalDariFile(event)">
+            </div>
+            <div class="aksi-card" onclick="document.getElementById('input-import-soal-docx').click()">
+              <div class="aksi-card-ico">📄</div>
+              <div class="aksi-card-judul">Import dari Word (.docx)</div>
+              <div class="aksi-card-desc">Format tabel sama seperti template Excel — gambar yang ditempel langsung di kolom "Gambar"/Pertanyaan/Opsi otomatis terdeteksi &amp; terunggah, tanpa perlu pilih file terpisah.</div>
+              <div class="aksi-card-aksi-row">
+                <button type="button" class="secondary small" onclick="event.stopPropagation();Guru.unduhTemplateSoalDocx()">⬇ Unduh Template</button>
+                <label class="secondary small aksi-card-pilih-gambar" onclick="event.stopPropagation()">
+                  🖼 Gambar Pendukung (opsional) <span id="label-jumlah-gambar-docx"></span>
+                  <input type="file" id="input-import-soal-docx-gambar" accept="image/*" multiple class="hidden" onchange="UI.perbaruiLabelJumlahGambar('input-import-soal-docx-gambar','label-jumlah-gambar-docx')">
+                </label>
+              </div>
+              <input type="file" id="input-import-soal-docx" accept=".docx" class="hidden" onchange="Guru.importSoalDariDocx(event)">
+            </div>
+          </div>
+          <p class="subtitle" style="margin-top:.8rem">
+            <strong>Soal bergambar (Excel):</strong> di kolom "Gambar" pada tabel, cukup ketik nama file gambarnya saja
+            (mis. <code>soal1.jpg</code>) — lalu sebelum klik kartu Import, klik dulu <strong>"🖼 Gambar Pendukung"</strong>
+            di kartu yang sama &amp; pilih semua file gambar terkait sekaligus (boleh banyak file). Sistem otomatis
+            mencocokkan berdasarkan nama file. Boleh juga langsung isi kolom "Gambar" dengan link gambar publik.
+          </p>
+          <p class="subtitle" style="margin-top:.4rem">
+            <strong>Soal bergambar (Word):</strong> tempel/sisipkan gambarnya LANGSUNG di dalam sel tabel Word
+            (kolom "Gambar", atau bahkan di tengah teks Pertanyaan/Opsi) — saat diimpor, gambar tersebut otomatis
+            terdeteksi &amp; terunggah sendiri, tidak perlu lagi mengetik nama file atau memilih file gambar terpisah.
+            Tombol "🖼 Gambar Pendukung" di kartu Word tetap bisa dipakai sebagai cara alternatif (cocok nama file)
+            kalau kamu lebih suka begitu.
+          </p>
+
+
+          <div class="toolbar" style="margin-top:1.2rem">
+            <div class="row" style="flex:1;margin:0;gap:.6rem;flex-wrap:wrap">
+              <select id="filter-kategori-soal" class="hidden" onchange="Guru.renderDaftarSoal()"><option value="">Semua kategori</option></select>
+              <select id="filter-subkategori-soal" onchange="Guru.renderDaftarSoal()" style="max-width:220px">
+                <option value="">Semua sub-kategori</option>
+              </select>
+              <select id="filter-status-soal" onchange="Guru.renderDaftarSoal()" style="max-width:160px">
+                <option value="aktif" selected>Bank Soal (Aktif)</option>
+                <option value="arsip">Arsip</option>
+                <option value="semua">Semua status</option>
+              </select>
+              <label style="display:flex;align-items:center;gap:.4rem;font-weight:400;white-space:nowrap">
+                <input type="checkbox" id="filter-riwayat-soal" onchange="Guru.renderDaftarSoal()" style="width:auto">
+                Riwayat (pernah dipakai saja)
+              </label>
+            </div>
+          </div>
+          <p class="subtitle" style="margin-top:-.6rem">
+            Soal yang dibuat tapi belum dipakai bisa <strong>diarsipkan</strong> supaya tidak mengganggu daftar aktif,
+            lalu diedit &amp; dikembalikan kapan saja lewat filter status "Arsip". Centang <strong>"Riwayat"</strong>
+            untuk melihat soal yang sudah pernah dipakai di ujian mana saja.
+          </p>
+          <div id="daftar-bank-soal">Memuat...</div>
+        </div>
+      </div>
+    </section>
+
+
+    <!-- ---------- TAB: KELOLA UJIAN ---------- -->
+    <section id="tab-ujian" class="hidden">
+      <h2>Kelola Ujian</h2>
+      <p class="subtitle">Atur durasi, jadwal token, toleransi keterlambatan, dan batas pelanggaran anti-cheat.</p>
+      <div class="panel">
+        <div class="toolbar">
+          <div></div>
+          <button class="secondary icon" title="Segarkan sekarang" onclick="Guru.muatDaftarUjian()">🔄</button>
+          <button class="accent" onclick="UI.bukaModalUjian()">+ Buat Ujian</button>
+        </div>
+
+        <div id="daftar-ujian">Memuat...</div>
+      </div>
+    </section>
+
+    <!-- ---------- TAB: REKAP NILAI ---------- -->
+    <section id="tab-rekap" class="hidden">
+      <h2>Rekap Nilai</h2>
+      <p class="subtitle">Pilih ujian untuk melihat rekap nilai seluruh siswa dan mengunduhnya.</p>
+      <div class="panel">
+        <div class="toolbar">
+          <select id="pilih-ujian-rekap" onchange="Guru.muatRekap()" style="max-width:320px"></select>
+          <button class="secondary" onclick="Guru.unduhRekapCSV()">Unduh CSV</button>
+          <button class="secondary" title="Hitung ulang nilai semua siswa di ujian ini memakai jawaban yang sudah tersimpan, tanpa mengulang ujian -- berguna kalau ada perbaikan pada logika penilaian (mis. soal dengan opsi teracak)." onclick="Guru.hitungUlangNilai()">🔄 Hitung Ulang Nilai</button>
+        </div>
+        <div id="tabel-rekap">Pilih ujian terlebih dahulu.</div>
+      </div>
+    </section>
+
+    <!-- ---------- TAB: ANALISIS SOAL & JAWABAN SISWA ---------- -->
+    <section id="tab-analisis" class="hidden">
+      <h2>📊 Analisis Soal &amp; Jawaban Siswa</h2>
+      <p class="subtitle">
+        Pilih ujian untuk melihat soal mana yang ternyata paling banyak dijawab salah (sulit) atau paling banyak
+        dijawab benar (mudah), beserta pola jawaban tiap siswa per soal. Dihitung dari siswa yang sudah
+        <strong>menyelesaikan</strong> ujian ini.
+      </p>
+      <div class="panel">
+        <div class="toolbar">
+          <select id="pilih-ujian-analisis" onchange="Guru.muatAnalisisSoal()" style="max-width:320px"></select>
+          <button class="secondary icon" title="Segarkan sekarang" onclick="Guru.muatAnalisisSoal()">🔄</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="toolbar">
+          <h3 style="margin:0">Analisis Butir Soal</h3>
+          <button class="secondary" onclick="Guru.unduhAnalisisSoalCSV()">⬇ Unduh CSV</button>
+        </div>
+        <div id="tabel-analisis-soal">Pilih ujian terlebih dahulu.</div>
+      </div>
+
+      <div class="panel">
+        <div class="toolbar">
+          <h3 style="margin:0">Analisis Jawaban Siswa (per soal)</h3>
+          <button class="secondary" onclick="Guru.unduhAnalisisJawabanCSV()">⬇ Unduh CSV</button>
+        </div>
+        <div id="tabel-analisis-jawaban"></div>
+      </div>
+    </section>
+
+    <!-- ---------- TAB: LOG PELANGGARAN ---------- -->
+    <section id="tab-pelanggaran" class="hidden">
+      <h2>Log Pelanggaran Anti-Cheat</h2>
+      <p class="subtitle">Riwayat pelanggaran (pindah tab, keluar fullscreen, dll.) per ujian.</p>
+      <div class="panel">
+        <select id="pilih-ujian-log" onchange="Guru.muatLogPelanggaran()" style="max-width:320px;margin-bottom:1rem"></select>
+        <div id="tabel-log">Pilih ujian terlebih dahulu.</div>
+      </div>
+    </section>
+
+    <!-- ---------- TAB: PEMANTAUAN UJIAN (live monitoring) ---------- -->
+    <section id="tab-pemantauan" class="hidden">
+      <h2>🖥 Pemantauan Ujian</h2>
+      <p class="subtitle">
+        Pilih ujian untuk melihat siapa saja yang sedang mengerjakan/​sudah selesai, sisa waktu, jumlah soal yang
+        sudah terjawab, dan jumlah pelanggaran anti-cheat -- lengkap dengan aksi untuk tiap siswa.
+      </p>
+      <div class="panel">
+        <div class="toolbar">
+          <select id="pilih-ujian-pemantauan" onchange="Guru.muatPemantauan()" style="max-width:320px"></select>
+          <button class="secondary icon" title="Segarkan sekarang" onclick="Guru.muatPemantauan()">🔄</button>
+        </div>
+        <p class="subtitle" style="margin-top:-.6rem">
+          <strong>⏱ Tambah Waktu</strong> — memberi waktu ekstra ke satu siswa saja (mis. karena koneksi sempat
+          putus), tanpa mengubah durasi siswa lain.<br>
+          <strong>🧹 Hapus Pelanggaran</strong> — pelanggaran siswa itu langsung jadi 0; kalau sesinya sedang
+          diblokir karena melewati batas pelanggaran, sesi otomatis dibuka lagi dan siswa bisa <em>langsung
+          melanjutkan dari soal terakhir yang dikerjakan</em>, tanpa perlu mengulang ujian dari awal.<br>
+          <strong>✅ Selesaikan Paksa</strong> — mengakhiri ujian siswa itu sekarang juga memakai jawaban terakhir
+          yang tersimpan (autosave), lalu nilai langsung dihitung.<br>
+          <strong>↺ Reset</strong> — menghapus sesi sepenuhnya; kalau siswa membuka ujian ini lagi, dianggap belum
+          pernah mengerjakan sama sekali (soal diacak ulang, jawaban kosong, waktu mulai dari 0). Pakai ini hanya
+          kalau memang perlu mengulang total dari awal.
+        </p>
+        <div id="tabel-pemantauan">Pilih ujian terlebih dahulu.</div>
+      </div>
+    </section>
+
+    <!-- ---------- TAB: DATA SISWA ---------- -->
+    <section id="tab-siswa" class="hidden">
+      <h2>Data Siswa</h2>
+      <p class="subtitle">Kredensial akun siswa. Tambahkan satu per satu, atau impor massal dari file .xlsx/.csv.</p>
+
+      <datalist id="daftar-kelas-siswa"></datalist>
+
+      <div class="panel">
+        <h3>Tambah Siswa Manual</h3>
+        <div class="row">
+          <div class="field"><label>Nama Lengkap</label><input type="text" id="siswa-manual-nama" placeholder="mis. Budi Santoso"></div>
+          <div class="field"><label>Kelas</label><input type="text" id="siswa-manual-kelas" list="daftar-kelas-siswa" placeholder="mis. 9A — pilih dari daftar atau ketik baru"></div>
+          <div class="field">
+            <label>Username</label>
+            <div style="display:flex;gap:.4rem">
+              <input type="text" id="siswa-manual-username" placeholder="kosongkan untuk dibuatkan otomatis dari nama">
+              <button type="button" class="secondary icon" title="Buatkan username otomatis dari nama" onclick="Guru.generateUsernameManual()">🪄</button>
+            </div>
+          </div>
+          <div class="field">
+            <label>Password</label>
+            <div style="display:flex;gap:.4rem">
+              <input type="text" id="siswa-manual-password" placeholder="kosongkan untuk dibuatkan otomatis">
+              <button type="button" class="secondary icon" title="Buatkan password acak" onclick="Guru.generatePasswordManual()">🎲</button>
+            </div>
+          </div>
+        </div>
+        <button class="accent" id="btn-tambah-siswa-manual" onclick="Guru.tambahSiswaManual()">+ Tambah Siswa</button>
+      </div>
+
+      <div class="panel">
+        <div class="toolbar">
+          <h3 style="margin:0">Impor Massal</h3>
+          <div class="toolbar-actions">
+            <button class="secondary icon" title="Segarkan sekarang" onclick="Guru.muatDaftarSiswa()">🔄</button>
+            <button class="secondary" onclick="Guru.unduhTemplateSiswa()">⬇ Unduh Template (.xlsx)</button>
+            <button class="secondary" onclick="document.getElementById('input-import-siswa').click()">Impor dari file (.xlsx/.csv)</button>
+            <input type="file" id="input-import-siswa" accept=".xlsx,.csv" class="hidden" onchange="Guru.importSiswaDariFile(event)">
+          </div>
+        </div>
+        <p class="subtitle" style="margin-top:-.6rem">
+          Format kolom (dari kiri ke kanan): <strong>nama, kelas, username, password</strong>. Kolom
+          <strong>username</strong> dan <strong>password</strong> boleh dikosongkan — sistem akan membuatkan
+          keduanya secara otomatis untuk baris yang kosong (username dari nama, password acak). Belum punya file?
+          Klik <strong>"Unduh Template"</strong> dulu, isi contohnya di Excel/Spreadsheet, lalu impor kembali.
+        </p>
+        <div class="field" style="max-width:320px">
+          <label>Kelas untuk file ini (opsional)</label>
+          <input type="text" id="siswa-import-kelas" list="daftar-kelas-siswa" placeholder="mis. 9A — kosongkan untuk pakai kolom 'kelas' di file">
+        </div>
+        <p class="subtitle" style="margin-top:-.6rem">
+          Isi kolom ini kalau semua siswa di file yang mau diimpor berasal dari satu kelas yang sama (mis. hanya kelas 9A) — nilainya akan dipakai untuk semua baris, menggantikan kolom "kelas" di file.
+        </p>
+
+        <div class="toolbar" style="margin-top:1rem">
+          <h3 style="margin:0">Daftar Siswa</h3>
+          <div class="toolbar-actions">
+            <label style="display:flex;align-items:center;gap:.4rem;font-size:.85rem;color:var(--c-muted)">
+              Filter Kelas:
+              <select id="filter-kelas-siswa" onchange="Guru.renderTabelSiswa()" style="width:auto;flex:1"><option value="">Semua Kelas</option></select>
+            </label>
+            <button class="danger small" onclick="Guru.hapusKelas()" title="Hapus semua siswa di kelas yang sedang dipilih pada Filter Kelas">🗑 Hapus Kelas Ini</button>
+          </div>
+        </div>
+        <div id="daftar-siswa">Memuat...</div>
+      </div>
+    </section>
+
+    <!-- ---------- TAB: STATUS LOGIN (device lock per akun) ---------- -->
+    <section id="tab-login" class="hidden">
+      <h2>🔐 Status Login</h2>
+      <p class="subtitle">
+        Setiap akun siswa hanya boleh aktif di <strong>satu perangkat (HP/komputer)</strong> dalam satu waktu,
+        ditandai lewat Device ID di bawah ini. Kalau siswa perlu login dari perangkat lain sementara akunnya masih
+        tercatat "Terkunci", buka kuncinya di sini terlebih dahulu.
+      </p>
+      <div class="panel">
+        <div class="toolbar">
+          <label style="display:flex;align-items:center;gap:.4rem;font-size:.85rem;color:var(--c-muted)">
+            Filter Kelas:
+            <select id="filter-kelas-login" onchange="Guru.renderTabelStatusLogin()" style="width:auto;flex:1"><option value="">Semua Kelas</option></select>
+          </label>
+          <button class="secondary icon" title="Segarkan sekarang" onclick="Guru.muatStatusLogin()">🔄</button>
+        </div>
+        <div id="tabel-status-login">Memuat...</div>
+      </div>
+    </section>
+
+    <!-- ---------- TAB: PENGATURAN ---------- -->
+    <section id="tab-pengaturan" class="hidden">
+      <h2>Pengaturan</h2>
+      <p class="subtitle">Kelola akun, tampilan, dan koneksi data aplikasi.</p>
+
+      <div class="panel">
+        <h3>👤 Akun Saya</h3>
+        <p class="subtitle">Ubah nama, username, atau password yang dipakai untuk masuk ke Portal Guru.</p>
+        <div class="field"><label>Nama Lengkap</label><input type="text" id="akun-nama"></div>
+        <div class="field"><label>Username</label><input type="text" id="akun-username"></div>
+        <hr style="border:none;border-top:1px solid var(--c-line);margin:1.2rem 0">
+        <div class="field">
+          <label>Password Saat Ini</label>
+          <div style="display:flex;gap:.4rem">
+            <input type="password" id="akun-password-lama" autocomplete="current-password" placeholder="Wajib diisi untuk konfirmasi">
+            <button type="button" class="secondary icon" tabindex="-1" title="Lihat/sembunyikan sandi" onclick="toggleLihatSandi('akun-password-lama', this)">👁️</button>
+          </div>
+        </div>
+        <div class="field">
+          <label>Password Baru</label>
+          <div style="display:flex;gap:.4rem">
+            <input type="password" id="akun-password-baru" autocomplete="new-password" placeholder="Kosongkan jika tidak ingin ganti password">
+            <button type="button" class="secondary icon" tabindex="-1" title="Lihat/sembunyikan sandi" onclick="toggleLihatSandi('akun-password-baru', this)">👁️</button>
+          </div>
+        </div>
+        <div class="field">
+          <label>Ulangi Password Baru</label>
+          <div style="display:flex;gap:.4rem">
+            <input type="password" id="akun-password-baru2" autocomplete="new-password">
+            <button type="button" class="secondary icon" tabindex="-1" title="Lihat/sembunyikan sandi" onclick="toggleLihatSandi('akun-password-baru2', this)">👁️</button>
+          </div>
+        </div>
+        <button class="accent" onclick="Guru.simpanAkun()">Simpan Perubahan Akun</button>
+      </div>
+
+      <div class="panel">
+        <h3>🏷️ Identitas Aplikasi (Logo &amp; Nama CBT)</h3>
+        <p class="subtitle">Ganti logo dan nama aplikasi sesuai nama sekolah/instansi Anda. Begitu disimpan,
+          perubahan otomatis muncul di halaman login, sidebar, dan judul tab browser di semua perangkat —
+          termasuk HP siswa — saat mereka membuka atau memuat ulang aplikasi, tanpa perlu update apa pun di
+          perangkat masing-masing.</p>
+        <div class="field"><label>Nama Aplikasi</label>
+          <input type="text" id="branding-nama" placeholder="mis. CBT SMA Negeri 1 Contoh">
+        </div>
+        <div class="field">
+          <label>Logo Aplikasi <span class="subtitle" style="display:inline">— opsional, kosongkan untuk pakai ikon bawaan</span></label>
+          <div class="media-upload-grid" style="grid-template-columns:minmax(180px,260px)">
+            <div class="media-upload-box">
+              <div class="media-upload-label">🖼 Logo CBT<br><span>JPG/PNG/WebP · Maks 10 MB · idealnya persegi</span></div>
+              <input type="file" id="branding-logo-file" accept="image/*" class="hidden" onchange="Guru.uploadLogoAplikasi(event)">
+              <label for="branding-logo-file" class="media-upload-dropzone">+ <span>Klik untuk upload</span></label>
+              <input type="hidden" id="branding-logo-url">
+              <img id="branding-logo-preview" class="hidden media-upload-preview-img">
+              <button type="button" class="danger small hidden" id="branding-logo-hapus-btn" style="margin-top:.5rem;width:100%" onclick="Guru.hapusLogoAplikasi()">🗑 Hapus Logo</button>
+            </div>
+          </div>
+        </div>
+        <button class="accent" style="margin-top:.6rem" onclick="Guru.simpanBranding()">Simpan Identitas Aplikasi</button>
+      </div>
+
+      <div class="panel">
+        <h3>🎨 Palet Warna</h3>
+        <p class="subtitle">Palet warna berlaku untuk portal guru maupun portal siswa. Pilih salah satu palet siap pakai, acak palet baru, atau atur warna sendiri.</p>
+        <div id="palet-preset-list" class="palet-preset-list"></div>
+        <button class="secondary" style="margin-top:.8rem" onclick="Guru.acakPalet()">🎲 Acak Palet Warna</button>
+        <hr style="border:none;border-top:1px solid var(--c-line);margin:1.2rem 0">
+        <h4 style="margin:0 0 .6rem">Atur Warna Sendiri</h4>
+        <div class="theme-swatches">
+          <div class="swatch-field"><label>Warna utama</label><input type="color" id="tema-primary"></div>
+          <div class="swatch-field"><label>Warna sekunder</label><input type="color" id="tema-secondary"></div>
+          <div class="swatch-field"><label>Warna aksen</label><input type="color" id="tema-accent"></div>
+          <div class="swatch-field"><label>Latar</label><input type="color" id="tema-bg"></div>
+          <div class="swatch-field"><label>Teks</label><input type="color" id="tema-text"></div>
+        </div>
+        <div style="margin-top:1.2rem">
+          <button class="accent" onclick="Guru.simpanTema()">Simpan Tema</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h3>☁️ Koneksi Google Sheets</h3>
+        <p class="subtitle">Hubungkan aplikasi ke Google Sheets (lewat URL Web App Google Apps Script) supaya data tersinkron ke semua perangkat, atau lepas koneksi untuk kembali ke Mode Lokal.</p>
+        <p id="pengaturan-status-server" class="subtitle" style="font-weight:600"></p>
+        <button class="accent" onclick="UI.bukaPengaturanServer()">Atur Koneksi Google Sheets</button>
+      </div>
+
+      <div class="panel">
+        <h3>🔁 Sinkronisasi Paksa (lapisan kedua)</h3>
+        <p class="subtitle">
+          Data guru (soal/ujian/siswa) normalnya sudah langsung terkirim ke Google Sheets setiap kali disimpan, dan
+          tiap tab menarik ulang data otomatis tiap beberapa detik saat Mode Server aktif. Dua tombol ini adalah
+          <strong>lapisan cadangan manual</strong> untuk berjaga-jaga, atau untuk memindahkan data yang sempat dibuat
+          saat masih Mode Lokal ke Google Sheets begitu Mode Server diaktifkan.
+        </p>
+        <div class="row" style="align-items:flex-start">
+          <div class="field">
+            <button class="secondary" style="width:100%" onclick="Guru.tarikDataDariSheetPaksa()">⬇ Tarik Data dari Spreadsheet Sekarang</button>
+            <p class="subtitle" style="margin-top:.4rem">Menarik ulang seluruh Bank Soal, Ujian, dan Data Siswa dari
+              Google Sheets saat ini juga (tanpa menunggu 8 detik), sekaligus menyimpan salinannya sebagai cadangan
+              lokal di perangkat ini.</p>
+          </div>
+          <div class="field">
+            <button class="secondary" style="width:100%" onclick="Guru.kirimDataLokalKeSheetPaksa()">⬆ Kirim Data Lokal ke Spreadsheet Sekarang</button>
+            <p class="subtitle" style="margin-top:.4rem">Mengirim seluruh data yang ada di penyimpanan lokal (Mode
+              Lokal) perangkat ini — Bank Soal, Data Siswa, Ujian — ke Google Sheets yang sedang terhubung. Pakai
+              sekali saat pertama kali pindah dari Mode Lokal ke Mode Server; mengulanginya akan membuat data ganda.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- ======================= MODAL: FORM SOAL ======================= -->
+<div id="modal-soal" class="modal-backdrop hidden">
+  <div class="modal modal-wide">
+    <h3 id="modal-soal-title">Tambah Soal</h3>
+    <input type="hidden" id="soal-id">
+
+    <div class="tipe-tabs" id="soal-tipe-tabs" style="margin:0 0 1rem"></div>
+    <select id="soal-tipe" class="hidden" onchange="UI.renderFormOpsiSoal()">
+      <option value="pilihan_ganda">PG Biasa</option>
+      <option value="checkbox">PG Kompleks</option>
+      <option value="benar_salah">Benar/Salah</option>
+      <option value="menjodohkan">Jodohkan</option>
+      <option value="uraian">Essay</option>
+    </select>
+
+    <div class="row">
+      <div class="field">
+        <label>Kategori / Nama Mapel</label>
+        <input type="text" id="soal-kategori" list="daftar-kategori-soal" placeholder="mis. Kuis, Ulangan Harian, UTS, atau nama baru seperti Tryout">
+        <datalist id="daftar-kategori-soal"></datalist>
+      </div>
+      <div class="field">
+        <label>Sub-Kategori (opsional)</label>
+        <input type="text" id="soal-subkategori" list="daftar-subkategori-soal" placeholder="mis. Bab 1">
+        <datalist id="daftar-subkategori-soal"></datalist>
+      </div>
+    </div>
+
+    <div class="row row-3">
+      <div class="field">
+        <label>Topik / Kompetensi</label>
+        <input type="text" id="soal-topik" placeholder="Contoh: Aljabar Linear">
+      </div>
+      <div class="field">
+        <label>Tingkat Kesulitan</label>
+        <select id="soal-tingkat-kesulitan">
+          <option value="mudah">Mudah</option>
+          <option value="sedang" selected>Sedang</option>
+          <option value="sulit">Sulit</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Bobot Soal</label>
+        <input type="number" id="soal-bobot" value="10" min="1">
+      </div>
+    </div>
+
+    <div class="field">
+      <label>Pertanyaan Utama <span class="subtitle" style="display:inline">— Isi Soal / Instruksi / Stimulus (boleh sisipkan rumus format $...$)</span></label>
+      <div id="soal-pertanyaan-toolbar"></div>
+      <div id="soal-pertanyaan" class="rich-editable" contenteditable="true" data-placeholder="Tulis pertanyaan di sini..."></div>
+    </div>
+
+    <div class="field">
+      <label>Media Pendukung Soal <span class="subtitle" style="display:inline">— Gambar · Audio · Video (opsional)</span></label>
+      <div class="media-upload-grid">
+        <div class="media-upload-box">
+          <div class="media-upload-label">🖼 Gambar Soal<br><span>JPG/PNG/WebP · Maks 10 MB</span></div>
+          <input type="file" id="soal-gambar-file" accept="image/*" class="hidden" onchange="Guru.uploadGambarSoal(event)">
+          <label for="soal-gambar-file" class="media-upload-dropzone">+ <span>Klik untuk upload</span></label>
+          <input type="hidden" id="soal-gambar-url">
+          <img id="soal-gambar-preview" class="hidden media-upload-preview-img">
+        </div>
+        <div class="media-upload-box">
+          <div class="media-upload-label">🎧 Audio Listening<br><span>MP3/WAV/OGG · Maks 10 MB</span></div>
+          <input type="file" id="soal-audio-file" accept="audio/*" class="hidden" onchange="Guru.uploadMediaSoal(event,'audio')">
+          <label for="soal-audio-file" class="media-upload-dropzone">+ <span>Klik untuk upload</span></label>
+          <input type="hidden" id="soal-audio-url">
+          <audio id="soal-audio-preview" controls class="hidden" style="width:100%;margin-top:.5rem"></audio>
+        </div>
+        <div class="media-upload-box">
+          <div class="media-upload-label">🎬 Video Soal<br><span>MP4/WebM · Maks 50 MB</span></div>
+          <input type="file" id="soal-video-file" accept="video/*" class="hidden" onchange="Guru.uploadMediaSoal(event,'video')">
+          <label for="soal-video-file" class="media-upload-dropzone">+ <span>Klik untuk upload</span></label>
+          <input type="hidden" id="soal-video-url">
+          <video id="soal-video-preview" controls class="hidden" style="width:100%;margin-top:.5rem"></video>
+        </div>
+      </div>
+    </div>
+
+    <div id="soal-form-opsi"></div>
+
+    <div class="modal-close-row">
+      <button class="secondary" onclick="UI.tutupModal('modal-soal')">Batal</button>
+      <button class="accent" id="btn-simpan-soal" onclick="Guru.simpanSoal()">Simpan Soal</button>
+
+    </div>
+  </div>
+</div>
+
+<!-- ======================= MODAL: KELOLA KATEGORI SOAL ======================= -->
+<div id="modal-kelola-kategori" class="modal-backdrop hidden">
+  <div class="modal">
+    <h3>Kelola Kategori / Nama Soal</h3>
+    <p class="subtitle">Kategori/nama soal dibuat otomatis begitu Anda mengetik nama baru (mis. "Tryout") di kolom
+      "Kategori / Nama Soal" saat menambah soal — tidak perlu didaftarkan dulu di sini. Daftar di bawah menampilkan
+      semua kategori yang sedang aktif beserta jumlah soalnya, dan tombol untuk menghapusnya.</p>
+    <div id="daftar-kelola-kategori" style="max-height:280px;overflow-y:auto;margin-bottom:1rem">Memuat...</div>
+    <div class="field">
+      <label>Buat kategori baru</label>
+      <div style="display:flex;gap:.4rem">
+        <input type="text" id="kelola-kategori-baru" placeholder="mis. Tryout">
+        <button type="button" class="accent" onclick="Guru.tambahKategoriBaruDanTambahSoal()">+ Buat &amp; tambah soal pertama</button>
+      </div>
+      <p class="subtitle" style="margin-top:.4rem">Langsung membuka form Tambah Soal dengan kategori ini terisi — kategori baru akan muncul di semua filter setelah soal pertamanya disimpan.</p>
+    </div>
+    <div class="modal-close-row">
+      <button class="secondary" onclick="UI.tutupModal('modal-kelola-kategori')">Tutup</button>
+    </div>
+  </div>
+</div>
+
+<!-- ======================= MODAL: PRATINJAU SOAL (tampilan sama persis dengan siswa) ======================= -->
+<div id="modal-pratinjau-soal" class="modal-backdrop hidden">
+  <div class="modal modal-wide">
+    <h3 id="pratinjau-soal-title">Pratinjau Soal</h3>
+    <p class="subtitle" id="pratinjau-soal-subtitle"></p>
+    <div id="pratinjau-soal-body" style="max-height:65vh;overflow-y:auto;padding-right:.3rem"></div>
+    <div class="modal-close-row">
+      <button class="secondary" onclick="UI.tutupModal('modal-pratinjau-soal')">Tutup</button>
+    </div>
+  </div>
+</div>
+
+<!-- ======================= MODAL: UBAH SISWA ======================= -->
+<div id="modal-siswa" class="modal-backdrop hidden">
+  <div class="modal">
+    <h3>Ubah Data Siswa</h3>
+    <input type="hidden" id="siswa-edit-id">
+    <div class="row">
+      <div class="field">
+        <label>Username</label>
+        <div style="display:flex;gap:.4rem">
+          <input type="text" id="siswa-edit-username">
+          <button type="button" class="secondary icon" title="Buatkan username otomatis dari nama" onclick="Guru.generateUsernameEdit()">🪄</button>
+        </div>
+      </div>
+      <div class="field">
+        <label>Password</label>
+        <div style="display:flex;gap:.4rem">
+          <input type="text" id="siswa-edit-password">
+          <button type="button" class="secondary icon" title="Buatkan password acak" onclick="Guru.generatePasswordEdit()">🎲</button>
+        </div>
+      </div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Nama Lengkap</label><input type="text" id="siswa-edit-nama"></div>
+      <div class="field"><label>Kelas</label><input type="text" id="siswa-edit-kelas" list="daftar-kelas-siswa"></div>
+    </div>
+    <div class="modal-close-row">
+      <button class="secondary" onclick="UI.tutupModal('modal-siswa')">Batal</button>
+      <button class="accent" onclick="Guru.simpanSiswaEdit()">Simpan</button>
+    </div>
+  </div>
+</div>
+
+<!-- ======================= MODAL: FORM UJIAN ======================= -->
+<div id="modal-ujian" class="modal-backdrop hidden">
+  <div class="modal">
+    <h3 id="modal-ujian-title">Buat Ujian</h3>
+    <input type="hidden" id="ujian-id">
+    <div class="row">
+      <div class="field"><label>Judul Ujian</label><input type="text" id="ujian-judul"></div>
+      <div class="field">
+        <label>Kategori Soal yang Digunakan</label>
+        <select id="ujian-kategori" onchange="Guru.muatPilihanSoalUntukUjian()">
+          <option value="">(Belum ada soal aktif)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Sub-Kategori / Kelompok (opsional)</label>
+        <input type="text" id="ujian-subkategori" list="daftar-subkategori-soal" placeholder="mis. Bab 1 — kosongkan untuk pakai semua sub-kategori" onchange="Guru.muatPilihanSoalUntukUjian()">
+      </div>
+    </div>
+    <p class="subtitle" style="margin-top:-.6rem">Daftar soal di bawah otomatis mengikuti kategori &amp; sub-kategori
+      yang dipilih di atas (semua soal yang cocok otomatis tercentang — tidak perlu dicentang satu per satu), supaya
+      soal Ulangan Harian Bab 1 tidak tercampur dengan Bab 2, UTS, UAS, dst. Kategori baru bisa dibuat lewat tombol
+      "⚙ Kelola Kategori" di tab Bank Soal.</p>
+    <div class="field">
+      <div class="row" style="justify-content:space-between;align-items:center;margin:0 0 .4rem">
+        <label style="margin:0">Pilih Soal</label>
+        <div style="display:flex;gap:.4rem">
+          <button type="button" class="secondary small" onclick="Guru.pilihSemuaSoalUjian(true)">Pilih Semua</button>
+          <button type="button" class="secondary small" onclick="Guru.pilihSemuaSoalUjian(false)">Kosongkan Semua</button>
+        </div>
+      </div>
+      <div id="pilihan-soal-ujian" style="max-height:220px;overflow-y:auto;border:1px solid var(--c-line);padding:.6rem;border-radius:3px"></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Durasi (menit)</label><input type="number" id="ujian-durasi" value="60"></div>
+      <div class="field"><label>Toleransi keterlambatan (menit)</label><input type="number" id="ujian-toleransi" value="10"></div>
+      <div class="field"><label>Nilai minimal lulus (KKM)</label><input type="number" id="ujian-kkm" value="75"></div>
+      <div class="field"><label>Maksimal pelanggaran sebelum diblokir</label><input type="number" id="ujian-max-pelanggaran" value="3"></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Jadwal token dibuka</label><input type="datetime-local" id="ujian-mulai"></div>
+      <div class="field"><label>Jadwal token ditutup</label><input type="datetime-local" id="ujian-selesai"></div>
+    </div>
+    <div class="row">
+      <div class="field"><label><input type="checkbox" id="ujian-acak-soal" checked style="width:auto"> Acak urutan soal per siswa</label></div>
+      <div class="field"><label><input type="checkbox" id="ujian-acak-opsi" checked style="width:auto"> Acak urutan opsi jawaban per siswa</label></div>
+    </div>
+    <div class="field">
+      <label>Instruksi Remedial (opsional, ditampilkan ke siswa yang belum lulus)</label>
+      <textarea id="ujian-instruksi-remedial" rows="2" placeholder="mis. Temui Bu Guru di ruang guru untuk jadwal remedial."></textarea>
+    </div>
+    <div class="modal-close-row">
+      <button class="secondary" onclick="UI.tutupModal('modal-ujian')">Batal</button>
+      <button class="accent" id="btn-simpan-ujian" onclick="Guru.simpanUjian()">Simpan Ujian</button>
+    </div>
+  </div>
+</div>
+
+<!-- ======================= PORTAL SISWA (sebelum ujian) ======================= -->
+<div id="siswa-portal" class="shell hidden">
+  <div class="mobile-topbar">
+    <button type="button" class="hamburger-btn" onclick="UI.bukaMenuMobile('siswa')" aria-label="Buka menu">☰</button>
+    <span class="mobile-topbar-title"><span class="app-brand-nama">CBT Sekolah</span> — Portal Siswa</span>
+  </div>
+  <div class="sidebar-overlay" id="sidebar-overlay-siswa" onclick="UI.tutupMenuMobile('siswa')"></div>
+  <aside class="sidebar" id="sidebar-siswa">
+    <button type="button" class="sidebar-close-btn" onclick="UI.tutupMenuMobile('siswa')" aria-label="Tutup menu">✕</button>
+    <div class="sidebar-brand">
+      <span class="sidebar-logo app-logo-slot"><i class="fa-solid fa-graduation-cap"></i></span>
+      <span>
+        <h2 class="brand app-brand-nama">CBT Sekolah</h2>
+        <p class="brand-sub">Portal Siswa</p>
+      </span>
+    </div>
+    <nav class="nav-scroll">
+      <button class="nav-tab active"><i class="fa-solid fa-pen-to-square nav-ico"></i><span>Masuk Ujian</span></button>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="who">Masuk sebagai<br><strong id="siswa-nama-label">-</strong></div>
+      <button class="secondary" style="width:100%" onclick="Auth.logout()"><i class="fa-solid fa-right-from-bracket"></i> Keluar</button>
+    </div>
+  </aside>
+  <main class="main">
+    <h2>Masuk Ujian</h2>
+    <p class="subtitle">Masukkan token ujian yang diberikan oleh guru.</p>
+    <div class="panel token-box">
+      <div class="field">
+        <label>Token Ujian</label>
+        <input type="text" id="input-token-ujian" style="text-transform:uppercase" placeholder="Contoh: 8K2P9Q">
+      </div>
+      <button class="accent" style="width:100%" onclick="Siswa.cekToken()">Cari Ujian</button>
+      <div id="token-error" style="color:var(--c-danger);font-size:.85rem;margin-top:.6rem"></div>
+    </div>
+
+    <div id="konfirmasi-ujian" class="panel hidden">
+      <h3 id="konf-judul-ujian"></h3>
+      <p id="konf-info-ujian" class="subtitle"></p>
+      <p style="font-size:.85rem;color:var(--c-muted)">
+        Ujian akan berjalan dalam mode layar penuh. Berpindah tab, keluar layar penuh, atau menyalin-tempel
+        akan tercatat sebagai pelanggaran dan dapat menyebabkan ujian dikunci otomatis.
+      </p>
+      <button class="accent" onclick="Siswa.mulaiUjian()">Mulai Ujian Sekarang</button>
+    </div>
+  </main>
+</div>
+
+<!-- ======================= LAYAR UJIAN ======================= -->
+<div id="ujian-screen" class="hidden">
+  <div class="exam-topbar">
+    <div class="judul" id="ujian-judul-aktif">-</div>
+    <div class="pelanggaran-indikator" id="pelanggaran-indikator"></div>
+    <button type="button" class="secondary small" title="Kirim jawaban ke server sekarang juga, tanpa menunggu penyimpanan otomatis" onclick="ExamEngine.simpanSekarang()">💾 Simpan Sekarang</button>
+    <div class="timer" id="timer-display">--:--:--</div>
+  </div>
+  <div class="exam-body">
+    <div class="exam-question-col">
+      <div class="question-card" id="question-card">Memuat soal...</div>
+      <div class="nav-actions">
+        <button class="secondary" id="btn-soal-prev" onclick="Siswa.soalSebelumnya()">&larr; Sebelumnya</button>
+        <label class="ragu-toggle"><input type="checkbox" id="chk-ragu" onchange="Siswa.toggleRagu()" style="width:auto"> Tandai ragu-ragu</label>
+        <button id="btn-soal-next" onclick="Siswa.soalBerikutnya()">Berikutnya &rarr;</button>
+      </div>
+    </div>
+    <div class="exam-nav-col">
+      <div class="soal-grid" id="soal-grid"></div>
+      <div class="legend">
+        <div><span class="dot" style="background:var(--c-secondary)"></span>Sudah dijawab</div>
+        <div><span class="dot" style="border:2px solid var(--c-accent)"></span>Ditandai ragu-ragu</div>
+        <div><span class="dot" style="background:#fff;border:1px solid var(--c-line)"></span>Belum dijawab</div>
+      </div>
+      <button class="accent" style="width:100%;margin-top:1rem" onclick="Siswa.konfirmasiSubmit()">Selesai &amp; Kumpulkan</button>
+    </div>
+  </div>
+</div>
+
+<div id="anticheat-warning" class="anticheat-warning hidden">
+  <h2>Pelanggaran Terdeteksi</h2>
+  <p id="anticheat-pesan">Anda meninggalkan mode layar penuh / berpindah tab.</p>
+  <p id="anticheat-sisa" style="font-weight:700"></p>
+  <button class="accent" onclick="Siswa.kembaliKeUjian()">Kembali ke Ujian (Layar Penuh)</button>
+</div>
+
+<!-- ======================= HASIL UJIAN ======================= -->
+<div id="hasil-screen" class="hidden">
+  <div class="hasil-card">
+    <p class="subtitle" id="hasil-judul-ujian">-</p>
+    <div class="status-lulus" id="hasil-status">-</div>
+    <div class="nilai-besar" id="hasil-nilai">0</div>
+    <p id="hasil-instruksi" style="color:var(--c-muted);font-size:.9rem"></p>
+    <button class="accent" onclick="UI.kembaliKeBerandaSiswa()">Kembali ke Beranda</button>
+  </div>
+</div>
+
+<!-- ======================= LIGHTBOX PERBESAR GAMBAR SOAL (manual oleh siswa) ======================= -->
+<div id="gambar-lightbox" class="gambar-lightbox hidden" onclick="ImageLightbox.klikBackdrop(event)">
+  <div class="gambar-lightbox-toolbar">
+    <button type="button" class="gambar-lightbox-btn" title="Perkecil" onclick="ImageLightbox.zoom(-1)">−</button>
+    <span class="gambar-lightbox-persen" id="gambar-lightbox-persen">100%</span>
+    <button type="button" class="gambar-lightbox-btn" title="Perbesar" onclick="ImageLightbox.zoom(1)">+</button>
+    <button type="button" class="gambar-lightbox-btn" title="Ukuran awal" onclick="ImageLightbox.reset()">Reset</button>
+    <button type="button" class="gambar-lightbox-btn gambar-lightbox-tutup" title="Tutup" onclick="ImageLightbox.tutup()">✕</button>
+  </div>
+  <div class="gambar-lightbox-panel" id="gambar-lightbox-panel">
+    <img id="gambar-lightbox-img" alt="Gambar diperbesar" draggable="false">
+  </div>
+  <p class="gambar-lightbox-hint">Gulir / cubit dua jari untuk memperbesar &middot; klik dua kali untuk perbesar cepat &middot; geser gambar saat diperbesar</p>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
