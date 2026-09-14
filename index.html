@@ -881,12 +881,25 @@
 
 <!-- ======================= HASIL UJIAN ======================= -->
 <div id="hasil-screen" class="hidden">
-  <div class="hasil-card">
-    <p class="subtitle" id="hasil-judul-ujian">-</p>
+  <div class="hasil-card" id="hasil-card">
+    <div class="hasil-icon-wrap" id="hasil-icon-wrap">
+      <i class="fa-solid fa-check" id="hasil-icon"></i>
+    </div>
+    <p class="hasil-eyebrow">Hasil Ujian</p>
+    <h2 class="hasil-judul" id="hasil-judul-ujian">-</h2>
     <div class="status-lulus" id="hasil-status">-</div>
-    <div class="nilai-besar" id="hasil-nilai">0</div>
-    <p id="hasil-instruksi" style="color:var(--c-muted);font-size:.9rem"></p>
-    <button class="accent" onclick="UI.kembaliKeBerandaSiswa()">Kembali ke Beranda</button>
+    <div class="skor-ring">
+      <svg class="skor-ring-svg" viewBox="0 0 120 120">
+        <circle class="skor-ring-bg" cx="60" cy="60" r="52"></circle>
+        <circle class="skor-ring-progress" id="hasil-skor-progress" cx="60" cy="60" r="52"></circle>
+      </svg>
+      <div class="skor-ring-nilai">
+        <span class="nilai-besar" id="hasil-nilai">0</span>
+        <span class="nilai-skala">/ 100</span>
+      </div>
+    </div>
+    <p id="hasil-instruksi" class="hasil-instruksi"></p>
+    <button class="accent hasil-btn-beranda" onclick="UI.kembaliKeBerandaSiswa()"><i class="fa-solid fa-house"></i> Kembali ke Beranda</button>
   </div>
 </div>
 
