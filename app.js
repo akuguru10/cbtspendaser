@@ -12,7 +12,9 @@
    ============================================================================ */
 
 const CONFIG = {
-  API_URL: '', // contoh: https://script.google.com/macros/s/xxxx/exec — kosongkan untuk mode lokal
+  // URL server sekarang diisi lewat config.js (window.CBT_API_URL) supaya tidak hilang saat
+  // app.js diganti. Mengisi langsung di sini tetap bisa dan dipakai kalau config.js kosong.
+  API_URL: (typeof window !== 'undefined' && window.CBT_API_URL) || '', // contoh: https://script.google.com/macros/s/xxxx/exec — kosongkan untuk mode lokal
   AUTOSAVE_INTERVAL_MS: 20000,   // sinkron jawaban ke server tiap 20 detik (throttle)
   PING_INTERVAL_MS: 60000,       // heartbeat device-lock tiap 60 detik
   REALTIME_POLL_MS: 8000,        // saat Mode Server aktif: tarik ulang data tiap 8 detik ("realtime")
@@ -1096,8 +1098,8 @@ const LocalBackend = (function () {
           return { ok: true, user: { id: guru.id, nama: guru.nama, username: guru.username, role: 'guru' } };
         }
         if (role === 'siswa') {
-          const siswa = D.siswa.find(s => s.username === username);
-          if (!siswa || String(siswa.password) !== password) return { ok: false, error: 'Username atau password siswa salah.' };
+          const siswa = D.siswa.find(s => String(s.username).trim().toLowerCase() === username.toLowerCase() && String(s.password).trim() === password.trim());
+          if (!siswa) return { ok: false, error: 'Username atau password siswa salah.' };
           const lockAktif = D.config.deviceLockAktif !== false; // default Aktif (perilaku lama) kecuali sudah pernah dimatikan
           const now = new Date();
           const lastPing = siswa.last_ping ? new Date(siswa.last_ping) : null;
@@ -1647,7 +1649,12 @@ const Auth = {
     tombol.textContent = 'Memproses...';
     try {
       const res = await api('login', { role: state.role, username, password, deviceId: state.deviceId });
-      if (!res.ok) { errEl.textContent = res.error || 'Login gagal.'; return; }
+      if (!res.ok) {
+        errEl.textContent = (res.error || 'Login gagal.') + (!modeServerAktif()
+          ? ' ⚠ Aplikasi di perangkat ini belum terhubung ke server (Mode Lokal), jadi akun buatan guru tidak dikenali. Hubungi guru/pengawas.'
+          : '');
+        return;
+      }
       state.user = res.user;
       sessionStorage.setItem('cbt_user', JSON.stringify(res.user));
 
@@ -4505,6 +4512,14 @@ window.addEventListener('DOMContentLoaded', () => {
   tampilkanBadgeMode();
   muatTemaGlobal();
   muatBrandingGlobal();
+  // Penanda koneksi di layar login: langsung terlihat apakah HP ini terhubung ke server
+  // (Google Sheets) atau masih Mode Lokal (penyebab umum siswa "tidak bisa login").
+  (function () {
+    const el = document.getElementById('login-mode-status');
+    if (!el) return;
+    if (modeServerAktif()) { el.textContent = '● Terhubung ke server'; el.style.color = '#16a97e'; }
+    else { el.textContent = '⚠ Mode Lokal — belum terhubung ke server. Akun buatan guru tidak akan dikenali di perangkat ini.'; el.style.color = '#e0433d'; }
+  })();
   Auth.pulihkanSesiLogin();
   ImageLightbox.pasang();
 });
