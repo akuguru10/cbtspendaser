@@ -368,6 +368,8 @@
         <div class="toolbar">
           <select id="pilih-ujian-rekap" onchange="Guru.muatRekap()" style="max-width:320px"></select>
           <button class="secondary" onclick="Guru.unduhRekapCSV()">Unduh CSV</button>
+          <button class="danger" title="Hapus nilai siswa yang dicentang pada tabel di bawah" onclick="Guru.hapusNilaiTerpilih()">🗑 Hapus Terpilih</button>
+          <button class="danger" title="Hapus SEMUA nilai pada ujian yang sedang dipilih" onclick="Guru.hapusSemuaNilaiUjian()">🗑 Hapus Semua Nilai</button>
           <button class="secondary" title="Hitung ulang nilai semua siswa di ujian ini memakai jawaban yang sudah tersimpan, tanpa mengulang ujian -- berguna kalau ada perbaikan pada logika penilaian (mis. soal dengan opsi teracak)." onclick="Guru.hitungUlangNilai()">🔄 Hitung Ulang Nilai</button>
         </div>
         <div id="tabel-rekap">Pilih ujian terlebih dahulu.</div>
@@ -505,6 +507,7 @@
               Filter Kelas:
               <select id="filter-kelas-siswa" onchange="Guru.renderTabelSiswa()" style="width:auto;flex:1"><option value="">Semua Kelas</option></select>
             </label>
+            <button class="secondary small" onclick="Guru.unduhAkunSiswa()" title="Unduh username & password siswa (.xlsx), satu sheet per kelas. Ikuti Filter Kelas: pilih satu kelas untuk mengunduh kelas itu saja.">⬇ Unduh Akun (.xlsx)</button>
             <button class="danger small" onclick="Guru.hapusKelas()" title="Hapus semua siswa di kelas yang sedang dipilih pada Filter Kelas">🗑 Hapus Kelas Ini</button>
           </div>
         </div>
@@ -520,6 +523,24 @@
         ditandai lewat Device ID di bawah ini. Kalau siswa perlu login dari perangkat lain sementara akunnya masih
         tercatat "Terkunci", buka kuncinya di sini terlebih dahulu.
       </p>
+      <div class="panel" style="margin-bottom:1rem">
+        <div class="toolbar" style="align-items:center">
+          <div>
+            <h3 style="margin:0 0 .2rem">🔐 Kunci Perangkat (Device Lock)</h3>
+            <p class="subtitle" id="lock-device-status-text" style="margin:0">Memuat status...</p>
+          </div>
+          <div class="role-switch" style="margin:0;flex:none;width:auto;min-width:230px">
+            <button type="button" id="btn-lock-aktif" onclick="Guru.setPengaturanLockDevice(true)">🔒 Aktifkan</button>
+            <button type="button" id="btn-lock-nonaktif" onclick="Guru.setPengaturanLockDevice(false)">🔓 Nonaktifkan</button>
+          </div>
+        </div>
+        <p class="subtitle" style="margin:.6rem 0 0">
+          <strong>Aktif</strong>: satu akun siswa hanya boleh login di satu perangkat dalam satu waktu (perilaku baku).
+          <strong>Tidak Aktif</strong>: siswa boleh login dari perangkat mana pun kapan saja tanpa terkunci/ditolak —
+          berguna kalau sering ganti HP saat ujian, tapi satu akun jadi bisa dipakai di banyak perangkat sekaligus.
+        </p>
+      </div>
+
       <div class="panel">
         <div class="toolbar">
           <label style="display:flex;align-items:center;gap:.4rem;font-size:.85rem;color:var(--c-muted)">
