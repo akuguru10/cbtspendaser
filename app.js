@@ -1219,7 +1219,7 @@ const LocalBackend = (function () {
         const siswaMap = {}; D.siswa.forEach(s => siswaMap[s.id] = s);
         const rekap = sesiList.map(s => {
           const siswa = siswaMap[s.siswa_id] || {};
-          return { siswaId: s.siswa_id, nama: siswa.nama || '(tidak dikenal)', kelas: siswa.kelas || '-', nilai: s.nilai, lulus: s.lulus, pelanggaran: s.pelanggaran, mulai: s.mulai, selesai: s.selesai, status: s.status };
+          return { sesiId: s.id, siswaId: s.siswa_id, nama: siswa.nama || '(tidak dikenal)', kelas: siswa.kelas || '-', nilai: s.nilai, lulus: s.lulus, pelanggaran: s.pelanggaran, mulai: s.mulai, selesai: s.selesai, status: s.status };
         });
         return { ok: true, data: rekap };
       }
@@ -1363,6 +1363,13 @@ const LocalBackend = (function () {
         if (sesi.status === 'diblokir') { sesi.status = 'berlangsung'; sesi.selesai = ''; sesi.nilai = ''; sesi.lulus = ''; }
         simpan();
         return { ok: true, status: sesi.status };
+      }
+      case 'hapusNilaiSiswa': {
+        const ids = new Set(JSON.parse(data.sesiIds || '[]').map(String));
+        D.sesi = D.sesi.filter(x => !ids.has(String(x.id)));
+        if (Array.isArray(D.log)) D.log = D.log.filter(l => !ids.has(String(l.sesi_id)));
+        simpan();
+        return { ok: true, count: ids.size };
       }
       case 'pemantauanReset': {
         const idx = cariIdx(D.sesi, data.sesiId);
@@ -3165,14 +3172,57 @@ const Guru = {
     const res = await api('getRekapNilai', { ujianId });
     if (!res.ok) { cont.textContent = 'Gagal memuat.'; return; }
     state.guru._rekapAktif = res.data;
-    if (res.data.length === 0) { cont.innerHTML = '<p class="subtitle">Belum ada siswa yang <strong>menyelesaikan</strong> ujian ini (siswa yang masih mengerjakan tidak dihitung di sini — lihat tab "Pemantauan Ujian" untuk yang sedang berlangsung).</p>'; return; }
-    cont.innerHTML = `<table class="ledger"><thead><tr><th>Nama</th><th>Kelas</th><th>Nilai</th><th>Status</th><th>Pelanggaran</th><th>Selesai</th></tr></thead><tbody>` +
-      res.data.map(r => `<tr>
+    Guru.renderTabelRekap_();
+  },
+
+  renderTabelRekap_() {
+    const cont = document.getElementById('tabel-rekap');
+    const data = state.guru._rekapAktif || [];
+    if (data.length === 0) { cont.innerHTML = '<p class="subtitle">Belum ada siswa yang <strong>menyelesaikan</strong> ujian ini (siswa yang masih mengerjakan tidak dihitung di sini — lihat tab "Pemantauan Ujian" untuk yang sedang berlangsung).</p>'; return; }
+    cont.innerHTML = `<table class="ledger"><thead><tr><th style="width:2rem"><input type="checkbox" id="rekap-pilih-semua" title="Pilih semua" onchange="Guru.pilihSemuaRekap(this.checked)"></th><th>Nama</th><th>Kelas</th><th>Nilai</th><th>Status</th><th>Pelanggaran</th><th>Selesai</th><th></th></tr></thead><tbody>` +
+      data.map(r => `<tr>
+        <td><input type="checkbox" class="rekap-cek" value="${escapeHtml_(r.sesiId || '')}" ${r.sesiId ? '' : 'disabled'}></td>
         <td>${escapeHtml_(r.nama)}</td><td>${escapeHtml_(r.kelas)}</td><td><strong>${r.nilai}</strong></td>
         <td><span class="badge ${String(r.lulus) === 'true' ? 'ok' : 'no'}">${String(r.lulus) === 'true' ? 'Lulus' : 'Remedial'}</span></td>
         <td>${r.pelanggaran || 0} ${r.status === 'diblokir' ? '<span class="badge warn">Diblokir</span>' : ''}</td>
         <td style="font-size:.8rem">${formatTanggal(r.selesai)}</td>
+        <td class="aksi">${r.sesiId ? `<button class="danger small" title="Hapus nilai siswa ini (siswa bisa mengikuti ujian ini lagi)" onclick="Guru.hapusNilaiSatu('${escapeHtml_(r.sesiId)}')">🗑 Hapus</button>` : ''}</td>
       </tr>`).join('') + `</tbody></table>`;
+  },
+
+  pilihSemuaRekap(aktif) {
+    document.querySelectorAll('#tabel-rekap .rekap-cek:not(:disabled)').forEach(cb => { cb.checked = aktif; });
+  },
+
+  // Inti penghapusan nilai: kirim 1 permintaan utk banyak sesi, lalu perbarui
+  // tampilan dari data lokal (tanpa unduh ulang).
+  async hapusNilaiIds_(idList, pesanKonfirmasi) {
+    if (!idList.length) { toast('Pilih dulu nilai siswa yang ingin dihapus (centang kotak di kiri nama).', 'error'); return; }
+    if (!confirm(pesanKonfirmasi)) return;
+    toast(`Menghapus ${idList.length} nilai...`);
+    const res = await api('hapusNilaiSiswa', { sesiIds: JSON.stringify(idList) });
+    if (!res.ok) { toast('Gagal menghapus nilai: ' + res.error, 'error'); return; }
+    const set = new Set(idList.map(String));
+    state.guru._rekapAktif = (state.guru._rekapAktif || []).filter(r => !set.has(String(r.sesiId)));
+    Guru.renderTabelRekap_();
+    toast(`${idList.length} nilai dihapus. Siswa yang bersangkutan dapat mengikuti ujian ini lagi.`, 'success');
+  },
+
+  hapusNilaiSatu(sesiId) {
+    const r = (state.guru._rekapAktif || []).find(x => String(x.sesiId) === String(sesiId));
+    const nama = r ? r.nama : 'siswa ini';
+    return Guru.hapusNilaiIds_([sesiId], `Hapus nilai "${nama}" pada ujian ini? Jawaban & nilainya dihapus PERMANEN dan siswa bisa mengerjakan ujian ini lagi dari awal. Tidak bisa dibatalkan.`);
+  },
+
+  hapusNilaiTerpilih() {
+    const ids = Array.from(document.querySelectorAll('#tabel-rekap .rekap-cek:checked')).map(cb => cb.value).filter(Boolean);
+    return Guru.hapusNilaiIds_(ids, `Hapus ${ids.length} nilai siswa yang dicentang? Jawaban & nilai dihapus PERMANEN dan siswa-siswa tsb bisa mengerjakan ujian ini lagi. Tidak bisa dibatalkan.`);
+  },
+
+  hapusSemuaNilaiUjian() {
+    const ids = (state.guru._rekapAktif || []).map(r => r.sesiId).filter(Boolean);
+    if (!ids.length) { toast('Belum ada nilai untuk dihapus.', 'error'); return; }
+    return Guru.hapusNilaiIds_(ids, `Hapus SEMUA ${ids.length} nilai pada ujian ini? Jawaban & nilai seluruh siswa dihapus PERMANEN dan semuanya bisa mengerjakan ujian ini lagi. Tidak bisa dibatalkan.`);
   },
 
   unduhRekapCSV() {
@@ -3592,6 +3642,37 @@ const Guru = {
 
   generatePasswordEdit() {
     document.getElementById('siswa-edit-password').value = buatPasswordAcak();
+  },
+
+  // Unduh username & password siswa (.xlsx), SATU SHEET PER KELAS (siap dicetak/dibagikan
+  // ke wali kelas). Memakai Filter Kelas yang sedang dipilih: pilih satu kelas -> hanya
+  // kelas itu; "Semua Kelas" -> semua kelas, masing-masing di sheet sendiri.
+  unduhAkunSiswa() {
+    const semua = state.guru.daftarSiswa || [];
+    if (semua.length === 0) { toast('Belum ada data siswa untuk diunduh.', 'error'); return; }
+    const filterKelas = document.getElementById('filter-kelas-siswa')?.value || '';
+    const data = filterKelas ? semua.filter(s => s.kelas === filterKelas) : semua;
+    if (data.length === 0) { toast('Tidak ada siswa di kelas ini.', 'error'); return; }
+    const perKelas = {};
+    data.forEach(s => { const k = String(s.kelas || 'Tanpa Kelas'); (perKelas[k] = perKelas[k] || []).push(s); });
+    const wb = XLSX.utils.book_new();
+    const namaTerpakai = new Set();
+    Object.keys(perKelas).sort((a, b) => a.localeCompare(b, 'id', { numeric: true })).forEach(kelas => {
+      const baris = perKelas[kelas].slice().sort((a, b) => String(a.nama || '').localeCompare(String(b.nama || ''), 'id'));
+      const aoa = [['No', 'Nama', 'Kelas', 'Username', 'Password']]
+        .concat(baris.map((s, i) => [i + 1, String(s.nama || ''), String(s.kelas || ''), String(s.username || ''), String(s.password || '')]));
+      const ws = XLSX.utils.aoa_to_sheet(aoa);
+      ws['!cols'] = [{ wch: 5 }, { wch: 32 }, { wch: 10 }, { wch: 20 }, { wch: 18 }];
+      // Nama sheet: maks 31 karakter, tanpa []:*?/\ dan harus unik.
+      let nama = kelas.replace(/[\[\]:*?\/\\]/g, '-').trim().slice(0, 31) || 'Kelas';
+      let n = 2, calon = nama;
+      while (namaTerpakai.has(calon.toLowerCase())) { calon = nama.slice(0, 28) + '-' + (n++); }
+      namaTerpakai.add(calon.toLowerCase());
+      XLSX.utils.book_append_sheet(wb, ws, calon);
+    });
+    const labelKelas = filterKelas ? filterKelas.replace(/[^\w\-]+/g, '_') : 'semua-kelas';
+    XLSX.writeFile(wb, `akun-siswa-${labelKelas}.xlsx`);
+    toast(`Akun ${data.length} siswa (${Object.keys(perKelas).length} kelas) berhasil diunduh.`, 'success');
   },
 
   unduhTemplateSiswa() {
