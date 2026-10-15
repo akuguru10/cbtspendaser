@@ -559,6 +559,52 @@ function dataUriKeBagian_(dataUri) {
   return { mimeType, base64, ekstensi };
 }
 
+// PERF IMPOR: jalankan `tugas(item, indeks)` untuk semua item dgn paling banyak
+// `batas` yang berjalan bersamaan (kumpulan pekerja). Dipakai utk unggah gambar
+// paralel -- sebelumnya satu per satu (1 gambar = 1 round-trip Drive ~2-5 detik).
+async function jalankanParalel_(items, batas, tugas) {
+  const hasil = new Array(items.length);
+  let berikut = 0;
+  async function pekerja() {
+    while (true) {
+      const i = berikut++;
+      if (i >= items.length) return;
+      hasil[i] = await tugas(items[i], i);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(batas, items.length) }, pekerja));
+  return hasil;
+}
+
+// PERF IMPOR: perkecil gambar sebelum diunggah. Foto dari kamera/Word sering 2-6 MB,
+// padahal tampilan soal hanya memakai lebar maks ~1000px (thumbnail?sz=w1000).
+// Gambar kecil dibiarkan apa adanya. Gagal memperkecil -> pakai gambar asli.
+async function perkecilGambar_(bagian) {
+  try {
+    if (!/^image\/(jpeg|png|webp|bmp)$/i.test(bagian.mimeType)) return bagian;
+    if (bagian.base64.length < 150000) return bagian; // < ~110 KB: tidak perlu
+    const biner = Uint8Array.from(atob(bagian.base64), c => c.charCodeAt(0));
+    const blob = new Blob([biner], { type: bagian.mimeType });
+    const bmp = await createImageBitmap(blob);
+    const MAKS = 1000;
+    const skala = Math.min(1, MAKS / Math.max(bmp.width, bmp.height));
+    const w = Math.max(1, Math.round(bmp.width * skala));
+    const h = Math.max(1, Math.round(bmp.height * skala));
+    const canvas = document.createElement('canvas');
+    canvas.width = w; canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, w, h);
+    ctx.drawImage(bmp, 0, 0, w, h);
+    if (bmp.close) bmp.close();
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+    const baru = dataUrl.split(',')[1];
+    if (!baru || baru.length >= bagian.base64.length) return bagian; // tidak lebih kecil
+    return { mimeType: 'image/jpeg', base64: baru, ekstensi: 'jpg' };
+  } catch (e) {
+    return bagian;
+  }
+}
+
 // ---------------- Akses mentah ke database Mode Lokal (dipakai tombol paksa
 // kirim/tarik data di Pengaturan, lihat Guru.kirimDataLokalKeSheet/tarikDataDariSheet) ----------------
 const LOCAL_DB_KEY = 'cbt_local_db_v1';
@@ -1004,10 +1050,11 @@ const LocalBackend = (function () {
         if (role === 'siswa') {
           const siswa = D.siswa.find(s => s.username === username);
           if (!siswa || String(siswa.password) !== password) return { ok: false, error: 'Username atau password siswa salah.' };
+          const lockAktif = D.config.deviceLockAktif !== false; // default Aktif (perilaku lama) kecuali sudah pernah dimatikan
           const now = new Date();
           const lastPing = siswa.last_ping ? new Date(siswa.last_ping) : null;
           const staleMs = 15 * 60 * 1000;
-          const deviceLocked = siswa.device_id && lastPing && (now - lastPing) < staleMs && siswa.device_id !== deviceId;
+          const deviceLocked = lockAktif && siswa.device_id && lastPing && (now - lastPing) < staleMs && siswa.device_id !== deviceId;
           if (deviceLocked) return { ok: false, error: 'Akun ini sedang aktif di perangkat lain. Tutup sesi di perangkat tersebut atau tunggu beberapa menit, lalu coba lagi.' };
           siswa.device_id = deviceId; siswa.last_ping = now.toISOString();
           simpan();
@@ -1026,12 +1073,21 @@ const LocalBackend = (function () {
         if (data.role === 'siswa' && data.siswaId) {
           const s = D.siswa.find(x => x.id === data.siswaId);
           if (s) {
-            if (s.device_id && data.deviceId && s.device_id !== data.deviceId) return { ok: false, error: 'Sesi diambil alih oleh perangkat lain.' };
+            const lockAktif = D.config.deviceLockAktif !== false;
+            if (lockAktif && s.device_id && data.deviceId && s.device_id !== data.deviceId) return { ok: false, error: 'Sesi diambil alih oleh perangkat lain.' };
             s.last_ping = new Date().toISOString();
             simpan();
           }
         }
         return { ok: true };
+      }
+      case 'getPengaturanLock': {
+        return { ok: true, aktif: D.config.deviceLockAktif !== false };
+      }
+      case 'simpanPengaturanLock': {
+        D.config.deviceLockAktif = !!data.aktif;
+        simpan();
+        return { ok: true, aktif: D.config.deviceLockAktif };
       }
       case 'simpanSoal': {
         const soal = JSON.parse(data.soal);
@@ -1727,7 +1783,7 @@ const UI = {
     if (tabId === 'tab-analisis') Guru.muatPilihanUjianUntukSelect('pilih-ujian-analisis');
     if (tabId === 'tab-pelanggaran') Guru.muatPilihanUjianUntukSelect('pilih-ujian-log');
     if (tabId === 'tab-pemantauan') Guru.muatPilihanUjianUntukSelect('pilih-ujian-pemantauan');
-    if (tabId === 'tab-login') Guru.muatStatusLogin();
+    if (tabId === 'tab-login') { Guru.muatStatusLogin(); Guru.muatPengaturanLockDevice(); }
     if (tabId === 'tab-siswa') Guru.muatDaftarSiswa();
     if (tabId === 'tab-pengaturan') { Guru.muatFormTema(); Guru.muatFormAkun(); Guru.muatFormBranding(); tampilkanBadgeMode(); }
     UI.mulaiAutoRefreshGuru(tabId);
@@ -2711,16 +2767,17 @@ const Guru = {
     const files = Array.from(fileList || []);
     if (!files.length) return peta;
     toast(`Mengunggah ${files.length} gambar pendukung...`);
-    for (const file of files) {
-      const base64 = await new Promise((resolve, reject) => {
+    await jalankanParalel_(files, 4, async (file) => {
+      const base64Asli = await new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => resolve(reader.result.split(',')[1]);
         reader.onerror = reject;
         reader.readAsDataURL(file);
       });
-      const res = await api('uploadGambar', { base64, filename: file.name, mimeType: file.type });
+      const kecil = await perkecilGambar_({ mimeType: file.type, base64: base64Asli, ekstensi: '' });
+      const res = await api('uploadGambar', { base64: kecil.base64, filename: file.name, mimeType: kecil.mimeType });
       if (res.ok) peta.set(file.name.trim().toLowerCase(), res.url);
-    }
+    });
     return peta;
   },
 
@@ -2779,12 +2836,60 @@ const Guru = {
     const reader = new FileReader();
     reader.onload = async (e) => {
       try {
-        const hasil = await mammoth.convertToHtml({ arrayBuffer: e.target.result }, { convertImage: mammoth.images.dataUri });
+        // PERF: gambar TIDAK disisipkan sbg data URI raksasa di HTML (membuat
+        // DOMParser & innerHTML sangat berat). Cukup ditandai "cbt-img:N", isi
+        // base64-nya disimpan terpisah di `gambarDokumen`.
+        const gambarDokumen = [];
+        const hasil = await mammoth.convertToHtml({ arrayBuffer: e.target.result }, {
+          convertImage: mammoth.images.imgElement(function (image) {
+            return image.read('base64').then(function (b64) {
+              const idx = gambarDokumen.push({ mimeType: image.contentType, base64: b64 }) - 1;
+              return { src: 'cbt-img:' + idx };
+            });
+          })
+        });
         const dom = new DOMParser().parseFromString(hasil.value, 'text/html');
+
+        // Tahap 1: kumpulkan gambar unik yg benar-benar dipakai di SEL DATA (bukan header).
+        const dipakai = new Set();
+        for (const tbl of Array.from(dom.querySelectorAll('table'))) {
+          Array.from(tbl.querySelectorAll('tr')).slice(1).forEach(tr => {
+            tr.querySelectorAll('img').forEach(img => {
+              const m = /^cbt-img:(\d+)$/.exec(img.getAttribute('src') || '');
+              if (m) dipakai.add(Number(m[1]));
+            });
+          });
+        }
+        // Hapus duplikat (gambar identik yg dipakai berulang hanya diunggah SEKALI).
+        const unikMap = new Map(); // kunci isi base64 -> indeks unggahan
+        const daftarUnggah = [];
+        const petaIdxKeUnik = new Map();
+        dipakai.forEach(idx => {
+          const g = gambarDokumen[idx];
+          if (!g || !g.base64) return;
+          const kunci = g.mimeType + '|' + g.base64;
+          if (!unikMap.has(kunci)) { unikMap.set(kunci, daftarUnggah.length); daftarUnggah.push(g); }
+          petaIdxKeUnik.set(idx, unikMap.get(kunci));
+        });
+
+        // Tahap 2: perkecil + unggah PARALEL (4 sekaligus).
+        let selesai = 0, gagalTempel = 0;
+        if (daftarUnggah.length) toast(`Mengunggah ${daftarUnggah.length} gambar dari dokumen...`);
+        const urlUnik = await jalankanParalel_(daftarUnggah, 4, async (g, i) => {
+          const bagian = await perkecilGambar_({ mimeType: g.mimeType, base64: g.base64, ekstensi: (g.mimeType.split('/')[1] || 'png').split('+')[0] });
+          const res = await api('uploadGambar', { base64: bagian.base64, filename: `soal-tempel-${i + 1}.${bagian.ekstensi}`, mimeType: bagian.mimeType });
+          selesai++;
+          if (daftarUnggah.length >= 6 && selesai % 5 === 0) toast(`Gambar terunggah ${selesai}/${daftarUnggah.length}...`);
+          if (!res.ok) gagalTempel++;
+          return res.ok ? res.url : null;
+        });
+        const jumlahTempel = daftarUnggah.length;
+        gambarDokumen.length = 0; // bebaskan memori base64
+
         const petaGambar = await Guru.unggahBatchGambarImpor_(inputGambar ? inputGambar.files : null);
+
+        // Tahap 3: pasang URL hasil unggahan lalu bentuk baris soal.
         let soalList = [];
-        let jumlahTempel = 0;
-        let gagalTempel = 0;
         const peringatan = [];
         for (const tbl of Array.from(dom.querySelectorAll('table'))) {
           const trList = Array.from(tbl.querySelectorAll('tr'));
@@ -2796,25 +2901,16 @@ const Guru = {
             const nilai = [];
             for (let cIdx = 0; cIdx < selList.length; cIdx++) {
               const td = selList[cIdx];
-              if (rIdx === 0) { nilai.push(td.textContent.trim()); continue; } // baris header: teks biasa, tidak dicek gambar
-              const daftarImg = Array.from(td.querySelectorAll('img'));
-              if (daftarImg.length === 0) { nilai.push(td.textContent.trim()); continue; }
-              // Ada gambar tertempel langsung di sel ini -> unggah satu per satu ke Drive.
-              for (const img of daftarImg) {
-                const bagian = dataUriKeBagian_(img.getAttribute('src'));
-                if (!bagian) { img.remove(); continue; }
-                jumlahTempel++;
-                const namaFile = `soal-tempel-${jumlahTempel}.${bagian.ekstensi}`;
-                const res = await api('uploadGambar', { base64: bagian.base64, filename: namaFile, mimeType: bagian.mimeType });
-                if (res.ok) { img.setAttribute('src', res.url); } else { gagalTempel++; img.remove(); }
-              }
+              if (rIdx === 0) { nilai.push(td.textContent.trim()); continue; }
+              td.querySelectorAll('img').forEach(img => {
+                const m = /^cbt-img:(\d+)$/.exec(img.getAttribute('src') || '');
+                const url = m && petaIdxKeUnik.has(Number(m[1])) ? urlUnik[petaIdxKeUnik.get(Number(m[1]))] : null;
+                if (url) img.setAttribute('src', url); else img.remove();
+              });
               if ((headerKey[cIdx] || '') === 'gambar') {
-                // Kolom "Gambar": field soal.gambar berupa URL polos, bukan markup <img>.
                 const imgPertama = td.querySelector('img');
                 nilai.push(imgPertama ? imgPertama.getAttribute('src') : td.textContent.trim());
               } else {
-                // Kolom lain (Pertanyaan/Opsi dst): simpan sbg HTML supaya <img> inline
-                // ikut tampil lewat rich text (lihat kontenSoalHtml/sanitasiHtmlKaya_).
                 nilai.push(td.innerHTML.trim());
               }
             }
@@ -2823,6 +2919,7 @@ const Guru = {
           soalList = soalList.concat(barisTabelKeSoalList_(rows, state.user.id, state.guru.kategoriKelola, petaGambar, peringatan));
         }
         if (soalList.length === 0) { toast('Tidak ada tabel soal yang terbaca. Pastikan mengisi di dalam tabel template, jangan mengubah baris header.', 'error'); return; }
+        toast(`Menyimpan ${soalList.length} soal...`);
         const res = await api('importSoal', { soalList: JSON.stringify(soalList) });
         if (res.ok) {
           let ket = '';
@@ -2834,10 +2931,11 @@ const Guru = {
         else toast('Gagal impor: ' + res.error, 'error');
       } catch (err) {
         toast('Gagal membaca file .docx: ' + err.message, 'error');
+      } finally {
+        ev.target.value = '';
+        if (inputGambar) inputGambar.value = '';
+        UI.perbaruiLabelJumlahGambar('input-import-soal-docx-gambar', 'label-jumlah-gambar-docx');
       }
-      ev.target.value = '';
-      if (inputGambar) inputGambar.value = '';
-      UI.perbaruiLabelJumlahGambar('input-import-soal-docx-gambar', 'label-jumlah-gambar-docx');
     };
     reader.readAsArrayBuffer(file);
   },
@@ -3290,6 +3388,37 @@ const Guru = {
   async resetDevice(siswaId) {
     const res = await api('resetDevice', { siswaId });
     if (res.ok) { toast('Kunci perangkat dilepas.', 'success'); Guru.muatDaftarSiswa(); Guru.renderTabelStatusLogin(); }
+  },
+
+  // ---------------- PENGATURAN KUNCI PERANGKAT (tombol Aktif / Tidak Aktif) ----------------
+  // Aktif (default): perilaku lama, satu akun siswa terkunci ke satu perangkat.
+  // Tidak Aktif: siswa boleh login/lanjut dari perangkat mana pun tanpa ditolak
+  // atau diputus sesi (lihat pengecekan lockAktif di 'login'/'ping' & Code.gs).
+  async muatPengaturanLockDevice() {
+    const res = await api('getPengaturanLock', {});
+    Guru.renderPengaturanLockDevice(res.ok ? res.aktif !== false : true);
+  },
+
+  renderPengaturanLockDevice(aktif) {
+    const btnAktif = document.getElementById('btn-lock-aktif');
+    const btnNonaktif = document.getElementById('btn-lock-nonaktif');
+    const teks = document.getElementById('lock-device-status-text');
+    if (btnAktif) btnAktif.classList.toggle('active', !!aktif);
+    if (btnNonaktif) btnNonaktif.classList.toggle('active', !aktif);
+    if (teks) teks.innerHTML = aktif
+      ? '<span class="badge ok">🔒 Aktif</span> — tiap akun siswa terkunci ke satu perangkat saat login/ujian.'
+      : '<span class="badge no">🔓 Tidak Aktif</span> — siswa boleh login dari perangkat mana pun, tidak ada yang terkunci.';
+  },
+
+  async setPengaturanLockDevice(aktif) {
+    Guru.renderPengaturanLockDevice(aktif); // tampilkan langsung, tak perlu tunggu server
+    const res = await api('simpanPengaturanLock', { aktif });
+    if (res.ok) {
+      toast(aktif ? 'Kunci perangkat diaktifkan.' : 'Kunci perangkat dinonaktifkan.', 'success');
+    } else {
+      toast('Gagal menyimpan pengaturan: ' + res.error, 'error');
+      Guru.muatPengaturanLockDevice(); // gagal -> tarik ulang status asli dari server
+    }
   },
 
   // ---------------- STATUS LOGIN (device lock per akun siswa) ----------------
