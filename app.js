@@ -1169,6 +1169,20 @@ const LocalBackend = (function () {
         simpan();
         return { ok: true };
       }
+      case 'hapusSoalBanyak': {
+        const ids = new Set(JSON.parse(data.ids || '[]').map(String));
+        const sebelum = D.bankSoal.length;
+        D.bankSoal = D.bankSoal.filter(s => !ids.has(String(s.id)));
+        simpan();
+        return { ok: true, count: sebelum - D.bankSoal.length };
+      }
+      case 'ubahStatusSoalBanyak': {
+        const ids = new Set(JSON.parse(data.ids || '[]').map(String));
+        let n = 0;
+        D.bankSoal.forEach(s => { if (ids.has(String(s.id))) { s.status = data.status || 'aktif'; n++; } });
+        simpan();
+        return { ok: true, count: n };
+      }
       case 'getBankSoal': {
         let list = clone(D.bankSoal);
         if (data.guruId) list = list.filter(s => s.guru_id === data.guruId);
@@ -2264,12 +2278,28 @@ const Guru = {
     if (!res.ok) { cont.textContent = 'Gagal memuat: ' + res.error; return; }
     state.guru.bankSoal = res.data;
     if (resUjian.ok) state.guru.ujianList = resUjian.data; // dipakai untuk badge "pernah dipakai" (Riwayat)
+    Guru.renderUlangBankSoal_();
+  },
+
+  // Gambar ulang tampilan Bank Soal dari state lokal TANPA mengunduh ulang dari
+  // server (dipakai setelah hapus/arsip supaya layar langsung berubah).
+  renderUlangBankSoal_() {
     Guru.perbaruiDaftarSubkategoriSoal();
     Guru.perbaruiDaftarKategoriSoal();
     Guru.renderMapelGrid();
     Guru.renderDaftarSoal();
     if (state.guru.viewBankSoal === 'arsip') Guru.renderGridArsipKategori();
     if (state.guru.viewBankSoal === 'arsip-kategori') Guru.renderDaftarArsipKategori();
+  },
+
+  // Terapkan perubahan ke state lokal setelah server mengonfirmasi berhasil.
+  hapusDariStateLokal_(idList) {
+    const set = new Set(idList.map(String));
+    state.guru.bankSoal = (state.guru.bankSoal || []).filter(s => !set.has(String(s.id)));
+  },
+  ubahStatusDiStateLokal_(idList, status) {
+    const set = new Set(idList.map(String));
+    (state.guru.bankSoal || []).forEach(s => { if (set.has(String(s.id))) s.status = status; });
   },
 
   // ---------------- BANK SOAL: GRID MAPEL (tampilan kartu per kategori) ----------------
@@ -2456,10 +2486,13 @@ const Guru = {
     const cocok = (state.guru.bankSoal || []).filter(s => (s.status || 'aktif') === 'arsip' && samaTeks_(s.kategori, kategori));
     if (cocok.length === 0) return;
     if (!confirm(`Kembalikan SEMUA ${cocok.length} soal arsip di kategori "${labelKategori(kategori)}" ke Bank Soal?`)) return;
-    const hasil = await Promise.all(cocok.map(s => api('simpanSoal', { soal: JSON.stringify({ id: s.id, status: 'aktif' }) })));
-    const gagal = hasil.filter(r => !r.ok).length;
-    toast(gagal ? `${cocok.length - gagal} soal dikembalikan, ${gagal} gagal.` : `${cocok.length} soal di kategori "${labelKategori(kategori)}" dikembalikan ke Bank Soal.`, gagal ? 'error' : 'success');
-    await Guru.muatBankSoal();
+    toast(`Mengembalikan ${cocok.length} soal...`);
+    const idList = cocok.map(s => s.id);
+    const res = await api('ubahStatusSoalBanyak', { ids: JSON.stringify(idList), status: 'aktif' });
+    const gagal = res.ok ? 0 : cocok.length;
+    if (res.ok) Guru.ubahStatusDiStateLokal_(idList, 'aktif');
+    toast(gagal ? `Gagal mengembalikan: ${res.error}` : `${cocok.length} soal di kategori "${labelKategori(kategori)}" dikembalikan ke Bank Soal.`, gagal ? 'error' : 'success');
+    Guru.renderUlangBankSoal_();
     if (document.getElementById('arsip-kategori-view').classList.contains('hidden')) Guru.renderGridArsipKategori();
     else Guru.renderDaftarArsipKategori();
   },
@@ -2469,10 +2502,13 @@ const Guru = {
     const cocok = (state.guru.bankSoal || []).filter(s => (s.status || 'aktif') === 'arsip' && samaTeks_(s.kategori, kategori));
     if (cocok.length === 0) return;
     if (!confirm(`Hapus PERMANEN seluruh ${cocok.length} soal arsip di kategori "${labelKategori(kategori)}"? Tindakan ini TIDAK BISA DIBATALKAN.`)) return;
-    const hasil = await Promise.all(cocok.map(s => api('hapusSoal', { id: s.id })));
-    const gagal = hasil.filter(r => !r.ok).length;
-    toast(gagal ? `${cocok.length - gagal} soal dihapus permanen, ${gagal} gagal.` : `Kategori "${labelKategori(kategori)}" dihapus permanen dari Arsip (${cocok.length} soal).`, gagal ? 'error' : 'success');
-    await Guru.muatBankSoal();
+    toast(`Menghapus ${cocok.length} soal...`);
+    const idList = cocok.map(s => s.id);
+    const res = await api('hapusSoalBanyak', { ids: JSON.stringify(idList) });
+    const gagal = res.ok ? 0 : cocok.length;
+    if (res.ok) Guru.hapusDariStateLokal_(idList);
+    toast(gagal ? `Gagal menghapus: ${res.error}` : `Kategori "${labelKategori(kategori)}" dihapus permanen dari Arsip (${cocok.length} soal).`, gagal ? 'error' : 'success');
+    Guru.renderUlangBankSoal_();
     if (document.getElementById('arsip-kategori-view').classList.contains('hidden')) Guru.renderGridArsipKategori();
     else Guru.renderDaftarArsipKategori();
   },
@@ -2630,13 +2666,13 @@ const Guru = {
 
   async arsipkanSoal(id) {
     const res = await api('simpanSoal', { soal: JSON.stringify({ id, status: 'arsip' }) });
-    if (res.ok) { toast('Soal dipindahkan ke Arsip.', 'success'); Guru.muatBankSoal(); }
+    if (res.ok) { Guru.ubahStatusDiStateLokal_([id], 'arsip'); Guru.renderUlangBankSoal_(); toast('Soal dipindahkan ke Arsip.', 'success'); }
     else toast('Gagal mengarsipkan soal: ' + res.error, 'error');
   },
 
   async kembalikanSoal(id) {
     const res = await api('simpanSoal', { soal: JSON.stringify({ id, status: 'aktif' }) });
-    if (res.ok) { toast('Soal dikembalikan ke Bank Soal.', 'success'); Guru.muatBankSoal(); }
+    if (res.ok) { Guru.ubahStatusDiStateLokal_([id], 'aktif'); Guru.renderUlangBankSoal_(); toast('Soal dikembalikan ke Bank Soal.', 'success'); }
     else toast('Gagal mengembalikan soal: ' + res.error, 'error');
   },
 
@@ -2677,12 +2713,15 @@ const Guru = {
     const cocok = (state.guru.bankSoal || []).filter(s => (s.status || 'aktif') !== 'arsip' && samaTeks_(s.kategori, kategori));
     if (cocok.length === 0) { toast('Kategori ini sudah tidak memiliki soal aktif.', 'error'); Guru.renderKelolaKategori(); return; }
     if (!confirm(`Hapus kategori "${labelKategori(kategori)}"? ${cocok.length} soal di dalamnya akan dipindahkan ke Arsip (TIDAK dihapus permanen — bisa diedit & dikembalikan lagi lewat filter status "Arsip" di Bank Soal).`)) return;
-    const hasil = await Promise.all(cocok.map(s => api('simpanSoal', { soal: JSON.stringify({ id: s.id, status: 'arsip' }) })));
-    const gagal = hasil.filter(r => !r.ok).length;
+    toast(`Memindahkan ${cocok.length} soal ke Arsip...`);
+    const idList = cocok.map(s => s.id);
+    const res = await api('ubahStatusSoalBanyak', { ids: JSON.stringify(idList), status: 'arsip' });
+    const gagal = res.ok ? 0 : cocok.length;
+    if (res.ok) Guru.ubahStatusDiStateLokal_(idList, 'arsip');
     toast(gagal
-      ? `Kategori "${labelKategori(kategori)}": ${cocok.length - gagal} soal diarsipkan, ${gagal} gagal.`
+      ? `Kategori "${labelKategori(kategori)}": gagal diarsipkan (${res.error}).`
       : `Kategori "${labelKategori(kategori)}" dihapus — ${cocok.length} soal dipindahkan ke Arsip.`, gagal ? 'error' : 'success');
-    await Guru.muatBankSoal();
+    Guru.renderUlangBankSoal_();
     Guru.renderKelolaKategori();
   },
 
@@ -2792,7 +2831,7 @@ const Guru = {
   async hapusSoal(id) {
     if (!confirm('Hapus PERMANEN soal ini? Tindakan ini TIDAK BISA DIBATALKAN (beda dengan "Arsipkan" yang masih bisa dikembalikan).')) return;
     const res = await api('hapusSoal', { id });
-    if (res.ok) { toast('Soal dihapus permanen.', 'success'); Guru.muatBankSoal(); }
+    if (res.ok) { Guru.hapusDariStateLokal_([id]); Guru.renderUlangBankSoal_(); toast('Soal dihapus permanen.', 'success'); }
     else toast('Gagal menghapus soal: ' + res.error, 'error');
   },
 
@@ -2802,7 +2841,7 @@ const Guru = {
   async hapusSoalPermanen(id) {
     if (!confirm('Yakin ingin menghapus soal ini secara PERMANEN dari Arsip? Soal tidak bisa dikembalikan lagi setelah ini.')) return;
     const res = await api('hapusSoal', { id });
-    if (res.ok) { toast('Soal dihapus permanen.', 'success'); Guru.muatBankSoal(); }
+    if (res.ok) { Guru.hapusDariStateLokal_([id]); Guru.renderUlangBankSoal_(); toast('Soal dihapus permanen.', 'success'); }
     else toast('Gagal menghapus soal: ' + res.error, 'error');
   },
 
