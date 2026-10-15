@@ -311,9 +311,21 @@ const TIPE_SINONIM_ = {
   bs: 'benar_salah', 'benarsalah': 'benar_salah', benar_salah: 'benar_salah',
   essay: 'uraian', uraian: 'uraian', isian: 'uraian'
 };
+// Deteksi tipe dari teks kolom Tipe. Toleran: abaikan tag HTML, huruf besar/kecil,
+// spasi & tanda baca. Mengembalikan '' kalau tidak dikenali sama sekali.
+function tipeDariTeks_(s) {
+  const k = String(s || '').replace(/<[^>]*>/g, ' ').toLowerCase().replace(/[^a-z]/g, '');
+  if (!k) return '';
+  if (TIPE_SINONIM_[k]) return TIPE_SINONIM_[k];
+  if (/kompleks|checkbox|multi|pgk|jamak|lebihdarisatu/.test(k)) return 'checkbox';
+  if (/jodoh|cocok|match|pasang|menjodohkan/.test(k)) return 'menjodohkan';
+  if (/benarsalah|truefalse|^bs$|^tf$|^bsalah$/.test(k) || (k.includes('benar') && k.includes('salah'))) return 'benar_salah';
+  if (/essay|esai|uraian|isian|isiansingkat|jawabansingkat/.test(k)) return 'uraian';
+  if (/pilihanganda|^pg|single|biasa|opsi/.test(k)) return 'pilihan_ganda';
+  return '';
+}
 function normalisasiTipeSoal_(s) {
-  const key = String(s || '').trim().toLowerCase().replace(/[\s\/_-]+/g, '');
-  return TIPE_SINONIM_[key] || TIPE_SINONIM_[key.replace(/_/g, '')] || 'pilihan_ganda';
+  return tipeDariTeks_(s) || 'pilihan_ganda';
 }
 // "C" -> 2, "3" -> 2 (angka dianggap 1-based spy konsisten dgn huruf), "benar" -> 0, "salah" -> 1.
 // `opsi` (opsional): daftar teks opsi soal ini -- dipakai sbg JARING PENGAMAN
@@ -363,7 +375,21 @@ function barisTabelJadiSoal_(headerIdx, nilai, guruId, kategoriDefault, petaGamb
   const ambil = (nama) => { const i = headerIdx[nama]; return i == null ? '' : String(nilai[i] == null ? '' : nilai[i]).trim(); };
   const pertanyaan = ambil('pertanyaan');
   if (!pertanyaan) return null;
-  const tipe = normalisasiTipeSoal_(ambil('tipe'));
+  // Baris petunjuk bawaan template ("(tambahkan baris baru di bawah sini...)") bukan soal.
+  if (/^\(\s*tambahkan baris/i.test(pertanyaan.replace(/<[^>]*>/g, '').trim())) return null;
+  const tipeTeks = ambil('tipe');
+  let tipe = tipeDariTeks_(tipeTeks);
+  if (!tipe) {
+    // Kolom Tipe kosong / tak dikenali -> tebak otomatis dari isi baris.
+    const opsiTebak = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'].map(h => ambil('opsi' + h)).filter(Boolean);
+    const kunciTebak = (ambil('kunci') || ambil('kuncijawaban')).replace(/<[^>]*>/g, '').trim();
+    if (/^[A-H](\s*[,|;]\s*[A-H])+$/i.test(kunciTebak)) tipe = 'checkbox';
+    else if (/^(benar|salah)$/i.test(kunciTebak) && opsiTebak.length <= 2) tipe = 'benar_salah';
+    else if (opsiTebak.length >= 2 && opsiTebak.every(o => /\s(=|->|→|\|)\s|=|→/.test(o))) tipe = 'menjodohkan';
+    else if (opsiTebak.length === 0) tipe = 'uraian';
+    else tipe = 'pilihan_ganda';
+    if (tipeTeks && peringatan) peringatan.push(`"${String(pertanyaan).replace(/<[^>]*>/g, '').trim().slice(0, 60)}": Tipe "${tipeTeks.replace(/<[^>]*>/g, '').trim()}" tidak dikenali — ditebak otomatis sebagai ${tipe}. Mohon periksa.`);
+  }
   const gambarRaw = ambil('gambar');
   let gambar = '';
   if (gambarRaw) {
@@ -382,6 +408,28 @@ function barisTabelJadiSoal_(headerIdx, nilai, guruId, kategoriDefault, petaGamb
     tingkat_kesulitan: (ambil('kesulitan') || ambil('tingkatkesulitan') || 'sedang').toLowerCase()
   };
   const potonganPertanyaan = (s) => { const teks = String(s).replace(/<[^>]*>/g, '').trim(); return teks.length > 60 ? teks.slice(0, 60) + '…' : teks; };
+  if (tipe === 'menjodohkan') {
+    // Tiap kolom Opsi berisi satu pasangan "Item kiri = Pasangan kanan"
+    // (pemisah boleh = , -> , → atau |). Sisi kanan diacak otomatis, kunci dihitung.
+    const pasangan = [];
+    ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'].forEach(h => {
+      const teks = ambil('opsi' + h).replace(/<[^>]*>/g, '').trim();
+      if (!teks) return;
+      const m = teks.split(/\s*(?:->|→|=|\|)\s*/);
+      if (m.length >= 2 && m[0] && m[1]) pasangan.push([m[0].trim(), m.slice(1).join(' ').trim()]);
+      else if (peringatan) peringatan.push(`"${potonganPertanyaan(pertanyaan)}": opsi "${teks}" bukan pasangan (tulis dengan format "kiri = kanan") — dilewati.`);
+    });
+    if (pasangan.length < 2 && peringatan) peringatan.push(`"${potonganPertanyaan(pertanyaan)}": soal Jodohkan butuh minimal 2 pasangan ("kiri = kanan" pada kolom Opsi A, B, ...).`);
+    const kiri = pasangan.map(x => x[0]);
+    let urut = pasangan.map((_, i) => i);
+    if (urut.length > 1) { urut = urut.slice(1).concat(urut.slice(0, 1)); } // putar 1 posisi: tidak sejajar dgn kiri
+    const kanan = urut.map(i => pasangan[i][1]);
+    const kunci = {};
+    kiri.forEach((_, i) => { kunci[i] = urut.indexOf(i); });
+    item.opsi_json = JSON.stringify({ kiri, kanan });
+    item.kunci_json = JSON.stringify(kunci);
+    return item;
+  }
   if (tipe === 'pilihan_ganda' || tipe === 'checkbox' || tipe === 'benar_salah') {
     const opsi = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'].map(h => ambil('opsi' + h)).filter(Boolean);
     item.opsi_json = JSON.stringify(opsi.length ? opsi : ['Benar', 'Salah']);
@@ -2902,6 +2950,9 @@ const Guru = {
             for (let cIdx = 0; cIdx < selList.length; cIdx++) {
               const td = selList[cIdx];
               if (rIdx === 0) { nilai.push(td.textContent.trim()); continue; }
+              // Sel TANPA gambar -> teks biasa (penting utk kolom Tipe/Kunci/Bobot dst.
+              // agar tidak terbaca sbg "<p>PGK</p>" dan salah dideteksi).
+              if (!td.querySelector('img')) { nilai.push(td.textContent.trim()); continue; }
               td.querySelectorAll('img').forEach(img => {
                 const m = /^cbt-img:(\d+)$/.exec(img.getAttribute('src') || '');
                 const url = m && petaIdxKeUnik.has(Number(m[1])) ? urlUnik[petaIdxKeUnik.get(Number(m[1]))] : null;
@@ -2910,8 +2961,10 @@ const Guru = {
               if ((headerKey[cIdx] || '') === 'gambar') {
                 const imgPertama = td.querySelector('img');
                 nilai.push(imgPertama ? imgPertama.getAttribute('src') : td.textContent.trim());
+              } else if (/^(pertanyaan|opsi[a-h])$/.test(headerKey[cIdx] || '')) {
+                nilai.push(td.innerHTML.trim()); // teks kaya + <img> inline
               } else {
-                nilai.push(td.innerHTML.trim());
+                nilai.push(td.textContent.trim());
               }
             }
             rows.push(nilai);
@@ -2951,11 +3004,12 @@ const Guru = {
       ['Simulasi', 'Biologi', 'PGK', 'Manakah yang termasuk hewan mamalia? (kunci boleh lebih dari 1, pisah koma)', '', 'Paus', 'Ular', 'Kelelawar', 'Buaya', '', 'A,C', '10', 'Sedang'],
       ['Simulasi', 'Geografi', 'BS', 'Indonesia terletak di antara dua benua, yaitu Asia dan Australia.', '', 'Benar', 'Salah', '', '', '', 'Benar', '5', 'Mudah'],
       ['Simulasi', 'Biologi', 'Essay', 'Jelaskan proses terjadinya fotosintesis pada tumbuhan.', '', '', '', '', '', '', 'fotosintesis, klorofil, karbon dioksida', '15', 'Sedang'],
+      ['Simulasi', 'Geografi', 'Jodohkan', 'Jodohkan negara dengan ibu kotanya.', '', 'Indonesia = Jakarta', 'Jepang = Tokyo', 'Prancis = Paris', '', '', '', '10', 'Sedang'],
       ['', '', '', '(tambahkan baris baru di bawah sini, ikuti pola di atas — boleh sebanyak yang dibutuhkan)', '', '', '', '', '', '', '', '', '']
     ];
     const items = [
       { text: 'TEMPLATE IMPORT SOAL — CBT Online', heading: true },
-      { text: 'Isi tabel di bawah, SATU BARIS = SATU SOAL. Kolom Tipe: PG (pilihan ganda), PGK (pilihan ganda kompleks/kunci boleh lebih dari 1), BS (benar/salah), Essay. Kolom Kunci cukup diisi HURUF opsi yang benar (mis. "C"), untuk PGK pisah dgn koma (mis. "A,C"), untuk BS isi "Benar"/"Salah", untuk Essay isi kata kunci penilaian dipisah koma. Kolom Gambar: boleh dikosongkan, boleh diisi link gambar publik, ATAU cukup TEMPEL/SISIPKAN gambarnya langsung di dalam sel itu (Insert > Pictures di Word) -- saat diimpor gambar tersebut otomatis terdeteksi & terunggah sendiri, tanpa perlu file gambar terpisah. Gambar juga boleh ditempel langsung di tengah sel Pertanyaan/Opsi kalau perlu. Kolom yang tidak dipakai (mis. Opsi E utk soal 4 opsi) boleh dikosongkan. Tipe Jodohkan sebaiknya dibuat lewat "Tambah Soal Manual" karena pasangannya lebih mudah diatur lewat formulir.' },
+      { text: 'Isi tabel di bawah, SATU BARIS = SATU SOAL. Kolom Tipe: PG (pilihan ganda), PGK (pilihan ganda kompleks/kunci boleh lebih dari 1), BS (benar/salah), Jodohkan, Essay. Kolom Kunci cukup diisi HURUF opsi yang benar (mis. "C"), untuk PGK pisah dgn koma (mis. "A,C"), untuk BS isi "Benar"/"Salah", untuk Essay isi kata kunci penilaian dipisah koma. Kolom Gambar: boleh dikosongkan, boleh diisi link gambar publik, ATAU cukup TEMPEL/SISIPKAN gambarnya langsung di dalam sel itu (Insert > Pictures di Word) -- saat diimpor gambar tersebut otomatis terdeteksi & terunggah sendiri, tanpa perlu file gambar terpisah. Gambar juga boleh ditempel langsung di tengah sel Pertanyaan/Opsi kalau perlu. Kolom yang tidak dipakai (mis. Opsi E utk soal 4 opsi) boleh dikosongkan. Tipe Jodohkan sebaiknya dibuat lewat "Tambah Soal Manual" karena pasangannya lebih mudah diatur lewat formulir.' },
       { table: { headers, rows } }
     ];
     unduhDocx_('Template_Import_Soal_CBT.docx', items);
@@ -3577,6 +3631,7 @@ const Guru = {
         ['Simulasi', 'Biologi', 'PGK', 'Manakah yang termasuk hewan mamalia? (kunci boleh lebih dari 1, pisah koma)', '', 'Paus', 'Ular', 'Kelelawar', 'Buaya', '', 'A,C', '10', 'Sedang'],
         ['Simulasi', 'Geografi', 'BS', 'Indonesia terletak di antara dua benua, yaitu Asia dan Australia.', '', 'Benar', 'Salah', '', '', '', 'Benar', '5', 'Mudah'],
         ['Simulasi', 'Biologi', 'Essay', 'Jelaskan proses terjadinya fotosintesis pada tumbuhan.', '', '', '', '', '', '', 'fotosintesis, klorofil, karbon dioksida', '15', 'Sedang'],
+        ['Simulasi', 'Geografi', 'Jodohkan', 'Jodohkan negara dengan ibu kotanya.', '', 'Indonesia = Jakarta', 'Jepang = Tokyo', 'Prancis = Paris', '', '', '', '10', 'Sedang'],
         ['', '', '', '(tambahkan baris baru di bawah sini, ikuti pola di atas)', '', '', '', '', '', '', '', '', '']
       ]);
   },
