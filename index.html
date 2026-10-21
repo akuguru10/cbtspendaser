@@ -870,8 +870,20 @@
       <div class="field"><label><input type="checkbox" id="ujian-acak-opsi" checked style="width:auto"> Acak urutan opsi jawaban per siswa</label></div>
     </div>
     <div class="field">
-      <label>Instruksi Remedial (opsional, ditampilkan ke siswa yang belum lulus)</label>
+      <label>Instruksi Remedial Tambahan (opsional, ditampilkan di bawah pesan, hanya untuk siswa yang belum lulus)</label>
       <textarea id="ujian-instruksi-remedial" rows="2" placeholder="mis. Temui Bu Guru di ruang guru untuk jadwal remedial."></textarea>
+    </div>
+    <div class="field">
+      <label><input type="checkbox" id="ujian-tampil-detail" checked style="width:auto"> Izinkan siswa melihat detail jawaban setelah selesai (soal yang salah, kunci jawaban, dan pembahasan)</label>
+    </div>
+    <div class="field">
+      <label>Pesan untuk Siswa Berdasarkan Rentang Nilai</label>
+      <p style="font-size:.8rem;color:var(--c-muted);margin:0 0 .5rem">Pesan ini muncul di layar hasil siswa sesuai nilai yang diperoleh. Sudah terisi pesan default; ubah seperlunya. Pesan yang dikosongkan otomatis memakai default.</p>
+      <div id="pesan-nilai-editor"></div>
+      <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+        <button type="button" class="secondary" onclick="Guru.tambahRentangPesan()"><i class="fa-solid fa-plus"></i> Tambah Rentang</button>
+        <button type="button" class="secondary" onclick="Guru.resetPesanNilai()"><i class="fa-solid fa-rotate-left"></i> Kembalikan ke Default</button>
+      </div>
     </div>
     <div class="modal-close-row">
       <button class="secondary" onclick="UI.tutupModal('modal-ujian')">Batal</button>
@@ -984,7 +996,26 @@
       </div>
     </div>
     <p id="hasil-instruksi" class="hasil-instruksi"></p>
+    <button class="secondary hasil-btn-beranda" id="btn-detail-jawaban" style="display:none;margin-bottom:.6rem" onclick="ExamEngine.bukaDetailJawaban()"><i class="fa-solid fa-magnifying-glass"></i> Lihat Detail Jawaban</button>
     <button class="accent hasil-btn-beranda" onclick="UI.kembaliKeBerandaSiswa()"><i class="fa-solid fa-house"></i> Kembali ke Beranda</button>
+  </div>
+</div>
+
+<!-- ======================= DETAIL JAWABAN (siswa) ======================= -->
+<div id="detail-screen" class="hidden">
+  <div class="detail-wrap">
+    <div class="detail-top">
+      <button type="button" class="secondary" onclick="ExamEngine.tutupDetailJawaban()"><i class="fa-solid fa-arrow-left"></i> Kembali ke Hasil</button>
+    </div>
+    <p class="hasil-eyebrow">Detail Jawaban</p>
+    <h2 class="hasil-judul" id="detail-judul-ujian">-</h2>
+    <p class="detail-ringkas"><span>Nilai: <strong id="detail-nilai">0</strong></span> · <span id="detail-ringkas"></span></p>
+    <p class="detail-info">Periksa jawaban Anda. Jika menurut Anda kunci jawaban keliru, catat nomor soalnya dan sampaikan ke guru.</p>
+    <div class="detail-tabs">
+      <button type="button" class="detail-tab active" id="detail-tab-salah" onclick="ExamEngine.gantiFilterDetail('salah')">Yang Salah</button>
+      <button type="button" class="detail-tab" id="detail-tab-semua" onclick="ExamEngine.gantiFilterDetail('semua')">Semua Soal</button>
+    </div>
+    <div id="detail-list"></div>
   </div>
 </div>
 
