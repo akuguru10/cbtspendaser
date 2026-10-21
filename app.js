@@ -748,6 +748,57 @@ function toast(msg, jenis) {
   setTimeout(() => el.remove(), 4200);
 }
 
+// ----------------------------------------------------------------------------
+// PESAN HASIL BERDASARKAN RENTANG NILAI
+// Guru bisa mengisi pesan berbeda untuk tiap rentang nilai (0, 1-5, 6-10, ..., 96-99, 100).
+// Jika guru tidak mengubah apa pun (kolom pesan_nilai kosong) atau mengosongkan
+// satu pesan, otomatis dipakai pesan DEFAULT di bawah ini.
+// ----------------------------------------------------------------------------
+const DEFAULT_PESAN_NILAI = [
+  { min: 0, max: 0, pesan: "Nilai Anda 0. Jangan berkecil hati, ini bisa diperbaiki. Segera temui guru mata pelajaran untuk jadwal remedial dan pelajari kembali materinya dari awal." },
+  { min: 1, max: 5, pesan: "Nilai Anda masih sangat rendah. Mulailah belajar lagi dari konsep paling dasar dan segera hubungi guru untuk jadwal remedial." },
+  { min: 6, max: 10, pesan: "Nilai Anda masih sangat rendah. Pelajari kembali materi dengan tenang dan bertahap, lalu temui guru untuk bimbingan remedial." },
+  { min: 11, max: 15, pesan: "Anda baru menguasai sebagian kecil materi. Ulangi catatan dan contoh soal, lalu hubungi guru untuk jadwal remedial." },
+  { min: 16, max: 20, pesan: "Nilai Anda masih rendah. Fokus pada materi yang belum dipahami dan minta bimbingan guru pada sesi remedial." },
+  { min: 21, max: 25, pesan: "Ada sedikit kemajuan, tetapi pemahaman Anda masih perlu ditingkatkan. Latihan soal secara rutin dan ikuti remedial." },
+  { min: 26, max: 30, pesan: "Nilai Anda masih di bawah harapan. Perbanyak latihan soal dan jangan ragu bertanya kepada guru saat remedial." },
+  { min: 31, max: 35, pesan: "Anda sudah memahami sebagian materi. Lengkapi bagian yang masih lemah dan hubungi guru untuk informasi remedial." },
+  { min: 36, max: 40, pesan: "Terus semangat! Masih banyak bagian yang bisa diperbaiki. Pelajari kembali materi yang keliru dan ikuti remedial." },
+  { min: 41, max: 45, pesan: "Pemahaman Anda mulai terbentuk. Tingkatkan lagi dengan membahas soal-soal yang salah bersama guru atau teman." },
+  { min: 46, max: 50, pesan: "Anda sudah di tengah jalan. Dengan belajar lebih giat, nilai Anda bisa naik. Hubungi guru untuk jadwal remedial." },
+  { min: 51, max: 55, pesan: "Hasil Anda sudah cukup lumayan, tetapi belum mencapai target. Periksa kembali jawaban yang keliru dan ikuti remedial." },
+  { min: 56, max: 60, pesan: "Anda sudah cukup memahami materi. Sedikit usaha lagi untuk mencapai target, jadi pelajari bagian yang masih salah." },
+  { min: 61, max: 65, pesan: "Hasil yang cukup baik, hanya perlu sedikit peningkatan. Pelajari kembali soal yang salah dan konsultasikan dengan guru." },
+  { min: 66, max: 70, pesan: "Anda hampir mencapai target. Teliti lagi bagian yang keliru, lalu hubungi guru bila perlu mengikuti remedial." },
+  { min: 71, max: 75, pesan: "Anda sudah sangat dekat dengan target. Jika nilai belum mencapai KKM, ikuti remedial dan perbaiki bagian yang masih keliru." },
+  { min: 76, max: 80, pesan: "Hasil yang baik! Anda sudah menguasai sebagian besar materi. Tetap rajin berlatih." },
+  { min: 81, max: 85, pesan: "Hasil yang bagus! Pemahaman Anda sudah kuat. Pertahankan dan terus asah kemampuan Anda." },
+  { min: 86, max: 90, pesan: "Hasil yang sangat bagus! Anda menguasai materi dengan baik. Terus pertahankan semangat belajar Anda." },
+  { min: 91, max: 95, pesan: "Luar biasa! Anda menguasai hampir seluruh materi. Pertahankan prestasi ini." },
+  { min: 96, max: 99, pesan: "Hebat sekali! Nilai Anda nyaris sempurna. Tinggal sedikit lagi menuju nilai tertinggi." },
+  { min: 100, max: 100, pesan: "Sempurna! Nilai 100. Selamat atas hasil yang luar biasa dan terima kasih atas kerja keras Anda!" }
+];
+
+function parsePesanNilai_(raw) {
+  if (!raw) return [];
+  try {
+    const arr = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    return Array.isArray(arr) ? arr : [];
+  } catch (e) { return []; }
+}
+
+// Mengembalikan teks pesan untuk sebuah nilai. Urutan prioritas:
+// (1) pesan buatan guru yang rentangnya cocok & tidak kosong,
+// (2) pesan default yang rentangnya cocok.
+function pesanUntukNilai_(nilai, pesanNilaiRaw) {
+  const n = Math.round(Number(nilai) || 0);
+  const cocok = r => n >= Number(r.min) && n <= Number(r.max);
+  const buatanGuru = parsePesanNilai_(pesanNilaiRaw).find(r => cocok(r) && String(r.pesan || '').trim());
+  if (buatanGuru) return String(buatanGuru.pesan).trim();
+  const bawaan = DEFAULT_PESAN_NILAI.find(cocok);
+  return bawaan ? bawaan.pesan : '';
+}
+
 function escapeHtml_(str) {
   return String(str == null ? '' : str)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -1071,6 +1122,53 @@ const LocalBackend = (function () {
     const nilaiLulus = ujian ? Number(ujian.nilai_lulus) || 0 : 0;
     const lulus = nilaiAkhir >= nilaiLulus;
     return { nilai: nilaiAkhir, lulus, detail };
+  }
+
+  // Detail jawaban per soal untuk ditampilkan ke SISWA setelah ujian selesai
+  // (soal yang dijawab salah/benar, jawaban siswa, kunci, pembahasan), supaya
+  // siswa & guru bisa sama-sama memeriksa jika ada kunci yang keliru.
+  // Semua posisi opsi dikembalikan dalam urutan TAMPIL milik siswa tsb (setelah
+  // diacak), sehingga kunci & jawaban bisa dibandingkan langsung di layar.
+  function bangunDetailJawaban_(D, sesi) {
+    const urutan = JSON.parse(sesi.urutan_json || '{}');
+    const opsiAcakMap = urutan.opsiAcak || {};
+    let jawaban = {}; try { jawaban = JSON.parse(sesi.jawaban_json || '{}'); } catch (e) { jawaban = {}; }
+    const soalMap = {}; D.bankSoal.forEach(s => soalMap[s.id] = s);
+    const items = [];
+    (urutan.order || []).forEach(sid => {
+      const soal = soalMap[sid];
+      if (!soal) return;
+      const bobot = Number(soal.bobot) || 0;
+      const idxOrder = opsiAcakMap[sid];
+      const jwb = jawaban[sid];
+      const skor = skorSoal(soal, jwb, idxOrder);
+      let kunci = null; try { kunci = JSON.parse(soal.kunci_json || 'null'); } catch (e) { kunci = null; }
+      let opsi = null, kunciTampil = null;
+      if (soal.tipe === 'pilihan_ganda' || soal.tipe === 'checkbox' || soal.tipe === 'benar_salah') {
+        const opsiAsli = JSON.parse(soal.opsi_json || '[]');
+        const order = Array.isArray(idxOrder) ? idxOrder : opsiAsli.map((_, i) => i);
+        opsi = order.map(i => opsiAsli[i]);
+        const daftarKunci = soal.tipe === 'checkbox' ? (Array.isArray(kunci) ? kunci : []) : (kunci === null || kunci === undefined || kunci === '' ? [] : [kunci]);
+        kunciTampil = daftarKunci.map(k => order.indexOf(Number(k))).filter(i => i >= 0);
+      } else if (soal.tipe === 'menjodohkan') {
+        opsi = JSON.parse(soal.opsi_json || '{}');
+        kunciTampil = kunci && typeof kunci === 'object' ? kunci : {};
+      } else {
+        kunciTampil = { kataKunci: (kunci && Array.isArray(kunci.kataKunci)) ? kunci.kataKunci : [] };
+      }
+      const kosong = jwb === undefined || jwb === null || jwb === '' ||
+        (Array.isArray(jwb) && jwb.length === 0) ||
+        (soal.tipe === 'menjodohkan' && (typeof jwb !== 'object' || Object.keys(jwb).filter(k => jwb[k] !== '' && jwb[k] !== null && jwb[k] !== undefined).length === 0));
+      const uraianTanpaRubrik = soal.tipe === 'uraian' && kunciTampil.kataKunci.filter(k => String(k).trim()).length === 0;
+      let status;
+      if (kosong) status = 'kosong';
+      else if (uraianTanpaRubrik) status = 'manual';
+      else if (bobot > 0 && skor >= bobot) status = 'benar';
+      else if (skor > 0) status = 'sebagian';
+      else status = 'salah';
+      items.push({ id: sid, tipe: soal.tipe, pertanyaan: soal.pertanyaan, gambar: soal.gambar || '', opsi, jawaban: kosong ? null : jwb, kunciTampil, bobot, skor, status, pembahasan: soal.pembahasan || '' });
+    });
+    return items;
   }
 
   function hitungDanSelesaikanSesi(D, sesi, jawaban, statusAkhir) {
@@ -1557,6 +1655,15 @@ const LocalBackend = (function () {
         const hasil = hitungDanSelesaikanSesi(D, sesi, jawaban, 'selesai');
         return { ok: true, nilai: hasil.nilai, lulus: hasil.lulus, detail: hasil.detail };
       }
+      case 'getDetailJawaban': {
+        const sesi = D.sesi.find(s => s.id === data.sesiId);
+        if (!sesi) return { ok: false, error: 'Sesi tidak ditemukan.' };
+        if (data.siswaId && String(sesi.siswa_id) !== String(data.siswaId)) return { ok: false, error: 'Sesi ini bukan milik Anda.' };
+        if (sesi.status === 'berlangsung') return { ok: false, error: 'Detail jawaban baru bisa dilihat setelah ujian selesai.' };
+        const ujian = D.ujian.find(u => u.id === sesi.ujian_id);
+        if (ujian && String(ujian.tampil_detail) === 'false') return { ok: false, error: 'Guru tidak mengaktifkan detail jawaban untuk ujian ini.' };
+        return { ok: true, judulUjian: ujian ? ujian.judul : '-', nilai: sesi.nilai, lulus: sesi.lulus, items: bangunDetailJawaban_(D, sesi) };
+      }
       case 'getHasil': {
         const sesi = D.sesi.find(s => s.id === data.sesiId);
         if (!sesi) return { ok: false, error: 'Sesi tidak ditemukan.' };
@@ -1564,7 +1671,9 @@ const LocalBackend = (function () {
         return {
           ok: true, selesai: sesi.status !== 'berlangsung', nilai: sesi.nilai, lulus: sesi.lulus, pelanggaran: sesi.pelanggaran,
           judulUjian: ujian ? ujian.judul : '-',
-          instruksiRemedial: (sesi.lulus === false) ? (ujian && ujian.instruksi_remedial ? ujian.instruksi_remedial : 'Silakan hubungi guru mata pelajaran untuk instruksi remedial.') : ''
+          pesanNilai: ujian && ujian.pesan_nilai ? ujian.pesan_nilai : '',
+          tampilDetail: !(ujian && String(ujian.tampil_detail) === 'false'),
+          instruksiRemedial: (sesi.lulus === false) ? (ujian && ujian.instruksi_remedial ? ujian.instruksi_remedial : '') : ''
         };
       }
       default:
@@ -1844,7 +1953,7 @@ const UI = {
   },
 
   tampilkan(idLayar) {
-    ['login-screen', 'guru-portal', 'siswa-portal', 'ujian-screen', 'hasil-screen'].forEach(id => {
+    ['login-screen', 'guru-portal', 'siswa-portal', 'ujian-screen', 'hasil-screen', 'detail-screen'].forEach(id => {
       document.getElementById(id).classList.toggle('hidden', id !== idLayar);
     });
   },
@@ -2177,6 +2286,8 @@ const UI = {
     document.getElementById('ujian-acak-soal').checked = ujian ? (String(ujian.acak_soal) === 'true') : true;
     document.getElementById('ujian-acak-opsi').checked = ujian ? (String(ujian.acak_opsi) === 'true') : true;
     document.getElementById('ujian-instruksi-remedial').value = ujian && ujian.instruksi_remedial ? ujian.instruksi_remedial : '';
+    document.getElementById('ujian-tampil-detail').checked = ujian ? (String(ujian.tampil_detail) !== 'false') : true;
+    Guru.muatEditorPesanNilai(ujian && ujian.pesan_nilai);
     // null (bukan array kosong) khusus menandai "ujian baru, belum ada
     // pilihan tersimpan" -> semua soal yang cocok otomatis tercentang.
     // Ujian yang sedang diubah selalu punya minimal 1 soal_ids tersimpan.
@@ -2206,6 +2317,73 @@ const UI = {
 // GURU
 // ============================================================================
 const Guru = {
+  // ---------------- PESAN HASIL PER RENTANG NILAI ----------------
+  pesanNilaiDraft: [],
+
+  muatEditorPesanNilai(raw) {
+    const tersimpan = parsePesanNilai_(raw);
+    // Belum pernah diatur -> isi editor dengan pesan default
+    Guru.pesanNilaiDraft = (tersimpan.length ? tersimpan : DEFAULT_PESAN_NILAI).map(r => ({ min: r.min, max: r.max, pesan: r.pesan || '' }));
+    Guru.renderEditorPesanNilai();
+  },
+
+  renderEditorPesanNilai() {
+    const cont = document.getElementById('pesan-nilai-editor');
+    if (!cont) return;
+    cont.innerHTML = Guru.pesanNilaiDraft.map((r, i) => `
+      <div class="pesan-nilai-row">
+        <div class="pesan-nilai-rentang">
+          <input type="number" min="0" max="100" value="${escapeHtml_(String(r.min))}" oninput="Guru.ubahPesanNilai(${i},'min',this.value)" aria-label="Nilai awal">
+          <span>s/d</span>
+          <input type="number" min="0" max="100" value="${escapeHtml_(String(r.max))}" oninput="Guru.ubahPesanNilai(${i},'max',this.value)" aria-label="Nilai akhir">
+          <button type="button" class="secondary" title="Hapus rentang ini" onclick="Guru.hapusRentangPesan(${i})"><i class="fa-solid fa-trash"></i></button>
+        </div>
+        <textarea rows="2" oninput="Guru.ubahPesanNilai(${i},'pesan',this.value)" placeholder="Kosongkan untuk memakai pesan default">${escapeHtml_(r.pesan)}</textarea>
+      </div>`).join('');
+  },
+
+  ubahPesanNilai(i, kolom, nilai) {
+    if (!Guru.pesanNilaiDraft[i]) return;
+    Guru.pesanNilaiDraft[i][kolom] = nilai;
+  },
+
+  tambahRentangPesan() {
+    const terakhir = Guru.pesanNilaiDraft[Guru.pesanNilaiDraft.length - 1];
+    const mulai = terakhir ? Math.min(100, Number(terakhir.max) + 1) : 0;
+    Guru.pesanNilaiDraft.push({ min: mulai, max: 100, pesan: '' });
+    Guru.renderEditorPesanNilai();
+  },
+
+  hapusRentangPesan(i) {
+    Guru.pesanNilaiDraft.splice(i, 1);
+    Guru.renderEditorPesanNilai();
+  },
+
+  resetPesanNilai() {
+    if (!confirm('Kembalikan semua rentang dan pesan ke pengaturan default?')) return;
+    Guru.muatEditorPesanNilai('');
+  },
+
+  // Validasi + ubah editor menjadi JSON. Jika isinya sama persis dengan default
+  // dikembalikan string kosong, sehingga ujian tetap memakai default terbaru.
+  ambilPesanNilaiUntukSimpan() {
+    const rows = Guru.pesanNilaiDraft.map(r => ({ min: Number(r.min), max: Number(r.max), pesan: String(r.pesan || '').trim() }));
+    for (const r of rows) {
+      if (!Number.isFinite(r.min) || !Number.isFinite(r.max) || r.min < 0 || r.max > 100 || r.min > r.max) {
+        return { error: 'Rentang nilai pesan tidak valid. Pastikan nilai awal ≤ nilai akhir dan berada di antara 0–100.' };
+      }
+    }
+    const urut = rows.slice().sort((a, b) => a.min - b.min);
+    for (let k = 1; k < urut.length; k++) {
+      if (urut[k].min <= urut[k - 1].max) {
+        return { error: 'Ada rentang nilai pesan yang saling tumpang tindih (' + urut[k - 1].min + '–' + urut[k - 1].max + ' dan ' + urut[k].min + '–' + urut[k].max + ').' };
+      }
+    }
+    const samaDenganDefault = rows.length === DEFAULT_PESAN_NILAI.length &&
+      rows.every((r, i) => r.min === DEFAULT_PESAN_NILAI[i].min && r.max === DEFAULT_PESAN_NILAI[i].max && (r.pesan === '' || r.pesan === DEFAULT_PESAN_NILAI[i].pesan));
+    return { json: samaDenganDefault ? '' : JSON.stringify(rows) };
+  },
+
   async init() {
     await muatTemaGlobal();
     Guru.muatDashboard();
@@ -3155,6 +3333,10 @@ const Guru = {
         instruksi_remedial: document.getElementById('ujian-instruksi-remedial').value.trim(),
         status: 'aktif'
       };
+      ujian.tampil_detail = document.getElementById('ujian-tampil-detail').checked;
+      const hasilPesan = Guru.ambilPesanNilaiUntukSimpan();
+      if (hasilPesan.error) { toast(hasilPesan.error, 'error'); return; }
+      ujian.pesan_nilai = hasilPesan.json;
       if (!ujian.judul) { toast('Judul ujian tidak boleh kosong.', 'error'); return; }
       const res = await api('simpanUjian', { ujian: JSON.stringify(ujian) });
       if (res.ok) {
@@ -4240,6 +4422,114 @@ const ExamEngine = {
     }
   },
 
+  // ---------------- DETAIL JAWABAN (siswa, setelah nilai keluar) ----------------
+  detailItems: [],
+  detailFilter: 'salah',
+  detailSesiId: null,
+
+  async bukaDetailJawaban() {
+    const sesiId = ExamEngine.detailSesiId || state.sesiId;
+    if (!sesiId) return;
+    const btn = document.getElementById('btn-detail-jawaban');
+    if (btn) btn.disabled = true;
+    try {
+      const res = await api('getDetailJawaban', { sesiId, siswaId: state.user ? state.user.id : '' });
+      if (!res || !res.ok) { toast((res && res.error) || 'Gagal memuat detail jawaban.', 'error'); return; }
+      ExamEngine.detailItems = res.items || [];
+      document.getElementById('detail-judul-ujian').textContent = res.judulUjian || '-';
+      document.getElementById('detail-nilai').textContent = res.nilai;
+      const adaSalah = ExamEngine.detailItems.some(it => it.status !== 'benar');
+      ExamEngine.detailFilter = adaSalah ? 'salah' : 'semua';
+      ExamEngine.renderDetailJawaban();
+      UI.tampilkan('detail-screen');
+      window.scrollTo(0, 0);
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  },
+
+  tutupDetailJawaban() { UI.tampilkan('hasil-screen'); },
+
+  gantiFilterDetail(f) {
+    ExamEngine.detailFilter = f;
+    ExamEngine.renderDetailJawaban();
+  },
+
+  renderDetailJawaban() {
+    const items = ExamEngine.detailItems;
+    const nSalah = items.filter(it => it.status !== 'benar').length;
+    const nBenar = items.length - nSalah;
+    document.getElementById('detail-ringkas').textContent = items.length + ' soal · ' + nBenar + ' benar · ' + nSalah + ' perlu diperiksa';
+    const f = ExamEngine.detailFilter;
+    document.getElementById('detail-tab-salah').classList.toggle('active', f === 'salah');
+    document.getElementById('detail-tab-semua').classList.toggle('active', f === 'semua');
+    document.getElementById('detail-tab-salah').textContent = 'Yang Salah / Belum Benar (' + nSalah + ')';
+    document.getElementById('detail-tab-semua').textContent = 'Semua Soal (' + items.length + ')';
+    const tampil = [];
+    items.forEach((it, i) => { if (f === 'semua' || it.status !== 'benar') tampil.push({ it, no: i + 1 }); });
+    const cont = document.getElementById('detail-list');
+    cont.innerHTML = tampil.length
+      ? tampil.map(x => ExamEngine.htmlItemDetail_(x.it, x.no)).join('')
+      : '<div class="dj-kosong"><i class="fa-solid fa-circle-check"></i><p>Semua jawaban Anda benar. Tidak ada soal yang perlu diperiksa.</p></div>';
+    renderMatika(cont);
+  },
+
+  htmlItemDetail_(it, no) {
+    const label = { benar: 'Benar', salah: 'Salah', sebagian: 'Sebagian benar', kosong: 'Tidak dijawab', manual: 'Dikoreksi guru' }[it.status] || it.status;
+    const opsiObj = (o) => (o && typeof o === 'object') ? o : { teks: o || '', gambar: '' };
+    let isi = '';
+    if (it.tipe === 'pilihan_ganda' || it.tipe === 'benar_salah' || it.tipe === 'checkbox') {
+      const dipilih = it.jawaban === null ? [] : (Array.isArray(it.jawaban) ? it.jawaban.map(Number) : [Number(it.jawaban)]);
+      const kunci = it.kunciTampil || [];
+      isi += '<div class="opsi-list">' + (it.opsi || []).map((o, i) => {
+        const item = opsiObj(o);
+        const benar = kunci.indexOf(i) !== -1;
+        const pilih = dipilih.indexOf(i) !== -1;
+        const kelas = benar ? 'dj-benar' : (pilih ? 'dj-salah' : '');
+        const tag = benar && pilih ? 'Jawaban Anda · Kunci' : (benar ? 'Kunci jawaban' : (pilih ? 'Jawaban Anda' : ''));
+        return `<div class="opsi-item opsi-readonly dj-opsi ${kelas}">
+          <span class="opsi-huruf">${String.fromCharCode(65 + i)}</span>
+          <span class="opsi-konten">${kontenSoalHtml(item.teks)}${item.gambar ? tagGambarAman_(item.gambar, 'opsi-gambar-tampil', 'Gambar opsi') : ''}</span>
+          ${tag ? `<span class="dj-tag">${tag}</span>` : ''}
+        </div>`;
+      }).join('') + '</div>';
+      if (kunci.length === 0) isi += '<p class="dj-catatan">Kunci jawaban soal ini belum diatur / tidak ditemukan. Mohon laporkan ke guru.</p>';
+    } else if (it.tipe === 'menjodohkan') {
+      const kiri = (it.opsi && it.opsi.kiri) || [], kanan = (it.opsi && it.opsi.kanan) || [];
+      const jwb = (it.jawaban && typeof it.jawaban === 'object') ? it.jawaban : {};
+      const kunci = it.kunciTampil || {};
+      isi += '<div class="dj-jodoh">' + kiri.map((tk, i) => {
+        const j = jwb[i];
+        const adaJwb = j !== undefined && j !== null && j !== '';
+        const benar = adaJwb && String(j) === String(kunci[i]);
+        return `<div class="dj-jodoh-row ${benar ? 'dj-benar' : 'dj-salah'}">
+          <div class="dj-jodoh-kiri">${escapeHtml_(tk)}</div>
+          <div>Jawaban Anda: <strong>${adaJwb ? escapeHtml_(kanan[j] == null ? '-' : String(kanan[j])) : '(kosong)'}</strong></div>
+          ${benar ? '' : `<div>Kunci: <strong>${kunci[i] !== undefined ? escapeHtml_(kanan[kunci[i]] == null ? '-' : String(kanan[kunci[i]])) : '(belum diatur)'}</strong></div>`}
+        </div>`;
+      }).join('') + '</div>';
+    } else { // uraian
+      const kata = ((it.kunciTampil && it.kunciTampil.kataKunci) || []).filter(k => String(k).trim());
+      isi += `<div class="dj-uraian"><div class="dj-label">Jawaban Anda</div><div class="dj-uraian-teks">${it.jawaban ? escapeHtml_(String(it.jawaban)) : '<em>(kosong)</em>'}</div></div>`;
+      isi += kata.length
+        ? `<p class="dj-catatan">Kata kunci penilaian: <strong>${kata.map(escapeHtml_).join(', ')}</strong></p>`
+        : '<p class="dj-catatan">Soal uraian ini dikoreksi manual oleh guru.</p>';
+    }
+    const pembahasan = it.pembahasan && !richTeksKosong_(it.pembahasan)
+      ? `<div class="dj-pembahasan"><div class="dj-label">Pembahasan</div>${kontenSoalHtml(it.pembahasan)}</div>` : '';
+    return `<article class="dj-card dj-status-${it.status}">
+      <header class="dj-head">
+        <span class="dj-no">Soal ${no}</span>
+        <span class="dj-badge dj-badge-${it.status}">${label}</span>
+        <span class="dj-skor">Skor ${it.skor} / ${it.bobot}</span>
+      </header>
+      <div class="pertanyaan">${kontenSoalHtml(it.pertanyaan)}</div>
+      ${it.gambar ? tagGambarAman_(it.gambar, 'gambar-soal', 'Gambar soal') : ''}
+      ${isi}
+      ${pembahasan}
+    </article>`;
+  },
+
   tampilkanHasil(nilai, lulus, judul) {
     UI.tampilkan('hasil-screen');
     document.getElementById('hasil-judul-ujian').textContent = judul;
@@ -4249,7 +4539,22 @@ const ExamEngine = {
     statusEl.textContent = isLulus ? 'LULUS' : 'PERLU REMEDIAL';
     statusEl.style.background = isLulus ? 'rgba(22,163,74,.12)' : 'rgba(224,67,61,.12)';
     statusEl.style.color = isLulus ? 'var(--c-success)' : 'var(--c-danger)';
-    document.getElementById('hasil-instruksi').textContent = isLulus ? 'Selamat! Anda telah menyelesaikan ujian ini.' : 'Silakan hubungi guru mata pelajaran untuk instruksi remedial.';
+    // Tampilkan pesan default dulu (instan), lalu ganti dengan pesan buatan guru
+    // begitu data ujian selesai diambil.
+    const elPesan = document.getElementById('hasil-instruksi');
+    const btnDetail = document.getElementById('btn-detail-jawaban');
+    if (btnDetail) btnDetail.style.display = 'none';
+    ExamEngine.detailSesiId = state.sesiId;
+    elPesan.textContent = pesanUntukNilai_(nilai, '');
+    if (state.sesiId) {
+      api('getHasil', { sesiId: state.sesiId }).then(res => {
+        if (!res || !res.ok) return;
+        let teks = pesanUntukNilai_(nilai, res.pesanNilai);
+        if (!isLulus && res.instruksiRemedial) teks += '\n\n' + res.instruksiRemedial;
+        elPesan.textContent = teks;
+        if (btnDetail && res.tampilDetail !== false) btnDetail.style.display = '';
+      }).catch(() => {});
+    }
 
     // Ikon lingkaran (centang utk lulus, seru utk perlu remedial) + ring skor
     // melingkar yang terisi sesuai persentase nilai (0-100) -- murni kosmetik,
