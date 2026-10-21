@@ -822,3 +822,17 @@ table.ledger td.aksi { display: flex; gap: .4rem; flex-wrap: wrap; }
 .dj-pembahasan { margin-top: .8rem; padding: .7rem .85rem; border-radius: 6px; background: rgba(37,99,235,.07); border: 1px solid rgba(37,99,235,.2); font-size: .9rem; }
 .dj-kosong { text-align: center; padding: 2.5rem 1rem; color: var(--c-muted); }
 .dj-kosong i { font-size: 2.4rem; color: var(--c-success); }
+
+
+/* ---- Penanda kunci jawaban (Kelola Soal & Pratinjau) ---- */
+.soal-item.soal-tanpa-kunci { border-left: 4px solid var(--c-danger); padding-left: .7rem; background: rgba(214,48,49,.04); }
+.kunci-ringkasan { padding: .6rem .85rem; border-radius: var(--radius); font-size: .88rem; margin-bottom: .8rem; }
+.kunci-ringkasan.warn { background: #fdf1d0; color: #7a5b05; border: 1px solid #f0d98a; }
+.kunci-ringkasan.ok { background: #e8f8ee; color: var(--c-success); border: 1px solid #bfe6cd; }
+.opsi-item.opsi-kunci { border-color: var(--c-success); background: #e8f8ee; }
+.opsi-item.opsi-kunci .opsi-huruf { background: var(--c-success); border-color: var(--c-success); color: #fff; }
+.opsi-kunci-tag { margin-left: auto; font-size: .72rem; font-weight: 700; color: var(--c-success); white-space: nowrap; align-self: center; }
+.pratinjau-kunci { margin-top: .8rem; padding: .5rem .75rem; border-radius: var(--radius); font-size: .85rem; }
+.pratinjau-kunci.ok { background: #e8f8ee; color: var(--c-success); }
+.pratinjau-kunci.no { background: #fdeaea; color: var(--c-danger); }
+.pratinjau-kunci.manual { background: #fdf1d0; color: #7a5b05; }
