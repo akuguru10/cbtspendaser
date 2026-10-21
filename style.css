@@ -682,7 +682,13 @@ table.ledger td.aksi { display: flex; gap: .4rem; flex-wrap: wrap; }
 .hasil-card .nilai-besar { font-family: var(--font-display); font-size: 2.6rem; font-weight: 800; line-height: 1; color: var(--c-text); }
 .nilai-skala { font-size: .74rem; color: var(--c-muted); margin-top: .15rem; }
 
-.hasil-instruksi { color: var(--c-muted); font-size: .88rem; line-height: 1.55; margin: 0 0 1.6rem; }
+.hasil-instruksi { color: var(--c-muted); font-size: .88rem; line-height: 1.55; margin: 0 0 1.6rem; white-space: pre-line; }
+
+/* Editor pesan per rentang nilai (modal ujian guru) */
+.pesan-nilai-row { border: 1px solid var(--c-line); border-radius: 3px; padding: .6rem; margin-bottom: .6rem; }
+.pesan-nilai-rentang { display: flex; align-items: center; gap: .5rem; margin-bottom: .45rem; }
+.pesan-nilai-rentang input { width: 5.5rem; }
+.pesan-nilai-rentang button { margin-left: auto; }
 
 .hasil-btn-beranda { width: 100%; display: inline-flex; align-items: center; justify-content: center; gap: .5rem; }
 
@@ -778,3 +784,41 @@ table.ledger td.aksi { display: flex; gap: .4rem; flex-wrap: wrap; }
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
 }
+
+
+/* ============================================================================
+   DETAIL JAWABAN SISWA (setelah nilai keluar)
+   ============================================================================ */
+#detail-screen { min-height: 100vh; padding: 1.2rem; background: var(--c-bg); }
+.detail-wrap { max-width: 820px; margin: 0 auto; }
+.detail-top { margin-bottom: 1rem; }
+.detail-ringkas { color: var(--c-muted); font-size: .9rem; margin: .2rem 0 .4rem; }
+.detail-info { font-size: .82rem; color: var(--c-muted); background: var(--c-surface); border: 1px solid var(--c-line); border-radius: 6px; padding: .6rem .8rem; margin: 0 0 1rem; }
+.detail-tabs { display: flex; gap: .5rem; flex-wrap: wrap; margin-bottom: 1rem; }
+.detail-tab { background: var(--c-surface); color: var(--c-text); border: 1px solid var(--c-line); font-size: .85rem; }
+.detail-tab.active { background: var(--c-primary); color: #fff; border-color: var(--c-primary); }
+.dj-card { background: var(--c-surface); border: 1px solid var(--c-line); border-left: 4px solid var(--c-line); border-radius: 8px; padding: 1rem 1.1rem; margin-bottom: 1rem; }
+.dj-status-benar { border-left-color: var(--c-success); }
+.dj-status-salah, .dj-status-kosong { border-left-color: var(--c-danger); }
+.dj-status-sebagian, .dj-status-manual { border-left-color: #d98e04; }
+.dj-head { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; margin-bottom: .6rem; }
+.dj-no { font-weight: 700; }
+.dj-skor { margin-left: auto; font-size: .8rem; color: var(--c-muted); }
+.dj-badge { font-size: .72rem; font-weight: 700; padding: .15rem .55rem; border-radius: 999px; }
+.dj-badge-benar { background: rgba(22,163,74,.12); color: var(--c-success); }
+.dj-badge-salah, .dj-badge-kosong { background: rgba(224,67,61,.12); color: var(--c-danger); }
+.dj-badge-sebagian, .dj-badge-manual { background: rgba(217,142,4,.14); color: #a86b00; }
+.dj-opsi { position: relative; }
+.dj-opsi.dj-benar, .dj-jodoh-row.dj-benar { border-color: var(--c-success); background: rgba(22,163,74,.08); }
+.dj-opsi.dj-salah, .dj-jodoh-row.dj-salah { border-color: var(--c-danger); background: rgba(224,67,61,.08); }
+.dj-tag { margin-left: auto; font-size: .7rem; font-weight: 700; white-space: nowrap; align-self: center; padding-left: .6rem; color: var(--c-muted); }
+.dj-opsi.dj-benar .dj-tag { color: var(--c-success); }
+.dj-opsi.dj-salah .dj-tag { color: var(--c-danger); }
+.dj-jodoh-row { border: 1px solid var(--c-line); border-radius: 6px; padding: .5rem .7rem; margin-bottom: .45rem; font-size: .88rem; }
+.dj-jodoh-kiri { font-weight: 600; margin-bottom: .2rem; }
+.dj-label { font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--c-muted); margin-bottom: .25rem; }
+.dj-uraian-teks { border: 1px solid var(--c-line); border-radius: 6px; padding: .6rem .8rem; white-space: pre-wrap; }
+.dj-catatan { font-size: .82rem; color: var(--c-muted); margin: .6rem 0 0; }
+.dj-pembahasan { margin-top: .8rem; padding: .7rem .85rem; border-radius: 6px; background: rgba(37,99,235,.07); border: 1px solid rgba(37,99,235,.2); font-size: .9rem; }
+.dj-kosong { text-align: center; padding: 2.5rem 1rem; color: var(--c-muted); }
+.dj-kosong i { font-size: 2.4rem; color: var(--c-success); }
