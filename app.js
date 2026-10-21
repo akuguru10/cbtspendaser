@@ -361,6 +361,75 @@ function hurufKunciKeIndeks_(s, opsi) {
   if (!isNaN(n)) return Math.max(0, Math.round(n) - 1);
   return -1; // tidak dikenali sama sekali -> jangan diam-diam anggap opsi A
 }
+
+// ----------------------------------------------------------------------------
+// KUNCI JAWABAN: pembacaan aman + status "sudah/belum ditetapkan".
+// BUG LAMA: kunci_json disimpan "0" (opsi A) -> Google Sheets mengubahnya jadi
+// ANGKA 0 -> saat dibaca `soal.kunci_json || 'null'` angka 0 dianggap kosong
+// sehingga kunci A selalu "tidak terdeteksi" (dan skor soal itu selalu 0).
+// Sekarang semua pembacaan lewat parseKunciJson_ yang paham angka 0.
+// ----------------------------------------------------------------------------
+function parseKunciJson_(raw) {
+  if (raw === null || raw === undefined) return null;
+  if (typeof raw === 'number') return isNaN(raw) ? null : raw;
+  if (typeof raw === 'object') return raw;
+  const t = String(raw).trim();
+  if (t === '') return null;
+  try { return JSON.parse(t); } catch (e) { return null; }
+}
+// Hasil: { ada, manual, label, indeks[] }.
+//  ada    = kunci valid sudah ditetapkan
+//  manual = soal Essay tanpa kata kunci (dikoreksi manual, bukan "belum")
+function statusKunciSoal_(soal) {
+  let opsi = null;
+  try { opsi = JSON.parse(soal.opsi_json || 'null'); } catch (e) { opsi = null; }
+  const k = parseKunciJson_(soal.kunci_json);
+  const tipe = soal.tipe || 'pilihan_ganda';
+  const huruf = (i) => String.fromCharCode(65 + i);
+  const valid = (v, n) => v !== null && v !== undefined && v !== '' && !isNaN(Number(v)) && Number.isInteger(Number(v)) && Number(v) >= 0 && Number(v) < n;
+  if (tipe === 'pilihan_ganda' || tipe === 'benar_salah') {
+    const n = Array.isArray(opsi) ? opsi.length : 0;
+    if (valid(k, n)) return { ada: true, manual: false, label: huruf(Number(k)), indeks: [Number(k)] };
+    return { ada: false, manual: false, label: '', indeks: [] };
+  }
+  if (tipe === 'checkbox') {
+    const n = Array.isArray(opsi) ? opsi.length : 0;
+    const idx = Array.isArray(k) ? k.filter(v => valid(v, n)).map(Number) : [];
+    if (idx.length) return { ada: true, manual: false, label: idx.map(huruf).join(', '), indeks: idx };
+    return { ada: false, manual: false, label: '', indeks: [] };
+  }
+  if (tipe === 'menjodohkan') {
+    const nKiri = opsi && Array.isArray(opsi.kiri) ? opsi.kiri.length : 0;
+    const vals = (k && typeof k === 'object' && !Array.isArray(k)) ? Object.values(k) : [];
+    const ok = nKiri > 0 && vals.length === nKiri && vals.every(v => v !== '' && v !== null && !isNaN(Number(v)));
+    return { ada: ok, manual: false, label: ok ? 'pasangan lengkap' : '', indeks: [] };
+  }
+  const kata = (k && Array.isArray(k.kataKunci)) ? k.kataKunci.filter(x => String(x).trim()) : [];
+  if (kata.length) return { ada: true, manual: false, label: kata.length + ' kata kunci', indeks: [] };
+  return { ada: false, manual: true, label: '', indeks: [] };
+}
+// Baris Bank Soal (opsi_json = teks JSON) -> bentuk yang dipakai renderKontenSoal (soal.opsi).
+function soalDenganOpsi_(soal) {
+  if (soal && soal.opsi !== undefined && soal.opsi !== null && soal.opsi !== '') return soal;
+  let opsi = null;
+  try { opsi = JSON.parse(soal.opsi_json || 'null'); } catch (e) { opsi = null; }
+  return Object.assign({}, soal, { opsi: opsi === null ? [] : opsi });
+}
+
+// Token ujian 6 karakter yang mudah dibaca siswa: TIDAK memakai angka 0 & huruf O
+// (juga 1 & I) karena sulit dibedakan. Sisa: huruf A-Z (tanpa I, O) + angka 2-9.
+const KARAKTER_TOKEN_ = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+function buatTokenAman_(panjang) {
+  panjang = panjang || 6;
+  let hasil = '';
+  const acak = (typeof crypto !== 'undefined' && crypto.getRandomValues) ? crypto.getRandomValues(new Uint32Array(panjang)) : null;
+  for (let i = 0; i < panjang; i++) {
+    const r = acak ? acak[i] : Math.floor(Math.random() * 4294967296);
+    hasil += KARAKTER_TOKEN_.charAt(r % KARAKTER_TOKEN_.length);
+  }
+  return hasil;
+}
+
 // Normalisasi header kolom: lowercase, buang spasi -> dipakai sbg key peta.
 function kunciHeader_(h) { return String(h || '').trim().toLowerCase().replace(/[\s._-]+/g, ''); }
 
@@ -446,9 +515,9 @@ function barisTabelJadiSoal_(headerIdx, nilai, guruId, kategoriDefault, petaGamb
     } else {
       const idxTunggal = hurufKunciKeIndeks_(kunciStr, opsiUntukCocok);
       if (idxTunggal === -1 && peringatan) {
-        peringatan.push(`"${potonganPertanyaan(pertanyaan)}": kunci "${kunciStr}" tidak dikenali (bukan huruf opsi A-H, Benar/Salah, atau teks opsi yang cocok) — sementara ditandai opsi A, mohon PERIKSA & PERBAIKI manual di Bank Soal.`);
+        peringatan.push(`"${potonganPertanyaan(pertanyaan)}": kunci "${kunciStr}" tidak dikenali (bukan huruf opsi A-H, Benar/Salah, atau teks opsi yang cocok) — soal ini DIIMPOR TANPA KUNCI (ditandai ⚠ Belum ada kunci di Kelola Soal), mohon tetapkan manual lewat tombol Ubah.`);
       }
-      item.kunci_json = JSON.stringify(idxTunggal === -1 ? 0 : idxTunggal);
+      item.kunci_json = idxTunggal === -1 ? '' : JSON.stringify(idxTunggal);
     }
   } else {
     item.tipe = 'uraian';
@@ -688,7 +757,7 @@ function ambilMetaMapel_(kategori) {
   const kunci = String(kategori || '').toLowerCase();
   if (!semua[kunci]) {
     semua[kunci] = {
-      token: Math.random().toString(36).slice(2, 8).toUpperCase(),
+      token: buatTokenAman_(),
       warna: MAPEL_WARNA_LIST[Object.keys(semua).length % MAPEL_WARNA_LIST.length]
     };
     try { localStorage.setItem(MAPEL_META_KEY, JSON.stringify(semua)); } catch (e) {}
@@ -895,6 +964,8 @@ function renderKontenSoal(soal, opts) {
   opts = opts || {};
   const interaktif = opts.interaktif !== false;
   const jawaban = opts.jawaban || {};
+  const tandaiKunci = Array.isArray(opts.tandaiKunci) ? opts.tandaiKunci : [];
+  const tagKunci = (i) => tandaiKunci.includes(i) ? '<span class="opsi-kunci-tag">✔ Kunci</span>' : '';
   let html = '';
   if (opts.nomor && opts.total) html += `<div class="no">Soal ${opts.nomor} dari ${opts.total}</div>`;
   html += `<div class="pertanyaan">${kontenSoalHtml(soal.pertanyaan)}</div>`;
@@ -909,9 +980,9 @@ function renderKontenSoal(soal, opts) {
       const item = opsiObj(o);
       const selected = jawaban[soal.id] === i;
       const onclick = interaktif ? ` onclick="ExamEngine.pilihJawabanTunggal('${soal.id}', ${i})"` : '';
-      return `<label class="opsi-item ${selected ? 'selected' : ''}${interaktif ? '' : ' opsi-readonly'}"${onclick}>
+      return `<label class="opsi-item ${selected ? 'selected' : ''}${interaktif ? '' : ' opsi-readonly'}${tandaiKunci.includes(i) ? ' opsi-kunci' : ''}"${onclick}>
         <span class="opsi-huruf">${String.fromCharCode(65 + i)}</span>
-        <span class="opsi-konten">${kontenSoalHtml(item.teks)}${item.gambar ? tagGambarAman_(item.gambar, 'opsi-gambar-tampil', 'Gambar opsi') : ''}</span>
+        <span class="opsi-konten">${kontenSoalHtml(item.teks)}${item.gambar ? tagGambarAman_(item.gambar, 'opsi-gambar-tampil', 'Gambar opsi') : ''}</span>${tagKunci(i)}
       </label>`;
     }).join('') + '</div>';
   } else if (soal.tipe === 'checkbox') {
@@ -920,9 +991,9 @@ function renderKontenSoal(soal, opts) {
       const item = opsiObj(o);
       const selected = dipilih.includes(i);
       const onclick = interaktif ? ` onclick="ExamEngine.toggleJawabanGanda('${soal.id}', ${i})"` : '';
-      return `<label class="opsi-item ${selected ? 'selected' : ''}${interaktif ? '' : ' opsi-readonly'}"${onclick}>
+      return `<label class="opsi-item ${selected ? 'selected' : ''}${interaktif ? '' : ' opsi-readonly'}${tandaiKunci.includes(i) ? ' opsi-kunci' : ''}"${onclick}>
         <span class="opsi-huruf">${selected ? '&#10003;' : String.fromCharCode(65 + i)}</span>
-        <span class="opsi-konten">${kontenSoalHtml(item.teks)}${item.gambar ? tagGambarAman_(item.gambar, 'opsi-gambar-tampil', 'Gambar opsi') : ''}</span>
+        <span class="opsi-konten">${kontenSoalHtml(item.teks)}${item.gambar ? tagGambarAman_(item.gambar, 'opsi-gambar-tampil', 'Gambar opsi') : ''}</span>${tagKunci(i)}
       </label>`;
     }).join('') + '</div>';
   } else if (soal.tipe === 'menjodohkan') {
@@ -1062,7 +1133,7 @@ const LocalBackend = (function () {
     const bobot = Number(soal.bobot) || 0;
     if (jwb === undefined || jwb === null || jwb === '') return 0;
     let kunci;
-    try { kunci = JSON.parse(soal.kunci_json || 'null'); } catch (e) { kunci = null; }
+    kunci = parseKunciJson_(soal.kunci_json);
     if (kunci === null) return 0;
     const keIndeksAsli = (posisiTampil) => {
       const p = Number(posisiTampil);
@@ -1142,7 +1213,7 @@ const LocalBackend = (function () {
       const idxOrder = opsiAcakMap[sid];
       const jwb = jawaban[sid];
       const skor = skorSoal(soal, jwb, idxOrder);
-      let kunci = null; try { kunci = JSON.parse(soal.kunci_json || 'null'); } catch (e) { kunci = null; }
+      let kunci = null; kunci = parseKunciJson_(soal.kunci_json);
       let opsi = null, kunciTampil = null;
       if (soal.tipe === 'pilihan_ganda' || soal.tipe === 'checkbox' || soal.tipe === 'benar_salah') {
         const opsiAsli = JSON.parse(soal.opsi_json || '[]');
@@ -1297,7 +1368,7 @@ const LocalBackend = (function () {
           if (idx > -1) { D.ujian[idx] = Object.assign({}, D.ujian[idx], ujian); simpan(); return { ok: true, id: ujian.id }; }
         }
         ujian.id = genId('U');
-        if (!ujian.token) ujian.token = Math.random().toString(36).slice(2, 8).toUpperCase();
+        if (!ujian.token) ujian.token = buatTokenAman_();
         ujian.status = ujian.status || 'aktif';
         D.ujian.push(ujian);
         simpan();
@@ -2120,7 +2191,7 @@ const UI = {
     let opsi = null, kunci = null;
     if (soal) {
       try { opsi = JSON.parse(soal.opsi_json || 'null'); } catch (e) {}
-      try { kunci = JSON.parse(soal.kunci_json || 'null'); } catch (e) {}
+      kunci = parseKunciJson_(soal.kunci_json);
     }
 
     if (tipe === 'pilihan_ganda' || tipe === 'checkbox' || tipe === 'benar_salah') {
@@ -2135,7 +2206,7 @@ const UI = {
       </div>`;
       list.forEach((item, i) => {
         const o = (item && typeof item === 'object') ? item : { teks: item || '', gambar: '' };
-        const checked = tipe === 'checkbox' ? (Array.isArray(kunci) && kunci.includes(i)) : (kunci === i);
+        const checked = tipe === 'checkbox' ? (Array.isArray(kunci) && kunci.includes(i)) : (kunci !== null && kunci !== undefined && kunci !== '' && Number(kunci) === i);
         html += UI.htmlBarisOpsi(i, o, tipe, checked, bisaHapusTambah);
       });
       if (bisaHapusTambah) html += `<button type="button" class="secondary small" id="btn-tambah-opsi" onclick="UI.tambahOpsiKosong()">+ Tambah Opsi</button>`;
@@ -2764,6 +2835,7 @@ const Guru = {
     const filterSubkategori = document.getElementById('filter-subkategori-soal')?.value || '';
     const filterStatus = document.getElementById('filter-status-soal')?.value || 'aktif';
     const hanyaRiwayat = document.getElementById('filter-riwayat-soal')?.checked || false;
+    const hanyaBelumKunci = document.getElementById('filter-belum-kunci-soal')?.checked || false;
     const semua = state.guru.bankSoal || [];
 
     // id soal -> daftar judul ujian yang memakainya (dipakai untuk badge & filter Riwayat)
@@ -2783,16 +2855,29 @@ const Guru = {
     if (hanyaRiwayat) data = data.filter(s => dipakaiDi[s.id]);
     if (tipeTab) data = data.filter(s => (s.tipe || 'pilihan_ganda') === tipeTab);
 
+    // Ringkasan kunci dihitung SEBELUM filter "belum ada kunci" supaya angkanya tetap utuh.
+    const jumlahBelumKunci = data.filter(s => { const st = statusKunciSoal_(s); return !st.ada && !st.manual; }).length;
+    const jumlahTampilSemua = data.length;
+    if (hanyaBelumKunci) data = data.filter(s => { const st = statusKunciSoal_(s); return !st.ada && !st.manual; });
+
     if (semua.length === 0) { cont.innerHTML = '<p class="subtitle">Belum ada soal.</p>'; return; }
+    if (hanyaBelumKunci && data.length === 0) { cont.innerHTML = '<div class="kunci-ringkasan ok">✔ Semua soal di tampilan ini sudah punya kunci jawaban.</div>'; return; }
     if (data.length === 0) { cont.innerHTML = '<p class="subtitle">Tidak ada soal yang cocok dengan filter/tab ini. Klik "Tambah Soal Manual" untuk membuat soal baru di tab ini.</p>'; return; }
-    cont.innerHTML = data.map((s, i) => {
+    const ringkasanKunci = jumlahBelumKunci > 0
+      ? `<div class="kunci-ringkasan warn">⚠ <strong>${jumlahBelumKunci}</strong> dari ${jumlahTampilSemua} soal <strong>belum ada kunci jawaban</strong> (ditandai garis merah). Centang "Belum ada kunci saja" untuk menyaringnya, lalu klik <em>Ubah</em> untuk memilih kunci.</div>`
+      : (jumlahTampilSemua > 0 ? `<div class="kunci-ringkasan ok">✔ Semua ${jumlahTampilSemua} soal sudah punya kunci jawaban.</div>` : '');
+    cont.innerHTML = ringkasanKunci + data.map((s, i) => {
       const arsip = (s.status || 'aktif') === 'arsip';
       const dipakai = dipakaiDi[s.id];
+      const stKunci = statusKunciSoal_(s);
+      const badgeKunci = stKunci.ada
+        ? `<span class="badge ok" title="Kunci jawaban sudah ditetapkan">✔ Kunci: ${escapeHtml_(stKunci.label)}</span>`
+        : (stKunci.manual ? `<span class="badge warn" title="Essay tanpa kata kunci, dikoreksi manual">✎ Koreksi manual</span>` : `<span class="badge no" title="Kunci jawaban belum ditetapkan">⚠ Belum ada kunci</span>`);
       return `
-      <div class="soal-item">
+      <div class="soal-item${(!stKunci.ada && !stKunci.manual) ? ' soal-tanpa-kunci' : ''}">
         <div class="soal-item-nomor">${i + 1}</div>
         <div class="soal-item-body">
-          <div class="meta">${labelKategori(s.kategori)}${s.subkategori ? ' • ' + escapeHtml_(s.subkategori) : ''}${s.topik ? ' • ' + escapeHtml_(s.topik) : ''} • ${labelTipe(s.tipe)} • Bobot ${s.bobot} • ${labelKesulitan(s.tingkat_kesulitan)}${arsip ? ' • <span class="badge no">Arsip</span>' : ''}${dipakai ? ` • <span class="badge warn" title="${escapeHtml_(dipakai.join(', '))}">🕘 Pernah dipakai (${dipakai.length}×)</span>` : ''}</div>
+          <div class="meta">${labelKategori(s.kategori)}${s.subkategori ? ' • ' + escapeHtml_(s.subkategori) : ''}${s.topik ? ' • ' + escapeHtml_(s.topik) : ''} • ${labelTipe(s.tipe)} • Bobot ${s.bobot} • ${labelKesulitan(s.tingkat_kesulitan)} • ${badgeKunci}${arsip ? ' • <span class="badge no">Arsip</span>' : ''}${dipakai ? ` • <span class="badge warn" title="${escapeHtml_(dipakai.join(', '))}">🕘 Pernah dipakai (${dipakai.length}×)</span>` : ''}</div>
           <div>${kontenSoalHtml(s.pertanyaan)}</div>
           ${s.gambar ? tagGambarAman_(s.gambar, '', 'Gambar soal') : ''}
           ${s.audio ? `<audio controls src="${escapeHtml_(s.audio)}" style="margin-top:.5rem;max-width:320px"></audio>` : ''}
@@ -2817,7 +2902,15 @@ const Guru = {
   // sini interaktif:false (opsi/kotak jawaban tidak bisa diklik/diisi, murni
   // untuk dilihat guru sebelum dipakai di ujian sungguhan).
   htmlPratinjauSatuSoal(soal, nomor, total) {
-    return `<div class="question-card" style="margin-bottom:0">${renderKontenSoal(soal, { nomor, total, interaktif: false })}</div>`;
+    // Baris Bank Soal menyimpan opsi sebagai teks `opsi_json`, BUKAN `opsi` --
+    // tanpa soalDenganOpsi_ pilihan jawaban tidak ikut tampil di pratinjau.
+    const s = soalDenganOpsi_(soal);
+    const st = statusKunciSoal_(soal);
+    let infoKunci;
+    if (st.ada) infoKunci = `<div class="pratinjau-kunci ok">✔ Kunci jawaban sudah ditetapkan: <strong>${escapeHtml_(st.label)}</strong></div>`;
+    else if (st.manual) infoKunci = `<div class="pratinjau-kunci manual">✎ Soal Essay tanpa kata kunci — dikoreksi manual.</div>`;
+    else infoKunci = `<div class="pratinjau-kunci no">⚠ Kunci jawaban BELUM ditetapkan — klik Ubah pada soal ini untuk memilihnya.</div>`;
+    return `<div class="question-card" style="margin-bottom:0">${renderKontenSoal(s, { nomor, total, interaktif: false, tandaiKunci: st.indeks })}${infoKunci}</div>`;
   },
 
   bukaModalPratinjau(judul, subjudul, bodyHtml) {
