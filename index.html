@@ -24,19 +24,24 @@
 <meta name="apple-mobile-web-app-title" content="CBT Sekolah" id="app-apple-title">
 <meta name="mobile-web-app-capable" content="yes">
 
+<!-- PERFORMA: sambungan ke CDN dibuka lebih awal, dan CSS pihak ketiga (ikon & KaTeX)
+     dimuat TANPA memblokir tampilan halaman login (dulu halaman kosong sampai keduanya selesai diunduh). -->
+<link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
+<link rel="dns-prefetch" href="https://script.google.com">
 <link rel="stylesheet" href="style.css">
 <!-- Font Awesome: ikon sidebar & tombol (gaya dashboard modern) -->
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+<link rel="preload" as="style" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" onload="this.onload=null;this.rel='stylesheet'">
 <!-- KaTeX: render persamaan matematika (LaTeX) di dalam soal -->
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+<link rel="preload" as="style" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css" onload="this.onload=null;this.rel='stylesheet'">
+<noscript>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+</noscript>
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
-<!-- SheetJS: baca file .xlsx/.csv saat guru mengimpor bank soal / daftar siswa -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<!-- Dipakai HANYA untuk MEMBACA .docx yang diunggah guru (Import dari Word) — lihat
-     Guru.importSoalDariDocx di app.js. Membuat file .docx (Unduh Template) tidak
-     butuh pustaka ini, ditulis langsung tanpa dependensi (lihat buatDocxSederhana_). -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+<!-- SheetJS (baca/tulis .xlsx) & Mammoth (baca .docx) HANYA dipakai Portal Guru, jadi TIDAK lagi
+     dimuat di sini (dulu ~1,5 MB memblokir halaman untuk SETIAP siswa). Keduanya dimuat otomatis
+     saat dibutuhkan lewat muatPustaka_() di app.js. -->
 </head>
 <body>
 
@@ -372,7 +377,7 @@
       <div class="panel">
         <div class="toolbar">
           <select id="pilih-ujian-rekap" onchange="Guru.muatRekap()" style="max-width:320px"></select>
-          <button class="secondary" onclick="Guru.unduhRekapCSV()">Unduh CSV</button>
+          <button class="secondary" onclick="Guru.unduhRekapCSV()" title="Unduh rekap nilai (Lulus/Remedial + durasi pengerjaan) sebagai file Excel">⬇ Unduh Excel (.xlsx)</button>
           <button class="danger" title="Hapus nilai siswa yang dicentang pada tabel di bawah" onclick="Guru.hapusNilaiTerpilih()">🗑 Hapus Terpilih</button>
           <button class="danger" title="Hapus SEMUA nilai pada ujian yang sedang dipilih" onclick="Guru.hapusSemuaNilaiUjian()">🗑 Hapus Semua Nilai</button>
           <button class="secondary" title="Hitung ulang nilai semua siswa di ujian ini memakai jawaban yang sudah tersimpan, tanpa mengulang ujian -- berguna kalau ada perbaikan pada logika penilaian (mis. soal dengan opsi teracak)." onclick="Guru.hitungUlangNilai()">🔄 Hitung Ulang Nilai</button>
@@ -399,7 +404,7 @@
       <div class="panel">
         <div class="toolbar">
           <h3 style="margin:0">Analisis Butir Soal</h3>
-          <button class="secondary" onclick="Guru.unduhAnalisisSoalCSV()">⬇ Unduh CSV</button>
+          <button class="secondary" onclick="Guru.unduhAnalisisSoalCSV()">⬇ Unduh Excel (.xlsx)</button>
         </div>
         <div id="tabel-analisis-soal">Pilih ujian terlebih dahulu.</div>
       </div>
@@ -407,7 +412,7 @@
       <div class="panel">
         <div class="toolbar">
           <h3 style="margin:0">Analisis Jawaban Siswa (per soal)</h3>
-          <button class="secondary" onclick="Guru.unduhAnalisisJawabanCSV()">⬇ Unduh CSV</button>
+          <button class="secondary" onclick="Guru.unduhAnalisisJawabanCSV()">⬇ Unduh Excel (.xlsx)</button>
         </div>
         <div id="tabel-analisis-jawaban"></div>
       </div>
@@ -513,6 +518,7 @@
               <select id="filter-kelas-siswa" onchange="Guru.renderTabelSiswa()" style="width:auto;flex:1"><option value="">Semua Kelas</option></select>
             </label>
             <button class="secondary small" onclick="Guru.unduhAkunSiswa()" title="Unduh username & password siswa (.xlsx), satu sheet per kelas. Ikuti Filter Kelas: pilih satu kelas untuk mengunduh kelas itu saja.">⬇ Unduh Akun (.xlsx)</button>
+            <button class="secondary small" onclick="Guru.resetDeviceKelas('filter-kelas-siswa')" title="Lepas kunci perangkat semua siswa di kelas yang sedang dipilih pada Filter Kelas">🔓 Lepas Semua Perangkat</button>
             <button class="danger small" onclick="Guru.hapusKelas()" title="Hapus semua siswa di kelas yang sedang dipilih pada Filter Kelas">🗑 Hapus Kelas Ini</button>
           </div>
         </div>
@@ -552,6 +558,7 @@
             Filter Kelas:
             <select id="filter-kelas-login" onchange="Guru.renderTabelStatusLogin()" style="width:auto;flex:1"><option value="">Semua Kelas</option></select>
           </label>
+          <button class="accent small" title="Lepas perangkat semua siswa pada kelas yang dipilih di Filter Kelas (pilih 'Semua Kelas' untuk seluruh siswa)" onclick="Guru.resetDeviceKelas('filter-kelas-login')">🔓 Lepas Semua Perangkat</button>
           <button class="secondary icon" title="Segarkan sekarang" onclick="Guru.muatStatusLogin()">🔄</button>
         </div>
         <div id="tabel-status-login">Memuat...</div>
