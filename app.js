@@ -56,6 +56,40 @@ function toggleLihatSandi(idInput, tombol) {
   tombol.title = sedangTersembunyi ? 'Sembunyikan sandi' : 'Lihat sandi';
 }
 
+// ---------------- Pemuat pustaka berat (lazy) ----------------
+// SheetJS (.xlsx) & Mammoth (.docx) hanya dipakai guru. Dimuat saat pertama dibutuhkan
+// (atau di latar belakang setelah guru login), bukan di <head>, supaya halaman login &
+// layar ujian siswa tidak menunggu ~1,5 MB skrip yang tidak mereka pakai.
+const PUSTAKA_EKSTERNAL = {
+  xlsx: { url: 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js', siap: () => typeof XLSX !== 'undefined' },
+  mammoth: { url: 'https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js', siap: () => typeof mammoth !== 'undefined' }
+};
+const _janjiPustaka = {};
+function muatPustaka_(nama) {
+  const info = PUSTAKA_EKSTERNAL[nama];
+  if (!info) return Promise.reject(new Error('Pustaka tidak dikenal: ' + nama));
+  if (info.siap()) return Promise.resolve();
+  if (_janjiPustaka[nama]) return _janjiPustaka[nama];
+  _janjiPustaka[nama] = new Promise((resolve, reject) => {
+    const el = document.createElement('script');
+    el.src = info.url;
+    el.async = true;
+    el.onload = () => resolve();
+    el.onerror = () => {
+      delete _janjiPustaka[nama]; // boleh dicoba lagi nanti
+      el.remove();
+      reject(new Error('Gagal memuat pustaka ' + nama + '. Periksa koneksi internet lalu coba lagi.'));
+    };
+    document.head.appendChild(el);
+  });
+  return _janjiPustaka[nama];
+}
+// Pemanasan di latar belakang (tidak mengganggu): dipanggil setelah guru login.
+function pemanasanPustakaGuru_() {
+  const jalan = () => { muatPustaka_('xlsx').catch(() => {}); };
+  if (window.requestIdleCallback) requestIdleCallback(jalan, { timeout: 4000 }); else setTimeout(jalan, 1500);
+}
+
 // ---------------- Bar loading global (dipanggil dari api(), lihat di bawah) ----------------
 let jumlahRequestBerjalan = 0;
 function mulaiLoading() {
@@ -113,6 +147,27 @@ function tampilkanBadgeMode() {
   }
 }
 
+// Versi lebih rapi dari unduhXlsx: lebar kolom bebas, baris judul dibekukan,
+// ada filter, dan nama file/sheet disesuaikan. Dipakai unduhan analisis.
+async function unduhXlsxRapi_(namaFile, namaSheet, headers, rows, lebarKolom) {
+  try { await muatPustaka_('xlsx'); } catch (e) { toast(e.message, 'error'); return false; }
+  const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+  ws['!cols'] = headers.map((_, i) => ({ wch: (lebarKolom && lebarKolom[i]) || 14 }));
+  ws['!freeze'] = { xSplit: 0, ySplit: 1 };
+  ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: rows.length, c: headers.length - 1 } }) };
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, String(namaSheet).replace(/[\[\]*?\/\\:]/g, '-').slice(0, 31));
+  XLSX.writeFile(wb, namaFile);
+  return true;
+}
+
+// Nama ujian terpilih pada sebuah <select>, aman dipakai untuk nama file.
+function namaUjianUntukFile_(selectId) {
+  const sel = document.getElementById(selectId);
+  const t = sel && sel.selectedIndex >= 0 ? sel.options[sel.selectedIndex].text : '';
+  return (t && t !== 'Pilih ujian...' ? t : 'ujian').replace(/[\\/:*?"<>|]+/g, '-').trim().slice(0, 60);
+}
+
 // ----------------------------------------------------------------------------
 // PALET WARNA SIAP PAKAI + PEMBUAT PALET ACAK
 // ----------------------------------------------------------------------------
@@ -159,7 +214,8 @@ function unduhTeks(teks, filename) {
 // Bikin file .xlsx sungguhan (bukan teks koma) supaya saat dibuka di Excel/Google
 // Sheets datanya langsung rapi per kolom, tidak numpuk di satu kolom seperti CSV
 // kadang bermasalah di beberapa pengaturan region (koma vs titik koma).
-function unduhXlsx(filename, headers, rows) {
+async function unduhXlsx(filename, headers, rows) {
+  try { await muatPustaka_('xlsx'); } catch (e) { toast(e.message, 'error'); return; }
   const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
   ws['!cols'] = headers.map(() => ({ wch: 22 }));
   const wb = XLSX.utils.book_new();
@@ -624,9 +680,9 @@ function tagGambarAman_(url, kelas, altText) {
   const kelasAttr = kelas ? ` class="${escapeHtml_(kelas)}"` : '';
   const altAttr = ` alt="${escapeHtml_(altText || '')}"`;
   const fileId = idFileDrive_(u);
-  if (!fileId) return `<img${kelasAttr}${altAttr} src="${escapeHtml_(u)}">`;
+  if (!fileId) return `<img${kelasAttr}${altAttr} src="${escapeHtml_(u)}" decoding="async">`;
   const src = kandidatUrlDrive_(fileId)[0];
-  return `<img${kelasAttr}${altAttr} src="${escapeHtml_(src)}" data-drive-id="${escapeHtml_(fileId)}" data-drive-tahap="1">`;
+  return `<img${kelasAttr}${altAttr} src="${escapeHtml_(src)}" data-drive-id="${escapeHtml_(fileId)}" data-drive-tahap="1" decoding="async">`;
 }
 // Versi untuk kasus yang mengisi <img>.src lewat JS langsung (preview upload, dsb.)
 // alih-alih lewat innerHTML -- tetap dipasangi penanda fallback yang sama.
@@ -728,6 +784,7 @@ async function perkecilGambar_(bagian) {
 // kirim/tarik data di Pengaturan, lihat Guru.kirimDataLokalKeSheet/tarikDataDariSheet) ----------------
 const LOCAL_DB_KEY = 'cbt_local_db_v1';
 function bacaDbLokalMentah() {
+  try { LocalBackend.flush(); } catch (e) { /* belum ada penulisan tertunda */ }
   const kosong = () => ({ guru: [], siswa: [], bankSoal: [], ujian: [], sesi: [], log: [] });
   try {
     const raw = localStorage.getItem(LOCAL_DB_KEY);
@@ -1093,7 +1150,14 @@ const LocalBackend = (function () {
     return db;
   }
 
-  function simpan() {
+  // PERFORMA (Mode Lokal): JSON.stringify seluruh database (bisa berisi banyak gambar)
+  // lalu menulisnya ke localStorage di SETIAP aksi -- termasuk tiap jawaban & ping --
+  // membuat aplikasi tersendat. Sekarang penulisan digabung (maks. 1x per 400 ms) dan
+  // dipaksa tuntas saat halaman ditutup/disembunyikan, jadi data tetap aman.
+  let _simpanTimer = null;
+  function tulisSekarang() {
+    clearTimeout(_simpanTimer); _simpanTimer = null;
+    if (!db) return true;
     try {
       localStorage.setItem(DB_KEY, JSON.stringify(db));
       return true;
@@ -1102,6 +1166,12 @@ const LocalBackend = (function () {
       return false;
     }
   }
+  function simpan() {
+    if (_simpanTimer === null) _simpanTimer = setTimeout(tulisSekarang, 400);
+    return true;
+  }
+  window.addEventListener('pagehide', () => { if (_simpanTimer !== null) tulisSekarang(); });
+  document.addEventListener('visibilitychange', () => { if (document.hidden && _simpanTimer !== null) tulisSekarang(); });
 
   function clone(x) { return JSON.parse(JSON.stringify(x)); }
   function genId(prefix) { return prefix + '_' + Math.random().toString(36).slice(2, 8) + Date.now().toString(36).slice(-5); }
@@ -1482,6 +1552,17 @@ const LocalBackend = (function () {
         if (s) { s.device_id = ''; s.last_ping = ''; simpan(); }
         return { ok: true };
       }
+      case 'resetDeviceKelas': {
+        const kelas = String(data.kelas || '').trim();
+        let count = 0;
+        D.siswa.forEach(s => {
+          if (kelas && String(s.kelas || '').trim() !== kelas) return;
+          if (s.device_id) count++;
+          s.device_id = ''; s.last_ping = '';
+        });
+        simpan();
+        return { ok: true, count };
+      }
       case 'getPemantauanUjian': {
         const ujian = D.ujian.find(u => u.id === data.ujianId);
         if (!ujian) return { ok: false, error: 'Ujian tidak ditemukan.' };
@@ -1752,7 +1833,7 @@ const LocalBackend = (function () {
     }
   }
 
-  return { route };
+  return { route, flush: tulisSekarang };
 })();
 
 // ----------------------------------------------------------------------------
@@ -1842,6 +1923,7 @@ const Auth = {
         UI.tampilkan('guru-portal');
         document.getElementById('guru-nama-label').textContent = res.user.nama;
         Guru.init();
+        pemanasanPustakaGuru_();
       } else {
         UI.tampilkan('siswa-portal');
         document.getElementById('siswa-nama-label').textContent = res.user.nama;
@@ -2074,14 +2156,28 @@ const UI = {
       'tab-bank-soal': () => Guru.muatBankSoal(),
       'tab-ujian': () => Guru.muatDaftarUjian(),
       'tab-siswa': () => Guru.muatDaftarSiswa(),
-      'tab-rekap': () => { if (document.getElementById('pilih-ujian-rekap').value) Guru.muatRekap(); },
-      'tab-analisis': () => { if (document.getElementById('pilih-ujian-analisis').value) Guru.muatAnalisisSoal(); },
-      'tab-pelanggaran': () => { if (document.getElementById('pilih-ujian-log').value) Guru.muatLogPelanggaran(); },
-      'tab-pemantauan': () => { if (document.getElementById('pilih-ujian-pemantauan').value) Guru.muatPemantauan(); },
+      'tab-rekap': () => { if (document.getElementById('pilih-ujian-rekap').value) return Guru.muatRekap(); },
+      'tab-analisis': () => { if (document.getElementById('pilih-ujian-analisis').value) return Guru.muatAnalisisSoal(); },
+      'tab-pelanggaran': () => { if (document.getElementById('pilih-ujian-log').value) return Guru.muatLogPelanggaran(); },
+      'tab-pemantauan': () => { if (document.getElementById('pilih-ujian-pemantauan').value) return Guru.muatPemantauan(); },
       'tab-login': () => Guru.muatStatusLogin()
     };
     const fn = refreshMap[tabId];
-    if (fn) state.autoRefreshHandle = setInterval(fn, CONFIG.REALTIME_POLL_MS);
+    if (!fn) return;
+    // PERFORMA: (1) lewati saat tab/browser tidak sedang dilihat, (2) jangan menumpuk
+    // permintaan baru selagi yang sebelumnya belum selesai (Apps Script kadang butuh
+    // beberapa detik -- tanpa ini permintaan menumpuk & seluruh aplikasi terasa macet),
+    // (3) segarkan sekali begitu tab kembali dilihat.
+    let sedangJalan = false;
+    const putaran = async () => {
+      if (document.hidden || sedangJalan) return;
+      sedangJalan = true;
+      try { await fn(); } catch (e) { /* abaikan, putaran berikutnya mencoba lagi */ } finally { sedangJalan = false; }
+    };
+    state.autoRefreshHandle = setInterval(putaran, CONFIG.REALTIME_POLL_MS);
+    if (state._autoRefreshVis) document.removeEventListener('visibilitychange', state._autoRefreshVis);
+    state._autoRefreshVis = () => { if (!document.hidden) putaran(); };
+    document.addEventListener('visibilitychange', state._autoRefreshVis);
   },
 
   bukaPengaturanServer() {
@@ -3163,6 +3259,7 @@ const Guru = {
     const inputGambar = document.getElementById('input-import-soal-gambar');
     const reader = new FileReader();
     reader.onload = async (e) => {
+      try { await muatPustaka_('xlsx'); } catch (err) { toast(err.message, 'error'); ev.target.value = ''; return; }
       const wb = XLSX.read(e.target.result, { type: 'binary' });
       const sheet = wb.Sheets[wb.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 }).filter(r => r.some(c => String(c || '').trim()));
@@ -3200,10 +3297,10 @@ const Guru = {
   // (mis. Pertanyaan/Opsi) dipakai sbg <img> inline dlm teks kaya (lihat kontenSoalHtml).
   // Input "Pilih Gambar Pendukung" (petaGambar/cocok nama file) TETAP didukung sbg
   // cara alternatif -- keduanya bisa dipakai sekaligus dlm 1 file yg sama.
-  importSoalDariDocx(ev) {
+  async importSoalDariDocx(ev) {
     const file = ev.target.files[0];
     if (!file) return;
-    if (typeof mammoth === 'undefined') { toast('Pustaka pembaca .docx belum termuat. Periksa koneksi internet lalu muat ulang halaman.', 'error'); ev.target.value = ''; return; }
+    try { await muatPustaka_('mammoth'); } catch (err) { toast('Pustaka pembaca .docx belum termuat. ' + err.message, 'error'); ev.target.value = ''; return; }
     const inputGambar = document.getElementById('input-import-soal-docx-gambar');
     const reader = new FileReader();
     reader.onload = async (e) => {
@@ -3461,13 +3558,14 @@ const Guru = {
     const cont = document.getElementById('tabel-rekap');
     const data = state.guru._rekapAktif || [];
     if (data.length === 0) { cont.innerHTML = '<p class="subtitle">Belum ada siswa yang <strong>menyelesaikan</strong> ujian ini (siswa yang masih mengerjakan tidak dihitung di sini — lihat tab "Pemantauan Ujian" untuk yang sedang berlangsung).</p>'; return; }
-    cont.innerHTML = `<table class="ledger"><thead><tr><th style="width:2rem"><input type="checkbox" id="rekap-pilih-semua" title="Pilih semua" onchange="Guru.pilihSemuaRekap(this.checked)"></th><th>Nama</th><th>Kelas</th><th>Nilai</th><th>Status</th><th>Pelanggaran</th><th>Selesai</th><th></th></tr></thead><tbody>` +
+    cont.innerHTML = `<table class="ledger"><thead><tr><th style="width:2rem"><input type="checkbox" id="rekap-pilih-semua" title="Pilih semua" onchange="Guru.pilihSemuaRekap(this.checked)"></th><th>Nama</th><th>Kelas</th><th>Nilai</th><th>Status</th><th>Pelanggaran</th><th>Selesai</th><th>Durasi</th><th></th></tr></thead><tbody>` +
       data.map(r => `<tr>
         <td><input type="checkbox" class="rekap-cek" value="${escapeHtml_(r.sesiId || '')}" ${r.sesiId ? '' : 'disabled'}></td>
         <td>${escapeHtml_(r.nama)}</td><td>${escapeHtml_(r.kelas)}</td><td><strong>${r.nilai}</strong></td>
         <td><span class="badge ${String(r.lulus) === 'true' ? 'ok' : 'no'}">${String(r.lulus) === 'true' ? 'Lulus' : 'Remedial'}</span></td>
         <td>${r.pelanggaran || 0} ${r.status === 'diblokir' ? '<span class="badge warn">Diblokir</span>' : ''}</td>
         <td style="font-size:.8rem">${formatTanggal(r.selesai)}</td>
+        <td style="font-size:.8rem;white-space:nowrap">${formatDurasi_(hitungDurasiDetik_(r.mulai, r.selesai))}</td>
         <td class="aksi">${r.sesiId ? `<button class="danger small" title="Hapus nilai siswa ini (siswa bisa mengikuti ujian ini lagi)" onclick="Guru.hapusNilaiSatu('${escapeHtml_(r.sesiId)}')">🗑 Hapus</button>` : ''}</td>
       </tr>`).join('') + `</tbody></table>`;
   },
@@ -3507,14 +3605,51 @@ const Guru = {
     return Guru.hapusNilaiIds_(ids, `Hapus SEMUA ${ids.length} nilai pada ujian ini? Jawaban & nilai seluruh siswa dihapus PERMANEN dan semuanya bisa mengerjakan ujian ini lagi. Tidak bisa dibatalkan.`);
   },
 
-  unduhRekapCSV() {
+  // Unduh rekap nilai sebagai file Excel (.xlsx) sungguhan: kolom langsung rapi
+  // (tidak menumpuk di satu kolom seperti CSV di Excel berpengaturan regional
+  // Indonesia yang memakai titik koma), status tertulis "Lulus"/"Remedial"
+  // (bukan TRUE/FALSE), dan ada kolom durasi pengerjaan.
+  async unduhRekapCSV() {
     const data = state.guru._rekapAktif;
     if (!data || data.length === 0) { toast('Tidak ada data untuk diunduh.', 'error'); return; }
-    let csv = 'Nama,Kelas,Nilai,Lulus,Pelanggaran,Selesai\n';
-    data.forEach(r => { csv += `"${r.nama}","${r.kelas}",${r.nilai},${r.lulus},${r.pelanggaran || 0},"${r.selesai}"\n`; });
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob); a.download = 'rekap-nilai.csv'; a.click();
+    try { await muatPustaka_('xlsx'); } catch (e) { toast(e.message, 'error'); return; }
+    const sel = document.getElementById('pilih-ujian-rekap');
+    const judulUjian = sel && sel.selectedIndex >= 0 ? sel.options[sel.selectedIndex].text : 'Ujian';
+    const urut = [...data].sort((a, b) =>
+      String(a.kelas || '').localeCompare(String(b.kelas || ''), 'id', { numeric: true }) ||
+      String(a.nama || '').localeCompare(String(b.nama || ''), 'id'));
+    const fmtWaktu = iso => {
+      if (!iso) return '';
+      const d = new Date(iso);
+      if (isNaN(d)) return String(iso);
+      const p = n => String(n).padStart(2, '0');
+      return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+    };
+    const headers = ['No', 'Nama', 'Kelas', 'Nilai', 'Keterangan', 'Pelanggaran', 'Mulai', 'Selesai', 'Durasi Pengerjaan', 'Durasi (menit)'];
+    const rows = urut.map((r, i) => {
+      const lulus = r.lulus === true || String(r.lulus).toLowerCase() === 'true';
+      const lulusSalah = r.lulus === false || String(r.lulus).toLowerCase() === 'false';
+      const detik = hitungDurasiDetik_(r.mulai, r.selesai);
+      const nilai = r.nilai === '' || r.nilai === null || r.nilai === undefined ? '' : Number(r.nilai);
+      return [
+        i + 1, r.nama || '', r.kelas || '',
+        isNaN(nilai) ? r.nilai : nilai,
+        lulus ? 'Lulus' : (lulusSalah ? 'Remedial' : '-'),
+        Number(r.pelanggaran) || 0,
+        fmtWaktu(r.mulai), fmtWaktu(r.selesai),
+        detik === null ? '-' : formatDurasi_(detik),
+        detik === null ? '' : Math.round(detik / 6) / 10   // menit, 1 desimal
+      ];
+    });
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+    ws['!cols'] = [{ wch: 5 }, { wch: 30 }, { wch: 10 }, { wch: 8 }, { wch: 12 }, { wch: 12 }, { wch: 18 }, { wch: 18 }, { wch: 20 }, { wch: 14 }];
+    ws['!freeze'] = { xSplit: 0, ySplit: 1 };
+    ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: rows.length, c: headers.length - 1 } }) };
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Rekap Nilai');
+    const namaFile = 'rekap-nilai-' + judulUjian.replace(/[\\/:*?"<>|]+/g, '-').trim().slice(0, 60) + '.xlsx';
+    XLSX.writeFile(wb, namaFile);
+    toast(`Rekap ${rows.length} siswa berhasil diunduh.`, 'success');
   },
 
   // Menghitung ulang nilai SEMUA siswa yang sudah selesai di ujian yang
@@ -3593,15 +3728,22 @@ const Guru = {
       </tr>`).join('') + `</tbody></table>`;
   },
 
-  unduhAnalisisSoalCSV() {
+  async unduhAnalisisSoalCSV() {
     const data = state.guru._analisisSoal;
     if (!data || data.length === 0) { toast('Tidak ada data untuk diunduh.', 'error'); return; }
-    let csv = 'No,Pertanyaan,Tipe,Tingkat Kesulitan (Guru),Jumlah Benar,Jumlah Sebagian Benar,Jumlah Salah,Jumlah Kosong,Persen Benar,Tingkat Kesulitan (Otomatis)\n';
-    data.forEach(s => {
-      const pertanyaan = String(bersihkanHtml_(s.pertanyaan)).replace(/"/g, '""');
-      csv += `${s.nomor},"${pertanyaan}",${labelTipe(s.tipe)},${labelKesulitan(s.tingkatKesulitanGuru)},${s.jumlahBenar},${s.jumlahSebagianBenar},${s.jumlahSalah},${s.jumlahKosong},${s.persenBenar}%,${s.kesulitanOtomatis}\n`;
+    const labelOto = { mudah: 'Mudah', sedang: 'Sedang', sulit: 'Sulit', '-': '-' };
+    const headers = ['No', 'Pertanyaan', 'Tipe', 'Tingkat Kesulitan (Guru)', 'Jumlah Benar', 'Jumlah Sebagian Benar', 'Jumlah Salah', 'Jumlah Kosong', 'Persen Benar (%)', 'Tingkat Kesulitan (Otomatis)'];
+    const rows = data.map(s => {
+      const persen = parseFloat(String(s.persenBenar).replace('%', ''));
+      return [
+        s.nomor, String(bersihkanHtml_(s.pertanyaan)), labelTipe(s.tipe), labelKesulitan(s.tingkatKesulitanGuru),
+        Number(s.jumlahBenar) || 0, Number(s.jumlahSebagianBenar) || 0, Number(s.jumlahSalah) || 0, Number(s.jumlahKosong) || 0,
+        isNaN(persen) ? '' : persen, labelOto[s.kesulitanOtomatis] || s.kesulitanOtomatis
+      ];
     });
-    unduhTeksSebagaiFile_(csv, 'analisis-soal.csv');
+    const ok = await unduhXlsxRapi_('analisis-soal-' + namaUjianUntukFile_('pilih-ujian-analisis') + '.xlsx', 'Analisis Soal', headers, rows,
+      [5, 60, 16, 22, 12, 20, 12, 13, 15, 26]);
+    if (ok) toast(`Analisis ${rows.length} soal berhasil diunduh.`, 'success');
   },
 
   renderAnalisisJawaban() {
@@ -3620,16 +3762,23 @@ const Guru = {
       </tr>`).join('') + `</tbody></table></div>`;
   },
 
-  unduhAnalisisJawabanCSV() {
+  async unduhAnalisisJawabanCSV() {
     const soalList = state.guru._analisisSoal;
     const siswaList = state.guru._analisisSiswa;
     if (!siswaList || siswaList.length === 0) { toast('Tidak ada data untuk diunduh.', 'error'); return; }
     const labelSimbol = { benar: 'Benar', sebagian: 'Sebagian', salah: 'Salah', kosong: 'Kosong', na: 'Kosong' };
-    let csv = 'Nama,Kelas,Nilai,' + soalList.map(s => `"No ${s.nomor}"`).join(',') + '\n';
-    siswaList.forEach(sw => {
-      csv += `"${sw.nama}","${sw.kelas}",${sw.nilai},` + soalList.map(s => labelSimbol[sw.jawabanDetail[s.soalId]] || 'Kosong').join(',') + '\n';
+    const headers = ['No', 'Nama', 'Kelas', 'Nilai', ...soalList.map(s => 'No ' + s.nomor)];
+    const urut = [...siswaList].sort((a, b) =>
+      String(a.kelas || '').localeCompare(String(b.kelas || ''), 'id', { numeric: true }) ||
+      String(a.nama || '').localeCompare(String(b.nama || ''), 'id'));
+    const rows = urut.map((sw, i) => {
+      const nilai = Number(sw.nilai);
+      return [i + 1, sw.nama || '', sw.kelas || '', isNaN(nilai) ? sw.nilai : nilai,
+        ...soalList.map(s => labelSimbol[sw.jawabanDetail[s.soalId]] || 'Kosong')];
     });
-    unduhTeksSebagaiFile_(csv, 'analisis-jawaban-siswa.csv');
+    const ok = await unduhXlsxRapi_('analisis-jawaban-' + namaUjianUntukFile_('pilih-ujian-analisis') + '.xlsx', 'Analisis Jawaban', headers, rows,
+      [5, 30, 10, 8, ...soalList.map(() => 9)]);
+    if (ok) toast(`Analisis jawaban ${rows.length} siswa berhasil diunduh.`, 'success');
   },
 
   // ---------------- PEMANTAUAN UJIAN (live monitoring) ----------------
@@ -3815,6 +3964,24 @@ const Guru = {
     if (res.ok) { toast('Kunci perangkat dilepas.', 'success'); Guru.muatDaftarSiswa(); Guru.renderTabelStatusLogin(); }
   },
 
+  // Lepas perangkat SEMUA siswa di satu kelas sekali klik (kelas diambil dari
+  // dropdown Filter Kelas pada tab yang sedang dibuka; kosong = semua kelas).
+  async resetDeviceKelas(sumberFilterId) {
+    const kelas = document.getElementById(sumberFilterId)?.value || '';
+    const semua = state.guru.daftarSiswa || [];
+    const target = kelas ? semua.filter(s => s.kelas === kelas) : semua;
+    const terkunci = target.filter(s => s.online).length;
+    if (target.length === 0) { toast('Tidak ada siswa untuk dilepas.', 'error'); return; }
+    if (terkunci === 0) { toast(kelas ? `Tidak ada perangkat yang terkunci di kelas ${kelas}.` : 'Tidak ada perangkat yang terkunci.', 'info'); return; }
+    const label = kelas ? `kelas "${kelas}"` : 'SEMUA KELAS';
+    if (!confirm(`Lepas perangkat ${terkunci} siswa yang sedang terkunci di ${label}?\n\nSiswa bisa login lagi dari perangkat mana pun.`)) return;
+    const res = await api('resetDeviceKelas', { kelas });
+    if (res.ok) {
+      toast(`Perangkat ${res.count} siswa di ${label} berhasil dilepas.`, 'success');
+      Guru.muatDaftarSiswa(); Guru.muatStatusLogin();
+    } else toast('Gagal melepas perangkat: ' + res.error, 'error');
+  },
+
   // ---------------- PENGATURAN KUNCI PERANGKAT (tombol Aktif / Tidak Aktif) ----------------
   // Aktif (default): perilaku lama, satu akun siswa terkunci ke satu perangkat.
   // Tidak Aktif: siswa boleh login/lanjut dari perangkat mana pun tanpa ditolak
@@ -3929,9 +4096,10 @@ const Guru = {
   // Unduh username & password siswa (.xlsx), SATU SHEET PER KELAS (siap dicetak/dibagikan
   // ke wali kelas). Memakai Filter Kelas yang sedang dipilih: pilih satu kelas -> hanya
   // kelas itu; "Semua Kelas" -> semua kelas, masing-masing di sheet sendiri.
-  unduhAkunSiswa() {
+  async unduhAkunSiswa() {
     const semua = state.guru.daftarSiswa || [];
     if (semua.length === 0) { toast('Belum ada data siswa untuk diunduh.', 'error'); return; }
+    try { await muatPustaka_('xlsx'); } catch (e) { toast(e.message, 'error'); return; }
     const filterKelas = document.getElementById('filter-kelas-siswa')?.value || '';
     const data = filterKelas ? semua.filter(s => s.kelas === filterKelas) : semua;
     if (data.length === 0) { toast('Tidak ada siswa di kelas ini.', 'error'); return; }
@@ -3974,6 +4142,7 @@ const Guru = {
     const kelasOverride = document.getElementById('siswa-import-kelas').value.trim();
     const reader = new FileReader();
     reader.onload = async (e) => {
+      try { await muatPustaka_('xlsx'); } catch (err) { toast(err.message, 'error'); ev.target.value = ''; return; }
       const wb = XLSX.read(e.target.result, { type: 'binary' });
       const sheet = wb.Sheets[wb.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 }).slice(1);
@@ -4302,6 +4471,22 @@ function formatTanggal(iso) {
   try { return new Date(iso).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' }); } catch (e) { return iso; }
 }
 
+// Lama pengerjaan (detik) = waktu selesai - waktu mulai. null kalau datanya tidak lengkap.
+function hitungDurasiDetik_(mulai, selesai) {
+  if (!mulai || !selesai) return null;
+  const a = new Date(mulai).getTime(), b = new Date(selesai).getTime();
+  if (isNaN(a) || isNaN(b) || b < a) return null;
+  return Math.round((b - a) / 1000);
+}
+
+// 3725 detik -> "1 jam 2 mnt 5 dtk"; 750 -> "12 mnt 30 dtk"
+function formatDurasi_(detik) {
+  if (detik === null || detik === undefined) return '-';
+  detik = Math.max(Math.floor(Number(detik) || 0), 0);
+  const j = Math.floor(detik / 3600), m = Math.floor((detik % 3600) / 60), d = detik % 60;
+  return (j ? j + ' jam ' : '') + ((j || m) ? m + ' mnt ' : '') + d + ' dtk';
+}
+
 // Dipakai tab "Pemantauan Ujian" (sisa waktu) & "Status Login" (lama tidak aktif).
 function formatSisaWaktu(detik) {
   if (detik === null || detik === undefined) return '-';
@@ -4445,18 +4630,47 @@ const ExamEngine = {
     ExamEngine.renderGridSoal();
   },
 
-  pilihJawabanTunggal(soalId, i) { state.jawaban[soalId] = i; simpanCacheLokal(); ExamEngine.renderSoal(); },
+  // PERFORMA: memilih opsi cukup mengganti kelas "selected" di elemen yang sudah ada,
+  // TIDAK membangun ulang seluruh soal (yang memuat ulang gambar & menjalankan ulang
+  // KaTeX tiap klik -- penyebab utama layar ujian terasa berat di HP).
+  pilihJawabanTunggal(soalId, i) {
+    state.jawaban[soalId] = i; simpanCacheLokal();
+    const items = document.querySelectorAll('#question-card .opsi-item');
+    if (items.length) items.forEach((el, k) => el.classList.toggle('selected', k === i));
+    else ExamEngine.renderSoal();
+    ExamEngine.renderGridSoal();
+  },
   toggleJawabanGanda(soalId, i) {
     const arr = state.jawaban[soalId] || [];
     const idx = arr.indexOf(i);
     if (idx === -1) arr.push(i); else arr.splice(idx, 1);
-    state.jawaban[soalId] = arr; simpanCacheLokal(); ExamEngine.renderSoal();
+    state.jawaban[soalId] = arr; simpanCacheLokal();
+    const items = document.querySelectorAll('#question-card .opsi-item');
+    if (items.length) {
+      items.forEach((el, k) => {
+        const dipilih = arr.includes(k);
+        el.classList.toggle('selected', dipilih);
+        const huruf = el.querySelector('.opsi-huruf');
+        if (huruf) huruf.textContent = dipilih ? '\u2713' : String.fromCharCode(65 + k);
+      });
+    } else ExamEngine.renderSoal();
+    ExamEngine.renderGridSoal();
   },
   pilihJodoh(soalId, i, val) {
     const jwb = state.jawaban[soalId] || {};
     jwb[i] = val; state.jawaban[soalId] = jwb; simpanCacheLokal(); ExamEngine.renderGridSoal();
   },
-  isiJawabanUraian(soalId, val) { state.jawaban[soalId] = val; simpanCacheLokal(); ExamEngine.renderGridSoal(); },
+  // PERFORMA: jawaban uraian diketik per huruf -- simpan ke localStorage & gambar ulang
+  // kotak nomor cukup setelah siswa berhenti mengetik sejenak (state langsung terbarui,
+  // jadi tidak ada jawaban yang hilang saat dikumpulkan).
+  isiJawabanUraian(soalId, val) {
+    state.jawaban[soalId] = val;
+    clearTimeout(state._uraianTimer);
+    state._uraianTimer = setTimeout(() => {
+      if (!state.sesiId || state.submitting) return;
+      simpanCacheLokal(); ExamEngine.renderGridSoal();
+    }, 350);
+  },
 
   mulaiTimer() {
     clearInterval(state.timerHandle);
@@ -4501,6 +4715,7 @@ const ExamEngine = {
   async submitUjian() {
     if (state.submitting) return;
     state.submitting = true;
+    clearTimeout(state._uraianTimer);
     clearInterval(state.timerHandle);
     clearInterval(state.autosaveHandle);
     AntiCheat.nonaktifkan();
