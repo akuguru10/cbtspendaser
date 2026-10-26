@@ -18,7 +18,7 @@
 <link rel="icon" type="image/png" sizes="32x32" href="icons/logo-test-32.png" id="app-favicon">
 <link rel="icon" type="image/png" sizes="192x192" href="icons/logo-test-192.png">
 <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png" id="app-apple-icon">
-<meta name="theme-color" content="#4a5cf0">
+<meta name="theme-color" content="#d3e3db">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="CBT Sekolah" id="app-apple-title">
@@ -168,42 +168,44 @@
   <main class="main">
     <!-- ---------- TAB: DASHBOARD ---------- -->
     <section id="tab-dashboard">
-      <h2 id="dashboard-sapaan">Dashboard</h2>
-      <p class="subtitle">Ringkasan cepat aplikasi CBT — pantau bank soal, ujian, dan siswa dari satu tempat.</p>
+      <div class="dash-top">
+        <div><h2>Dashboard</h2><span class="dash-chip" id="dash-mode-chip"></span></div>
+        <label class="dash-search"><i class="fa-solid fa-magnifying-glass"></i><input type="text" placeholder="Cari ujian atau token..." oninput="Guru.filterDashboardUjian(this.value)"></label>
+      </div>
+
+      <div class="dash-hero">
+        <div class="dash-avatar" id="dash-avatar">G</div>
+        <div class="dash-hero-body">
+          <span class="dash-date" id="dash-date"></span>
+          <h3>Selamat datang, <span id="dash-nama">Guru</span></h3>
+          <p id="dash-ringkas">Memuat ringkasan...</p>
+          <div class="dash-hero-btns">
+            <button onclick="UI.bukaModalUjian()"><i class="fa-solid fa-plus"></i> Buat Ujian Baru</button>
+            <button class="secondary" onclick="UI.gantiTabGuru('tab-bank-soal')"><i class="fa-solid fa-layer-group"></i> Kelola Bank Soal</button>
+            <button class="secondary" onclick="UI.gantiTabGuru('tab-rekap')"><i class="fa-solid fa-clipboard-check"></i> Rekap Nilai</button>
+          </div>
+        </div>
+        <i class="fa-solid fa-graduation-cap dash-hero-deco"></i>
+      </div>
 
       <div class="dash-grid" id="dashboard-cards">
         <div class="dash-card dash-card-skeleton">Memuat ringkasan...</div>
       </div>
 
-      <div class="dash-section-head">
-        <h3>Aksi Cepat</h3>
-      </div>
-      <div class="aksi-cards-grid dash-aksi-grid">
-        <div class="aksi-card aksi-card-utama" onclick="UI.gantiTabGuru('tab-bank-soal')">
-          <div class="aksi-card-ico"><i class="fa-solid fa-layer-group"></i></div>
-          <div class="aksi-card-judul">Kelola Bank Soal</div>
-          <div class="aksi-card-desc">Tambah soal manual, atau import dari Excel/Word.</div>
+      <div class="dash-cols">
+        <div class="panel">
+          <div class="dash-ph"><h3>Bank soal per mapel</h3><p>Jumlah soal aktif pada 7 mapel terbanyak</p></div>
+          <div id="dash-chart-mapel"></div>
         </div>
-        <div class="aksi-card" onclick="UI.bukaModalUjian()">
-          <div class="aksi-card-ico"><i class="fa-solid fa-calendar-plus"></i></div>
-          <div class="aksi-card-judul">Buat Ujian Baru</div>
-          <div class="aksi-card-desc">Jadwalkan ujian baru dari soal yang sudah ada.</div>
-        </div>
-        <div class="aksi-card" onclick="UI.bukaModalSiswa()">
-          <div class="aksi-card-ico"><i class="fa-solid fa-user-plus"></i></div>
-          <div class="aksi-card-judul">Tambah Siswa</div>
-          <div class="aksi-card-desc">Daftarkan akun siswa baru secara manual.</div>
-        </div>
-        <div class="aksi-card" onclick="UI.gantiTabGuru('tab-rekap')">
-          <div class="aksi-card-ico"><i class="fa-solid fa-clipboard-check"></i></div>
-          <div class="aksi-card-judul">Lihat Rekap Nilai</div>
-          <div class="aksi-card-desc">Cek hasil &amp; status kelulusan siswa per ujian.</div>
+        <div class="panel">
+          <div class="dash-ph"><h3>Status ujian</h3><p>Komposisi seluruh ujian yang terdaftar</p></div>
+          <div id="dash-donut"></div>
         </div>
       </div>
 
       <div class="dash-section-head">
-        <h3>Ujian Terbaru</h3>
-        <button type="button" class="secondary small" onclick="UI.gantiTabGuru('tab-ujian')">Lihat Semua &rarr;</button>
+        <h3>Ujian terbaru</h3>
+        <button type="button" class="secondary small" onclick="UI.gantiTabGuru('tab-ujian')">Lihat semua</button>
       </div>
       <div class="panel" id="dashboard-ujian-terbaru">Memuat...</div>
     </section>
@@ -377,10 +379,17 @@
       <div class="panel">
         <div class="toolbar">
           <select id="pilih-ujian-rekap" onchange="Guru.muatRekap()" style="max-width:320px"></select>
-          <button class="secondary" onclick="Guru.unduhRekapCSV()" title="Unduh rekap nilai (Lulus/Remedial + durasi pengerjaan) sebagai file Excel">⬇ Unduh Excel (.xlsx)</button>
+          <button class="secondary" onclick="Guru.unduhRekapCSV()" title="Unduh nilai sesuai Filter Kelas & pencarian yang sedang tampil (pilih satu kelas = nilai kelas itu saja)">⬇ Unduh (sesuai filter)</button>
+          <button class="secondary" onclick="Guru.unduhRekapCSV('semua')" title="Unduh nilai SEMUA kelas pada ujian ini: 1 sheet gabungan + 1 sheet per kelas">⬇ Semua Kelas</button>
+          <button class="secondary" onclick="Guru.unduhRekapCSV('semuaUjian')" title="Unduh nilai dari SEMUA ujian sekaligus (mengikuti Filter Kelas): 1 sheet gabungan + 1 sheet per kelas">⬇ Semua Ujian</button>
           <button class="danger" title="Hapus nilai siswa yang dicentang pada tabel di bawah" onclick="Guru.hapusNilaiTerpilih()">🗑 Hapus Terpilih</button>
-          <button class="danger" title="Hapus SEMUA nilai pada ujian yang sedang dipilih" onclick="Guru.hapusSemuaNilaiUjian()">🗑 Hapus Semua Nilai</button>
+          <button class="danger" title="Hapus SEMUA nilai pada ujian yang sedang dipilih. Kalau Filter Kelas/pencarian aktif, hanya yang sedang tampil yang dihapus." onclick="Guru.hapusSemuaNilaiUjian()">🗑 Hapus Semua Nilai</button>
           <button class="secondary" title="Hitung ulang nilai semua siswa di ujian ini memakai jawaban yang sudah tersimpan, tanpa mengulang ujian -- berguna kalau ada perbaikan pada logika penilaian (mis. soal dengan opsi teracak)." onclick="Guru.hitungUlangNilai()">🔄 Hitung Ulang Nilai</button>
+        </div>
+        <div class="filter-bar">
+          <input type="search" id="cari-rekap" placeholder="🔍 Cari nama siswa..." oninput="Guru.renderTabelRekap_()" autocomplete="off">
+          <select id="kelas-rekap" onchange="Guru.renderTabelRekap_()" title="Filter per kelas"><option value="">Semua Kelas</option></select>
+          <span class="filter-info" id="kelas-rekap-info"></span>
         </div>
         <div id="tabel-rekap">Pilih ujian terlebih dahulu.</div>
       </div>
@@ -414,6 +423,11 @@
           <h3 style="margin:0">Analisis Jawaban Siswa (per soal)</h3>
           <button class="secondary" onclick="Guru.unduhAnalisisJawabanCSV()">⬇ Unduh Excel (.xlsx)</button>
         </div>
+        <div class="filter-bar">
+          <input type="search" id="cari-analisis" placeholder="🔍 Cari nama siswa..." oninput="Guru.renderAnalisisJawaban()" autocomplete="off">
+          <select id="kelas-analisis" onchange="Guru.renderAnalisisJawaban()" title="Filter per kelas"><option value="">Semua Kelas</option></select>
+          <span class="filter-info" id="kelas-analisis-info"></span>
+        </div>
         <div id="tabel-analisis-jawaban"></div>
       </div>
     </section>
@@ -424,6 +438,11 @@
       <p class="subtitle">Riwayat pelanggaran (pindah tab, keluar fullscreen, dll.) per ujian.</p>
       <div class="panel">
         <select id="pilih-ujian-log" onchange="Guru.muatLogPelanggaran()" style="max-width:320px;margin-bottom:1rem"></select>
+        <div class="filter-bar">
+          <input type="search" id="cari-log" placeholder="🔍 Cari nama siswa..." oninput="Guru.renderLogPelanggaran_()" autocomplete="off">
+          <select id="kelas-log" onchange="Guru.renderLogPelanggaran_()" title="Filter per kelas"><option value="">Semua Kelas</option></select>
+          <span class="filter-info" id="kelas-log-info"></span>
+        </div>
         <div id="tabel-log">Pilih ujian terlebih dahulu.</div>
       </div>
     </section>
@@ -452,6 +471,11 @@
           pernah mengerjakan sama sekali (soal diacak ulang, jawaban kosong, waktu mulai dari 0). Pakai ini hanya
           kalau memang perlu mengulang total dari awal.
         </p>
+        <div class="filter-bar">
+          <input type="search" id="cari-pemantauan" placeholder="🔍 Cari nama siswa..." oninput="Guru.renderTabelPemantauan()" autocomplete="off">
+          <select id="kelas-pemantauan" onchange="Guru.renderTabelPemantauan()" title="Filter per kelas"><option value="">Semua Kelas</option></select>
+          <span class="filter-info" id="kelas-pemantauan-info"></span>
+        </div>
         <div id="tabel-pemantauan">Pilih ujian terlebih dahulu.</div>
       </div>
     </section>
@@ -522,6 +546,7 @@
             <button class="danger small" onclick="Guru.hapusKelas()" title="Hapus semua siswa di kelas yang sedang dipilih pada Filter Kelas">🗑 Hapus Kelas Ini</button>
           </div>
         </div>
+        <div class="filter-bar"><input type="search" id="cari-siswa" placeholder="🔍 Cari nama / username..." oninput="Guru.renderTabelSiswa()" autocomplete="off"><span class="filter-info" id="cari-siswa-info"></span></div>
         <div id="daftar-siswa">Memuat...</div>
       </div>
     </section>
@@ -561,6 +586,7 @@
           <button class="accent small" title="Lepas perangkat semua siswa pada kelas yang dipilih di Filter Kelas (pilih 'Semua Kelas' untuk seluruh siswa)" onclick="Guru.resetDeviceKelas('filter-kelas-login')">🔓 Lepas Semua Perangkat</button>
           <button class="secondary icon" title="Segarkan sekarang" onclick="Guru.muatStatusLogin()">🔄</button>
         </div>
+        <div class="filter-bar"><input type="search" id="cari-login" placeholder="🔍 Cari nama / username..." oninput="Guru.renderTabelStatusLogin()" autocomplete="off"><span class="filter-info" id="cari-login-info"></span></div>
         <div id="tabel-status-login">Memuat...</div>
       </div>
     </section>
