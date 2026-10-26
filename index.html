@@ -651,22 +651,91 @@
         <button class="accent" style="margin-top:.6rem" onclick="Guru.simpanBranding()">Simpan Identitas Aplikasi</button>
       </div>
 
-      <div class="panel">
-        <h3>🎨 Palet Warna</h3>
-        <p class="subtitle">Palet warna berlaku untuk portal guru maupun portal siswa. Pilih salah satu palet siap pakai, acak palet baru, atau atur warna sendiri.</p>
-        <div id="palet-preset-list" class="palet-preset-list"></div>
-        <button class="secondary" style="margin-top:.8rem" onclick="Guru.acakPalet()">🎲 Acak Palet Warna</button>
-        <hr style="border:none;border-top:1px solid var(--c-line);margin:1.2rem 0">
-        <h4 style="margin:0 0 .6rem">Atur Warna Sendiri</h4>
-        <div class="theme-swatches">
-          <div class="swatch-field"><label>Warna utama</label><input type="color" id="tema-primary"></div>
-          <div class="swatch-field"><label>Warna sekunder</label><input type="color" id="tema-secondary"></div>
-          <div class="swatch-field"><label>Warna aksen</label><input type="color" id="tema-accent"></div>
-          <div class="swatch-field"><label>Latar</label><input type="color" id="tema-bg"></div>
-          <div class="swatch-field"><label>Teks</label><input type="color" id="tema-text"></div>
+      <div class="panel" id="panel-tampilan">
+        <h3>🎨 Tampilan &amp; Tema</h3>
+        <p class="subtitle">Berlaku untuk portal guru dan portal siswa. Setiap perubahan langsung terlihat di seluruh aplikasi (pratinjau); klik <b>Simpan Tema</b> di bagian bawah agar tersimpan.</p>
+
+        <div class="tm-sec">
+          <h4>1. Warna</h4>
+          <div class="tm-utama">
+            <div class="swatch-field"><label for="tema-primary">Warna utama</label><input type="color" id="tema-primary" oninput="Guru.ubahWarnaUtama()"></div>
+            <div class="field"><label for="tema-harmoni">Harmoni warna lain</label><select id="tema-harmoni" onchange="Guru.ubahWarnaUtama()"></select></div>
+          </div>
+          <label class="tm-check"><input type="checkbox" id="tema-selaras" checked> Ubah juga warna sekunder, aksen, latar &amp; teks mengikuti warna utama</label>
+          <p class="tm-hint">Pilih satu warna utama — seluruh warna aplikasi (sidebar, tombol, kartu, latar, grafik, tabel) ikut berubah selaras.</p>
+          <div class="tm-seg" id="tema-mode-seg">
+            <button type="button" data-m="light" onclick="Guru.setMode('light')">☀️ Terang</button>
+            <button type="button" data-m="dark" onclick="Guru.setMode('dark')">🌙 Gelap</button>
+            <button type="button" data-m="auto" onclick="Guru.setMode('auto')">🖥️ Ikut Perangkat</button>
+          </div>
+          <div id="palet-preset-list" class="palet-preset-list"></div>
+          <div class="tm-actions"><button class="secondary" onclick="Guru.acakPalet()">🎲 Acak Palet Warna</button></div>
+          <details class="tm-det">
+            <summary>Atur warna satu per satu (lanjutan)</summary>
+            <div class="theme-swatches" style="margin-top:.8rem">
+              <div class="swatch-field"><label>Warna sekunder</label><input type="color" id="tema-secondary" oninput="Guru.pratinjauTema()"></div>
+              <div class="swatch-field"><label>Warna aksen</label><input type="color" id="tema-accent" oninput="Guru.pratinjauTema()"></div>
+              <div class="swatch-field"><label>Latar</label><input type="color" id="tema-bg" oninput="Guru.pratinjauTema()"></div>
+              <div class="swatch-field"><label>Teks</label><input type="color" id="tema-text" oninput="Guru.pratinjauTema()"></div>
+            </div>
+          </details>
         </div>
-        <div style="margin-top:1.2rem">
-          <button class="accent" onclick="Guru.simpanTema()">Simpan Tema</button>
+
+        <div class="tm-sec">
+          <h4>2. Gaya Tampilan</h4>
+          <p class="tm-hint">Pilih gaya UI supaya tidak bosan. Kartu di bawah memakai warna Anda saat ini.</p>
+          <div id="gaya-galeri" class="gaya-galeri"></div>
+          <div class="tm-actions">
+            <button class="violet" onclick="Guru.acakGaya()">🎲 Acak Gaya</button>
+            <button class="secondary" onclick="Guru.acakTotal()">✨ Acak Gaya + Warna</button>
+          </div>
+          <p class="tm-hint" style="margin-top:.6rem">Acak Gaya meracik kombinasi baru setiap kali diklik — jumlah kemungkinannya praktis tak terbatas.</p>
+          <details class="tm-det">
+            <summary>🛠️ Studio Gaya — racik sendiri</summary>
+            <div class="tm-studio">
+          <div class="st"><label for="st-r">Kelengkungan sudut <b id="st-r-v"></b></label><input type="range" id="st-r" min="0" max="40" oninput="Guru.studio('r', this.value)"></div>
+          <div class="st"><label for="st-elev">Kekuatan bayangan <b id="st-elev-v"></b></label><input type="range" id="st-elev" min="0" max="100" oninput="Guru.studio('elev', this.value)"></div>
+          <div class="st"><label for="st-bw">Tebal garis tepi <b id="st-bw-v"></b></label><input type="range" id="st-bw" min="0" max="4" oninput="Guru.studio('bw', this.value)"></div>
+          <div class="st"><label for="st-glass">Efek kaca (blur) <b id="st-glass-v"></b></label><input type="range" id="st-glass" min="0" max="100" oninput="Guru.studio('glass', this.value)"></div>
+          <div class="st"><label for="st-grad">Gradien warna <b id="st-grad-v"></b></label><input type="range" id="st-grad" min="0" max="100" oninput="Guru.studio('grad', this.value)"></div>
+          <div class="st"><label for="st-dens">Kerapatan / ukuran ruang <b id="st-dens-v"></b></label><input type="range" id="st-dens" min="80" max="125" oninput="Guru.studio('dens', this.value)"></div>
+          <div class="st"><label for="st-depth">Jenis bayangan</label><select id="st-depth" onchange="Guru.studio('depth', this.value)"></select></div>
+          <div class="st"><label for="st-pat">Pola latar</label><select id="st-pat" onchange="Guru.studio('pat', this.value)"></select></div>
+          <div class="st"><label for="st-side">Gaya sidebar</label><select id="st-side" onchange="Guru.studio('side', this.value)"></select></div>
+          <div class="st"><label for="st-font">Huruf</label><select id="st-font" onchange="Guru.studio('font', this.value)"></select></div>
+          <label class="tm-check" style="align-self:end"><input type="checkbox" id="st-pill" onchange="Guru.studio('pill', this.checked)"> Tombol bulat penuh</label>
+          <label class="tm-check" style="align-self:end"><input type="checkbox" id="st-float" onchange="Guru.studio('float', this.checked)"> Sidebar melayang</label>
+          <label class="tm-check" style="align-self:end"><input type="checkbox" id="st-ink" onchange="Guru.studio('ink', this.checked)"> Garis tinta (kontras)</label>
+          <label class="tm-check" style="align-self:end"><input type="checkbox" id="st-neon" onchange="Guru.studio('neon', this.checked)"> Warna neon</label>
+          <label class="tm-check" style="align-self:end"><input type="checkbox" id="st-caps" onchange="Guru.studio('caps', this.checked)"> JUDUL HURUF BESAR</label>
+            </div>
+          </details>
+        </div>
+
+        <div class="tm-sec">
+          <h4>3. Ganti Otomatis (biar tidak bosan)</h4>
+          <div class="field" style="max-width:420px">
+            <select id="tema-rot">
+              <option value="tetap">Tetap — selalu memakai tema di atas</option>
+              <option value="harian">Kejutan harian — gaya berganti otomatis tiap hari</option>
+              <option value="harian-total">Kejutan harian — gaya &amp; warna berganti tiap hari</option>
+            </select>
+          </div>
+          <p class="tm-hint">Pada mode kejutan, tampilan berubah tiap hari tetapi sama untuk semua pengguna di hari itu (tidak berubah di tengah ujian).</p>
+        </div>
+
+        <details class="tm-det" style="margin-bottom:1rem">
+          <summary>📋 Kode Gaya — bagikan / cadangkan tampilan</summary>
+          <div class="tm-kode" style="margin-top:.8rem">
+            <input type="text" id="tema-kode" placeholder="Kode gaya muncul di sini, atau tempel kode untuk memakainya">
+            <button class="secondary" onclick="Guru.salinKodeGaya()">Salin Kode</button>
+            <button class="secondary" onclick="Guru.terapkanKodeGaya()">Terapkan Kode</button>
+          </div>
+        </details>
+
+        <div class="tm-savebar">
+          <button class="accent" onclick="Guru.simpanTema()">💾 Simpan Tema</button>
+          <button class="secondary" onclick="Guru.batalTema()">↩ Batalkan Perubahan</button>
         </div>
       </div>
 
@@ -999,7 +1068,7 @@
       <div class="legend">
         <div><span class="dot" style="background:var(--c-secondary)"></span>Sudah dijawab</div>
         <div><span class="dot" style="border:2px solid var(--c-accent)"></span>Ditandai ragu-ragu</div>
-        <div><span class="dot" style="background:#fff;border:1px solid var(--c-line)"></span>Belum dijawab</div>
+        <div><span class="dot" style="background:var(--c-surface);border:1px solid var(--c-line)"></span>Belum dijawab</div>
       </div>
       <button class="accent" style="width:100%;margin-top:1rem" onclick="Siswa.konfirmasiSubmit()">Selesai &amp; Kumpulkan</button>
     </div>
