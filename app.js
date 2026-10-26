@@ -222,17 +222,6 @@ function namaSheetUnik_(nama, terpakai) {
 // ----------------------------------------------------------------------------
 // PALET WARNA SIAP PAKAI + PEMBUAT PALET ACAK
 // ----------------------------------------------------------------------------
-const PALET_PRESET = [
-  { nama: 'Soft Clay', primary: '#e58a72', secondary: '#6f9f94', accent: '#e9b44c', bg: '#faf6f1', text: '#2d2a26' },
-  { nama: 'Violet Neon', primary: '#7c3aed', secondary: '#ec4899', accent: '#eab308', bg: '#faf7ff', text: '#211334' },
-  { nama: 'Gold Elegan', primary: '#8a5a00', secondary: '#4b3621', accent: '#d4af37', bg: '#fffdf6', text: '#2b2210' },
-  { nama: 'Ocean Teal', primary: '#0f766e', secondary: '#0369a1', accent: '#facc15', bg: '#f2fbfa', text: '#0b2a27' },
-  { nama: 'Sunset Ceria', primary: '#c2410c', secondary: '#db2777', accent: '#facc15', bg: '#fff8f2', text: '#3a1607' },
-  { nama: 'Emerald Segar', primary: '#15803d', secondary: '#0d9488', accent: '#eab308', bg: '#f3fdf6', text: '#0c2a17' },
-  { nama: 'Midnight Neon', primary: '#151a3d', secondary: '#3b82f6', accent: '#ec4899', bg: '#f5f6ff', text: '#12142b' },
-  { nama: 'Putih Klasik', primary: '#1d3557', secondary: '#457b9d', accent: '#e76f51', bg: '#ffffff', text: '#1b1f24' }
-];
-
 function hslToHex(h, s, l) {
   s /= 100; l /= 100;
   const k = n => (n + h / 30) % 12;
@@ -242,17 +231,463 @@ function hslToHex(h, s, l) {
   return `#${toHex(f(0))}${toHex(f(8))}${toHex(f(4))}`;
 }
 
-function buatPaletAcak() {
-  const h = Math.floor(Math.random() * 360);
-  const h2 = (h + 30 + Math.floor(Math.random() * 60)) % 360;
-  const h3 = (h + 150 + Math.floor(Math.random() * 60)) % 360;
-  return {
-    primary: hslToHex(h, 65 + Math.random() * 15, 36 + Math.random() * 10),
-    secondary: hslToHex(h2, 65 + Math.random() * 20, 48 + Math.random() * 10),
-    accent: hslToHex(h3, 80 + Math.random() * 15, 52 + Math.random() * 8),
-    bg: '#ffffff',
-    text: hslToHex(h, 30, 14)
+// ============================================================================
+// MESIN TAMPILAN — (1) warna turunan dari warna utama, (2) gaya UI tak terbatas
+// Semua tampilan memakai variabel CSS (--c-* dan --ui-*) yang dihitung di sini,
+// jadi mengganti SATU warna utama atau satu parameter gaya mengubah seluruh app.
+// ============================================================================
+const Warna = (() => {
+  const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+  const hex2rgb = (h) => {
+    h = String(h || '#000').replace('#', '');
+    if (h.length === 3) h = h.split('').map(c => c + c).join('');
+    const n = parseInt(h, 16);
+    return (isNaN(n) || h.length !== 6) ? [0, 0, 0] : [(n >> 16) & 255, (n >> 8) & 255, n & 255];
   };
+  const rgb2hex = (r, g, b) => '#' + [r, g, b].map(v => Math.round(clamp(v, 0, 255)).toString(16).padStart(2, '0')).join('');
+  const rgb2hsl = (r, g, b) => {
+    r /= 255; g /= 255; b /= 255;
+    const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn, l = (mx + mn) / 2;
+    let h = 0, s = 0;
+    if (d) {
+      s = l > .5 ? d / (2 - mx - mn) : d / (mx + mn);
+      h = mx === r ? ((g - b) / d + (g < b ? 6 : 0)) : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
+      h *= 60;
+    }
+    return [h, s * 100, l * 100];
+  };
+  const hsl = (hex) => rgb2hsl(...hex2rgb(hex));
+  const dariHsl = (h, s, l) => hslToHex(((h % 360) + 360) % 360, clamp(s, 0, 100), clamp(l, 0, 100));
+  const mix = (a, b, t) => { const A = hex2rgb(a), B = hex2rgb(b); return rgb2hex(A[0] + (B[0] - A[0]) * t, A[1] + (B[1] - A[1]) * t, A[2] + (B[2] - A[2]) * t); };
+  const lum = (hex) => { const c = hex2rgb(hex).map(v => { v /= 255; return v <= .03928 ? v / 12.92 : Math.pow((v + .055) / 1.055, 2.4); }); return .2126 * c[0] + .7152 * c[1] + .0722 * c[2]; };
+  const kontras = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + .05) / (Math.min(x, y) + .05); };
+  const teksDi = (bg) => kontras('#ffffff', bg) >= kontras('#14161a', bg) ? '#ffffff' : '#14161a';
+  const geser = (hex, dl, ds = 0) => { const [h, s, l] = hsl(hex); return dariHsl(h, s + ds, l + dl); };
+  const rgba = (hex, a) => { const [r, g, b] = hex2rgb(hex); return `rgba(${r},${g},${b},${+(+a).toFixed(3)})`; };
+  const valid = (h) => /^#[0-9a-f]{6}$/i.test(h || '');
+  return { clamp, hex2rgb, hsl, dariHsl, mix, lum, kontras, teksDi, geser, rgba, valid };
+})();
+
+// ---- Palet siap pakai + harmoni warna ---------------------------------------
+const PALET_PRESET = [
+  { nama: 'Soft Clay', primary: '#e58a72', secondary: '#6f9f94', accent: '#e9b44c', bg: '#faf6f1', text: '#2d2a26' },
+  { nama: 'Violet Neon', primary: '#7c3aed', secondary: '#ec4899', accent: '#eab308', bg: '#faf7ff', text: '#211334' },
+  { nama: 'Gold Elegan', primary: '#8a5a00', secondary: '#4b3621', accent: '#d4af37', bg: '#fffdf6', text: '#2b2210' },
+  { nama: 'Ocean Teal', primary: '#0f766e', secondary: '#0369a1', accent: '#facc15', bg: '#f2fbfa', text: '#0b2a27' },
+  { nama: 'Sunset Ceria', primary: '#c2410c', secondary: '#db2777', accent: '#facc15', bg: '#fff8f2', text: '#3a1607' },
+  { nama: 'Emerald Segar', primary: '#15803d', secondary: '#0d9488', accent: '#eab308', bg: '#f3fdf6', text: '#0c2a17' },
+  { nama: 'Midnight Neon', primary: '#151a3d', secondary: '#3b82f6', accent: '#ec4899', bg: '#f5f6ff', text: '#12142b' },
+  { nama: 'Putih Klasik', primary: '#1d3557', secondary: '#457b9d', accent: '#e76f51', bg: '#ffffff', text: '#1b1f24' },
+  { nama: 'Sakura', primary: '#d6336c', secondary: '#9775fa', accent: '#fcc419', bg: '#fff5f8', text: '#3b1020' },
+  { nama: 'Mint Fresh', primary: '#12b886', secondary: '#339af0', accent: '#ff922b', bg: '#f1fcf8', text: '#0b2e24' },
+  { nama: 'Cokelat Hangat', primary: '#8d5a3b', secondary: '#c08552', accent: '#e0a458', bg: '#fbf6f0', text: '#2e1d12' },
+  { nama: 'Grafit Biru', primary: '#3b5bdb', secondary: '#495057', accent: '#fab005', bg: '#f6f7fb', text: '#14161f' }
+];
+
+const HARMONI = {
+  klasik: { nama: 'Klasik (aksen emas)' },
+  analog: { nama: 'Analog (warna bertetangga)' },
+  komplementer: { nama: 'Komplementer (berlawanan)' },
+  triad: { nama: 'Triad (3 warna seimbang)' },
+  split: { nama: 'Split-komplementer' },
+  tetrad: { nama: 'Tetrad (4 warna)' },
+  mono: { nama: 'Monokrom (satu warna)' }
+};
+
+// Dari SATU warna utama -> seluruh palet (sekunder, aksen, latar, teks).
+function turunkanPalet(primary, harmoni) {
+  const W = Warna, [h, s] = W.hsl(primary);
+  const sat = Math.max(45, Math.min(s, 88));
+  const H = (off, ss, ll) => W.dariHsl(h + off, ss, ll);
+  let sec, acc;
+  switch (harmoni) {
+    case 'analog': sec = H(32, sat * .85, 46); acc = H(-34, 85, 56); break;
+    case 'komplementer': sec = H(180, sat * .7, 44); acc = H(28, 88, 57); break;
+    case 'triad': sec = H(120, sat * .8, 44); acc = H(240, sat * .85, 55); break;
+    case 'split': sec = H(150, sat * .75, 45); acc = H(210, sat * .8, 55); break;
+    case 'tetrad': sec = H(90, sat * .75, 45); acc = H(180, sat * .8, 52); break;
+    case 'mono': sec = H(0, Math.min(sat, 45) * .8, 42); acc = H(0, sat, 64); break;
+    default: sec = H(38, sat * .45, 52); acc = W.dariHsl(42, 80, 58);
+  }
+  return { primary, secondary: sec, accent: acc, bg: W.dariHsl(h, Math.min(sat, 40) * .85, 96.5), text: W.dariHsl(h, 28, 14) };
+}
+
+function buatPaletAcak(rnd) {
+  rnd = rnd || Math.random;
+  const ks = Object.keys(HARMONI);
+  return turunkanPalet(hslToHex(Math.floor(rnd() * 360), 60 + rnd() * 25, 38 + rnd() * 12), ks[Math.floor(rnd() * ks.length)]);
+}
+
+// ---- Font -------------------------------------------------------------------
+const FALLBACK_SANS = ", system-ui, -apple-system, 'Segoe UI', sans-serif";
+const GAYA_FONT = {
+  jakarta: { nama: 'Plus Jakarta Sans', d: "'Plus Jakarta Sans'", b: "'Inter'" },
+  inter: { nama: 'Inter', d: "'Inter'", b: "'Inter'" },
+  system: { nama: 'Sistem (tercepat)', d: 'system-ui', b: 'system-ui' },
+  poppins: { nama: 'Poppins', d: "'Poppins'", b: "'Poppins'", q: 'Poppins:wght@400;500;600;700;800' },
+  nunito: { nama: 'Nunito (bulat)', d: "'Nunito'", b: "'Nunito'", q: 'Nunito:wght@400;600;700;800;900' },
+  baloo: { nama: 'Baloo 2 (gemuk ceria)', d: "'Baloo 2'", b: "'Nunito'", q: 'Baloo+2:wght@500;600;700;800&family=Nunito:wght@400;600;700' },
+  space: { nama: 'Space Grotesk', d: "'Space Grotesk'", b: "'Inter'", q: 'Space+Grotesk:wght@500;600;700' },
+  sora: { nama: 'Sora', d: "'Sora'", b: "'Inter'", q: 'Sora:wght@500;600;700;800' },
+  outfit: { nama: 'Outfit', d: "'Outfit'", b: "'Outfit'", q: 'Outfit:wght@400;500;600;700;800' },
+  lexend: { nama: 'Lexend', d: "'Lexend'", b: "'Lexend'", q: 'Lexend:wght@400;500;600;700' },
+  fraunces: { nama: 'Fraunces (serif)', d: "'Fraunces', Georgia, serif", b: "'Inter'", q: 'Fraunces:wght@500;600;700;800' },
+  mono: { nama: 'JetBrains Mono (kode)', d: "'JetBrains Mono', ui-monospace, monospace", b: "'Inter'", q: 'JetBrains+Mono:wght@500;600;700;800' },
+  doodle: { nama: 'Patrick Hand (tulisan tangan)', d: "'Patrick Hand', cursive", b: "'Nunito'", q: 'Patrick+Hand&family=Nunito:wght@400;600;700' }
+};
+function muatFont(key) {
+  const f = GAYA_FONT[key];
+  if (!f || !f.q) return;
+  const id = 'font-' + key;
+  if (document.getElementById(id)) return;
+  const l = document.createElement('link');
+  l.id = id; l.rel = 'stylesheet';
+  l.href = 'https://fonts.googleapis.com/css2?family=' + f.q + '&display=swap';
+  document.head.appendChild(l);
+}
+
+// ---- Parameter gaya & preset ------------------------------------------------
+const DEF_UI = { r: 14, pill: 0, depth: 'soft', elev: 50, bw: 0, ink: 0, glass: 0, grad: 0, pat: 'blobs', side: 'tint', float: 1, font: 'jakarta', hw: 800, caps: 0, dens: 100, neon: 0 };
+const OPSI_DEPTH = { flat: 'Rata (tanpa bayangan)', line: 'Garis tipis', soft: 'Lembut', layer: 'Berlapis (material)', clay: 'Clay (empuk 3D)', neu: 'Neumorphism (timbul)', hard: 'Keras (brutalis)', pop: 'Pop 3D (tombol tebal)', glow: 'Cahaya (glow)' };
+const OPSI_POLA = { none: 'Polos', blobs: 'Gumpalan lembut', aurora: 'Aurora', mesh: 'Mesh gradien', waves: 'Gelombang', dots: 'Titik-titik', grid: 'Kotak-kotak', lines: 'Buku bergaris', checker: 'Papan catur' };
+const OPSI_SIDE = { tint: 'Warna pastel', light: 'Putih bersih', solid: 'Warna utama', dark: 'Gelap pekat', glass: 'Kaca transparan' };
+
+const GAYA_PRESET = [
+  { id: 'softclay', nama: 'Soft Pastel', info: 'Bawaan, lembut & hangat', u: { r: 14, depth: 'soft', elev: 50, pat: 'blobs', side: 'tint', float: 1, font: 'jakarta', hw: 800 } },
+  { id: 'clay', nama: 'Claymorphism', info: 'Empuk seperti tanah liat', u: { r: 26, depth: 'clay', elev: 60, grad: 25, pat: 'blobs', side: 'tint', float: 1, font: 'baloo', hw: 700 } },
+  { id: 'glass', nama: 'Glassmorphism', info: 'Kaca buram di atas aurora', u: { r: 20, depth: 'soft', elev: 40, bw: 1, glass: 70, pat: 'aurora', side: 'glass', float: 1, font: 'outfit', hw: 600 } },
+  { id: 'neu', nama: 'Neumorphism', info: 'Timbul & tenggelam satu warna', u: { r: 22, depth: 'neu', elev: 55, pat: 'none', side: 'light', float: 1, font: 'nunito', hw: 800 } },
+  { id: 'brutal', nama: 'Neo-Brutalism', info: 'Garis tebal, bayangan keras', u: { r: 4, depth: 'hard', elev: 55, bw: 3, ink: 1, pat: 'dots', side: 'solid', float: 0, font: 'space', hw: 700 } },
+  { id: 'flat', nama: 'Flat Minimal', info: 'Datar, bersih, fokus', u: { r: 8, depth: 'flat', bw: 1, pat: 'none', side: 'light', float: 0, font: 'inter', hw: 700 } },
+  { id: 'material', nama: 'Material Elevated', info: 'Bayangan berlapis halus', u: { r: 10, depth: 'layer', elev: 55, pat: 'none', side: 'light', float: 0, font: 'inter', hw: 600 } },
+  { id: 'aurora', nama: 'Aurora Gradient', info: 'Gradien cerah berpendar', u: { r: 22, depth: 'glow', elev: 35, grad: 85, glass: 25, pat: 'aurora', side: 'tint', float: 1, font: 'sora', hw: 700 } },
+  { id: 'neon', nama: 'Cyber Neon', mode: 'dark', info: 'Gelap, garis kisi, menyala', u: { r: 6, depth: 'glow', elev: 75, bw: 1, grad: 30, pat: 'grid', side: 'dark', float: 0, font: 'mono', hw: 700, neon: 1, caps: 1 } },
+  { id: 'paper', nama: 'Buku Tulis', info: 'Kertas bergaris, nuansa klasik', u: { r: 3, depth: 'soft', elev: 25, bw: 1, pat: 'lines', side: 'light', float: 0, font: 'fraunces', hw: 700 } },
+  { id: 'retro', nama: 'Retro Terminal', info: 'Kotak tajam ala komputer lama', u: { r: 0, depth: 'hard', elev: 30, bw: 2, ink: 1, pat: 'checker', side: 'dark', float: 0, font: 'mono', hw: 700, caps: 1 } },
+  { id: 'pop', nama: 'Candy Pop 3D', info: 'Tombol tebal bisa "ditekan"', u: { r: 18, pill: 1, depth: 'pop', elev: 60, bw: 2, pat: 'dots', side: 'tint', float: 1, font: 'baloo', hw: 800 } },
+  { id: 'corporate', nama: 'Corporate Clean', info: 'Formal, sidebar gelap', u: { r: 10, depth: 'soft', elev: 25, bw: 1, pat: 'none', side: 'dark', float: 0, font: 'inter', hw: 700 } },
+  { id: 'ocean', nama: 'Ocean Glass Gelap', mode: 'dark', info: 'Kaca di mode gelap', u: { r: 22, depth: 'soft', elev: 50, bw: 1, glass: 60, pat: 'aurora', side: 'glass', float: 1, font: 'lexend', hw: 600 } },
+  { id: 'doodle', nama: 'Doodle Sketsa', info: 'Seperti digambar tangan', u: { r: 14, depth: 'hard', elev: 25, bw: 2, ink: 1, pat: 'dots', side: 'tint', float: 1, font: 'doodle', hw: 400 } },
+  { id: 'bento', nama: 'Bento Lapang', info: 'Kartu besar, ruang lega', u: { r: 28, depth: 'line', bw: 1, pat: 'none', side: 'light', float: 1, font: 'jakarta', hw: 800, dens: 110 } },
+  { id: 'mono', nama: 'Mono Ink Elegan', info: 'Garis tinta tipis, serif', u: { r: 2, depth: 'flat', bw: 1, ink: 1, pat: 'none', side: 'light', float: 0, font: 'fraunces', hw: 700 } },
+  { id: 'gloss', nama: 'Glossy Skeuomorphic', info: 'Tombol mengkilap', u: { r: 12, depth: 'clay', elev: 45, grad: 75, bw: 1, pat: 'waves', side: 'dark', float: 0, font: 'poppins', hw: 700 } },
+  { id: 'vapor', nama: 'Vaporwave Gelap', mode: 'dark', info: 'Gelap, gradien, neon lembut', u: { r: 16, depth: 'glow', elev: 65, grad: 90, glass: 30, pat: 'mesh', side: 'glass', float: 1, font: 'outfit', hw: 700, neon: 1 } },
+  { id: 'dream', nama: 'Pastel Dream', info: 'Mesh pastel berkaca', u: { r: 26, depth: 'soft', elev: 45, glass: 35, grad: 20, pat: 'mesh', side: 'glass', float: 1, font: 'nunito', hw: 800 } }
+];
+const GAYA_BY_ID = Object.fromEntries(GAYA_PRESET.map(g => [g.id, g]));
+
+function normalisasiUI(u) {
+  const o = Object.assign({}, DEF_UI, u || {});
+  const n = (v, a, b) => Warna.clamp(Number(v) || 0, a, b);
+  o.r = n(o.r, 0, 40); o.elev = n(o.elev, 0, 100); o.bw = n(o.bw, 0, 4); o.glass = n(o.glass, 0, 100);
+  o.grad = n(o.grad, 0, 100); o.dens = n(o.dens, 80, 125); o.hw = n(o.hw, 400, 900);
+  ['pill', 'ink', 'float', 'caps', 'neon'].forEach(k => o[k] = o[k] ? 1 : 0);
+  if (!OPSI_DEPTH[o.depth]) o.depth = 'soft';
+  if (!OPSI_POLA[o.pat]) o.pat = 'none';
+  if (!OPSI_SIDE[o.side]) o.side = 'tint';
+  if (!GAYA_FONT[o.font]) o.font = 'jakarta';
+  return o;
+}
+
+function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+
+// Gaya acak: ambil preset sebagai dasar lalu acak banyak parameter -> kombinasi tak terbatas.
+function buatGayaAcak(rnd) {
+  rnd = rnd || Math.random;
+  const pick = (a) => a[Math.floor(rnd() * a.length)];
+  const base = pick(GAYA_PRESET);
+  const u = Object.assign({}, DEF_UI, base.u);
+  u.r = Math.round(Warna.clamp(u.r + (rnd() - .5) * 14, 0, 36));
+  u.elev = Math.round(Warna.clamp(u.elev + (rnd() - .5) * 40, 10, 95));
+  u.dens = Math.round(95 + rnd() * 20);
+  if (rnd() < .3) u.depth = pick(Object.keys(OPSI_DEPTH));
+  if (rnd() < .4) u.pat = pick(Object.keys(OPSI_POLA));
+  if (rnd() < .35) u.side = pick(Object.keys(OPSI_SIDE));
+  if (rnd() < .45) u.font = pick(Object.keys(GAYA_FONT));
+  if (rnd() < .3) u.grad = Math.round(rnd() * 90);
+  if (rnd() < .25) u.glass = Math.round(rnd() * 75);
+  if (rnd() < .2) u.pill = u.pill ? 0 : 1;
+  if (rnd() < .2) u.float = u.float ? 0 : 1;
+  if (u.depth === 'neu') { u.bw = 0; u.glass = 0; }
+  if (u.depth === 'hard') { u.bw = Math.max(u.bw, 2); u.ink = 1; }
+  if (u.glass > 20 && (u.pat === 'none' || u.pat === 'lines')) u.pat = 'aurora';
+  return { u, mode: base.mode || (rnd() < .12 ? 'dark' : 'light') };
+}
+
+// ---- Perhitungan palet lengkap ---------------------------------------------
+function hitungPalet(t, u, gelap) {
+  const W = Warna;
+  let { primary, secondary, accent, bg, text } = t;
+  if (u.neon) {
+    const boost = (c) => { const [h, s, l] = W.hsl(c); return W.dariHsl(h, Math.max(s, 88), gelap ? Math.max(l, 60) : Math.min(Math.max(l, 48), 56)); };
+    primary = boost(primary); secondary = boost(secondary); accent = boost(accent);
+  }
+  let surface, line;
+  const [hp] = W.hsl(primary);
+  if (gelap) {
+    bg = W.dariHsl(hp, 16, 9); surface = W.dariHsl(hp, 15, 13.5); text = W.dariHsl(hp, 10, 93); line = W.dariHsl(hp, 13, 23);
+    const angkat = (c) => { const [h, s, l] = W.hsl(c); return l < 58 ? W.dariHsl(h, s, 62) : c; };
+    primary = angkat(primary); secondary = angkat(secondary); accent = angkat(accent);
+  } else {
+    if (W.kontras(text, bg) < 4.5) text = W.lum(bg) > .4 ? '#1b1b1f' : '#f5f5f5';
+    surface = W.lum(bg) < .35 ? W.geser(bg, 6) : W.mix(bg, '#ffffff', .7);
+    line = W.mix(bg, text, .11);
+  }
+  if (u.depth === 'neu') surface = bg;
+  let muted = W.mix(text, bg, .45);
+  if (W.kontras(muted, surface) < 3.6) muted = W.mix(text, bg, .32);
+  const primaryDark = W.geser(primary, gelap ? 6 : -9);
+  const [hs] = W.hsl(secondary), [ht] = W.hsl(text);
+  const sh = gelap ? '#000000' : W.dariHsl(ht, 28, 30);
+  const ink = gelap ? W.dariHsl(hp, 10, 86) : text;
+  // sidebar
+  let sidebar, onSb = text, sideBg;
+  switch (t._side || u.side) {
+    case 'solid': sidebar = gelap ? W.dariHsl(hp, 45, 25) : W.geser(primary, -8); onSb = W.teksDi(sidebar); break;
+    case 'dark': sidebar = gelap ? W.dariHsl(hp, 30, 6) : W.dariHsl(hp, 32, 13); onSb = W.teksDi(sidebar); break;
+    case 'light': sidebar = surface; break;
+    case 'glass': sidebar = W.mix(surface, bg, .2); break;
+    default: sidebar = gelap ? W.dariHsl(hs, 22, 15) : W.mix(secondary, bg, .8);
+  }
+  sideBg = u.side === 'glass' ? W.rgba(surface, gelap ? .5 : .5) : sidebar;
+  return {
+    gelap, primary, secondary, accent, bg, text, surface, line, muted, primaryDark, sh, ink, sidebar, onSb, sideBg,
+    onPrimary: W.teksDi(primary), onSecondary: W.teksDi(secondary), onAccent: W.teksDi(accent),
+    success: gelap ? '#5cc79a' : '#4f9a78', danger: gelap ? '#ff7b72' : '#d9534f', warn: gelap ? '#f0b84a' : '#d98e04',
+    warnInk: gelap ? '#f0c566' : W.mix(W.dariHsl(40, 90, 36), text, .25),
+    neuD: gelap ? W.geser(bg, -5) : W.mix(bg, '#000000', .13), neuL: gelap ? W.geser(bg, 6) : W.mix(bg, '#ffffff', .85),
+    inputLine: W.mix(bg, text, gelap ? .2 : .17)
+  };
+}
+
+function polaLatar(pat, P) {
+  const W = Warna, a = (c, x) => W.rgba(c, x), p = P.primary, s = P.secondary, c = P.accent, tx = P.text;
+  switch (pat) {
+    case 'blobs': return [`radial-gradient(circle at 12% 8%, ${a(p, .20)}, transparent 42%), radial-gradient(circle at 90% 92%, ${a(s, .20)}, transparent 46%), radial-gradient(circle at 82% 10%, ${a(c, .12)}, transparent 35%)`, 'auto'];
+    case 'aurora': return [`radial-gradient(60% 50% at 15% 10%, ${a(p, .42)}, transparent 70%), radial-gradient(55% 45% at 85% 20%, ${a(s, .38)}, transparent 70%), radial-gradient(60% 55% at 60% 95%, ${a(c, .34)}, transparent 70%)`, 'auto'];
+    case 'mesh': return [`radial-gradient(at 0% 0%, ${a(p, .38)} 0, transparent 50%), radial-gradient(at 100% 0%, ${a(s, .36)} 0, transparent 50%), radial-gradient(at 100% 100%, ${a(c, .34)} 0, transparent 50%), radial-gradient(at 0% 100%, ${a(W.mix(p, s, .5), .34)} 0, transparent 50%)`, 'auto'];
+    case 'waves': return [`radial-gradient(120% 55% at 50% 108%, ${a(p, .30)}, transparent 62%), radial-gradient(90% 40% at 18% 112%, ${a(s, .26)}, transparent 60%), radial-gradient(70% 35% at 88% 115%, ${a(c, .24)}, transparent 60%)`, 'auto'];
+    case 'dots': return [`radial-gradient(${a(tx, .17)} 1.3px, transparent 1.7px)`, '20px 20px'];
+    case 'grid': return [`linear-gradient(${a(tx, .07)} 1px, transparent 1px), linear-gradient(90deg, ${a(tx, .07)} 1px, transparent 1px)`, '26px 26px'];
+    case 'lines': return [`repeating-linear-gradient(0deg, transparent 0 27px, ${a(p, .20)} 27px 28px)`, 'auto'];
+    case 'checker': return [`conic-gradient(${a(tx, .05)} 25%, transparent 0 50%, ${a(tx, .05)} 0 75%, transparent 0)`, '30px 30px'];
+    default: return ['none', 'auto'];
+  }
+}
+
+function bayangan(u, P, jenis) {
+  const e = u.elev / 100, W = Warna, A = (x) => W.rgba(P.sh, x), R = Math.round;
+  const hi = P.gelap ? 'rgba(255,255,255,.06)' : 'rgba(255,255,255,.85)';
+  const bc = 'var(--btn-c)';
+  switch (u.depth) {
+    case 'soft':
+      if (jenis === 'card') return `0 1px 2px ${A(.04 + .03 * e)}, 0 ${R(3 + 9 * e)}px ${R(10 + 20 * e)}px ${A(.05 + .09 * e)}`;
+      if (jenis === 'btn') return `0 ${R(2 + 5 * e)}px ${R(6 + 10 * e)}px -${R(1 + 3 * e)}px color-mix(in srgb, ${bc} ${R(40 + 25 * e)}%, transparent)`;
+      return 'none';
+    case 'layer':
+      if (jenis === 'card') { const k = .5 + e; return `0 1px 1px ${A(.06)}, 0 2px 2px ${A(.06)}, 0 4px 4px ${A(.06)}, 0 ${R(8 * k)}px ${R(8 * k)}px ${A(.05)}, 0 ${R(16 * k)}px ${R(16 * k)}px ${A(.04)}`; }
+      if (jenis === 'btn') return `0 1px 1px ${A(.12)}, 0 2px 3px ${A(.12)}, 0 ${R(3 + 3 * e)}px ${R(6 + 6 * e)}px -1px color-mix(in srgb, ${bc} 35%, transparent)`;
+      return 'none';
+    case 'clay':
+      if (jenis === 'card') return `0 ${R(10 + 14 * e)}px ${R(24 + 22 * e)}px -${R(6 + 4 * e)}px ${A(.14 + .16 * e)}, inset 0 ${R(4 + 2 * e)}px ${R(6 + 6 * e)}px ${hi}, inset 0 -${R(5 + 4 * e)}px ${R(10 + 8 * e)}px ${A(.06 + .06 * e)}`;
+      if (jenis === 'btn') return `0 ${R(6 + 6 * e)}px ${R(12 + 8 * e)}px -4px color-mix(in srgb, ${bc} 60%, transparent), inset 0 3px 6px rgba(255,255,255,.35), inset 0 -4px 8px rgba(0,0,0,.14)`;
+      return `inset 0 ${R(2 + 2 * e)}px ${R(4 + 4 * e)}px ${A(.10 + .08 * e)}, inset 0 -2px 4px ${hi}`;
+    case 'neu': {
+      const d = R(4 + 9 * e), d2 = Math.max(2, R(d * .55));
+      if (jenis === 'card') return `${d}px ${d}px ${d * 2}px ${P.neuD}, -${d}px -${d}px ${d * 2}px ${P.neuL}`;
+      if (jenis === 'btn') return `${d2}px ${d2}px ${d2 * 2}px ${P.neuD}, -${d2}px -${d2}px ${d2 * 2}px ${P.neuL}`;
+      if (jenis === 'pressed') return `inset ${d2}px ${d2}px ${d2 * 2}px ${P.neuD}, inset -${d2}px -${d2}px ${d2 * 2}px ${P.neuL}`;
+      return `inset ${d2}px ${d2}px ${d2 * 2}px ${P.neuD}, inset -${d2}px -${d2}px ${d2 * 2}px ${P.neuL}`;
+    }
+    case 'hard': {
+      const o = R(2 + 5 * e);
+      if (jenis === 'card') return `${o}px ${o}px 0 0 ${P.ink}`;
+      if (jenis === 'btn') return `${Math.max(2, o - 1)}px ${Math.max(2, o - 1)}px 0 0 ${P.ink}`;
+      if (jenis === 'btn-h') return `${o + 1}px ${o + 1}px 0 0 ${P.ink}`;
+      if (jenis === 'btn-a') return `0 0 0 0 ${P.ink}`;
+      return `2px 2px 0 0 ${P.ink}`;
+    }
+    case 'pop':
+      if (jenis === 'card') return `0 ${R(3 + 4 * e)}px 0 0 ${W.mix(P.line, P.text, .14)}`;
+      if (jenis === 'btn') return `0 ${R(3 + 3 * e)}px 0 0 color-mix(in srgb, ${bc} 65%, #000)`;
+      return 'none';
+    case 'glow':
+      if (jenis === 'card') return `0 0 0 1px ${W.rgba(P.primary, .25)}, 0 0 ${R(14 + 26 * e)}px ${W.rgba(P.primary, .12 + .18 * e)}`;
+      if (jenis === 'btn') return `0 0 ${R(8 + 16 * e)}px color-mix(in srgb, ${bc} ${R(35 + 30 * e)}%, transparent)`;
+      return 'none';
+    default: return 'none';
+  }
+}
+
+// Peta variabel CSS lengkap (dipakai <html> dan juga kartu pratinjau gaya).
+function petaVar(t, u, P) {
+  const W = Warna, R = Math.round, m = {};
+  const f = GAYA_FONT[u.font];
+  m['--c-primary'] = P.primary; m['--c-secondary'] = P.secondary; m['--c-accent'] = P.accent;
+  m['--c-bg'] = P.bg; m['--c-surface'] = P.surface; m['--c-text'] = P.text; m['--c-muted'] = P.muted; m['--c-line'] = P.line;
+  m['--c-success'] = P.success; m['--c-danger'] = P.danger; m['--c-warn-ink'] = P.warnInk;
+  m['--c-primary-dark'] = P.primaryDark;
+  m['--c-on-primary'] = P.onPrimary; m['--c-on-secondary'] = P.onSecondary; m['--c-on-accent'] = P.onAccent;
+  m['--c-sidebar'] = P.sidebar; m['--c-on-sidebar'] = P.onSb;
+  m['--c-shadow'] = W.hex2rgb(P.sh).join(',');
+  m['--font-display'] = f.d + FALLBACK_SANS; m['--font-body'] = f.b + FALLBACK_SANS;
+  m['--ui-hw'] = String(u.hw); m['--ui-caps'] = u.caps ? 'uppercase' : 'none'; m['--ui-hls'] = u.caps ? '.04em' : '-.01em';
+  m['--ui-d'] = String(u.dens / 100);
+  // radius
+  const r = u.r;
+  m['--radius'] = r + 'px'; m['--radius-lg'] = R(r * 1.7) + 'px'; m['--r-xl'] = R(r * 2) + 'px';
+  m['--ui-r-btn'] = u.pill ? '999px' : r + 'px';
+  m['--ui-r-in'] = (u.pill ? Math.min(R(r * 1.6), 26) : r) + 'px';
+  m['--ui-r-nav'] = (u.pill ? 999 : R(r * .85)) + 'px';
+  m['--ui-r-sm'] = Math.min(8, r) + 'px';
+  m['--ui-r-badge'] = (r >= 12 ? 999 : R(r * .5)) + 'px';
+  // permukaan kartu
+  const g = u.glass / 100, kaca = g > 0;
+  const bw = u.depth === 'neu' ? 0 : (u.bw || (kaca ? 1 : 0));
+  const bcol = u.ink ? P.ink : (kaca ? (P.gelap ? 'rgba(255,255,255,.14)' : 'rgba(255,255,255,.55)') : P.line);
+  m['--ui-card-bd'] = bw ? `${bw}px solid ${bcol}` : '0 solid transparent';
+  m['--ui-card-bg'] = kaca ? W.rgba(P.surface, Math.max(.4, 1 - .62 * g)) : P.surface;
+  m['--ui-modal-bg'] = kaca ? W.rgba(P.surface, .94) : P.surface;
+  m['--ui-bf'] = kaca ? `blur(${R(4 + 20 * g)}px) saturate(1.4)` : 'none';
+  m['--clay'] = bayangan(u, P, 'card'); m['--shadow'] = m['--clay'];
+  // tombol
+  m['--ui-btn-bw'] = Math.max(u.bw, 1) + 'px';
+  if (u.ink) m['--ui-btn-bc'] = P.ink;
+  m['--ui-btn-shadow'] = bayangan(u, P, 'btn');
+  m['--ui-btn-shadow-h'] = u.depth === 'hard' ? bayangan(u, P, 'btn-h') : m['--ui-btn-shadow'];
+  m['--ui-btn-shadow-a'] = u.depth === 'hard' ? bayangan(u, P, 'btn-a') : (u.depth === 'neu' ? bayangan(u, P, 'pressed') : m['--ui-btn-shadow']);
+  m['--ui-neu-pressed'] = bayangan(u, P, 'pressed');
+  m['--ui-btn-bg'] = u.grad > 0 ? `linear-gradient(135deg, ${P.primary}, ${W.mix(P.primary, P.secondary, Math.min(.85, u.grad / 100 * .9))})` : P.primary;
+  if (u.depth === 'hard') { m['--ui-lift'] = 'translate(-1px,-1px)'; m['--ui-press'] = 'translate(2px,2px)'; }
+  else if (u.depth === 'flat' || u.depth === 'line') { m['--ui-lift'] = 'none'; m['--ui-press'] = 'none'; }
+  // input
+  const inClay = u.depth === 'clay' || u.depth === 'neu';
+  m['--ui-in-bg'] = u.depth === 'neu' ? P.bg : (kaca ? W.rgba(P.surface, .6) : P.surface);
+  m['--ui-in-bd'] = inClay ? '0 solid transparent' : `${Math.max(u.bw, 1)}px solid ${u.ink ? P.ink : P.inputLine}`;
+  m['--ui-in-shadow'] = bayangan(u, P, 'input');
+  m['--ui-in-focus'] = `0 0 0 3px ${W.rgba(P.primary, .28)}`;
+  // latar halaman
+  const [img, size] = polaLatar(u.pat, P);
+  m['--ui-page-img'] = img; m['--ui-page-size'] = size;
+  m['--ui-login-img'] = u.pat === 'none' ? polaLatar('blobs', P)[0] : img;
+  // sidebar
+  m['--ui-shell-gap'] = u.float ? '12px' : '0px';
+  m['--ui-side-r'] = u.float ? Math.min(R(r * 2.2), 40) + 'px' : '0px';
+  m['--ui-side-bg'] = P.sideBg;
+  m['--ui-side-bd'] = bw && u.side !== 'glass' ? `${bw}px solid ${u.ink ? P.ink : P.line}` : (u.side === 'light' && !u.float && u.depth !== 'neu' ? `1px solid ${P.line}` : '0');
+  m['--ui-side-shadow'] = (u.float || u.depth === 'neu') ? bayangan(u, P, 'card') : 'none';
+  const terang = u.side === 'tint' || u.side === 'light' || u.side === 'glass';
+  if (terang) {
+    m['--ui-nav-act-bg'] = u.depth === 'neu' ? P.bg : P.surface; m['--ui-nav-act-fg'] = P.text;
+    m['--ui-nav-ico-bg'] = W.rgba(P.surface, .6); m['--ui-nav-ico-fg'] = P.secondary;
+    m['--ui-nav-ico-act-bg'] = W.mix(P.primary, P.surface, .84); m['--ui-nav-ico-act-fg'] = P.primary;
+  } else if (u.side === 'solid') {
+    m['--ui-nav-act-bg'] = W.rgba(P.onSb, .2); m['--ui-nav-act-fg'] = P.onSb;
+    m['--ui-nav-ico-bg'] = W.rgba(P.onSb, .12); m['--ui-nav-ico-fg'] = P.onSb;
+    m['--ui-nav-ico-act-bg'] = W.rgba(P.onSb, .2); m['--ui-nav-ico-act-fg'] = P.onSb;
+  } else {
+    m['--ui-nav-act-bg'] = P.primary; m['--ui-nav-act-fg'] = P.onPrimary;
+    m['--ui-nav-ico-bg'] = W.rgba(P.onSb, .1); m['--ui-nav-ico-fg'] = P.onSb;
+    m['--ui-nav-ico-act-bg'] = W.rgba(P.onPrimary, .18); m['--ui-nav-ico-act-fg'] = P.onPrimary;
+  }
+  if (u.depth === 'hard') { m['--ui-nav-act-sh'] = '3px 3px 0 0 ' + P.ink; m['--ui-nav-ol'] = `2px solid ${P.ink}`; }
+  else if (u.depth === 'neu') { m['--ui-nav-act-sh'] = bayangan(u, P, 'pressed'); m['--ui-nav-ol'] = 'none'; }
+  else if (u.depth === 'flat' || u.depth === 'line') { m['--ui-nav-act-sh'] = 'none'; m['--ui-nav-ol'] = 'none'; }
+  else { m['--ui-nav-act-sh'] = `0 8px 20px -8px ${W.rgba(P.sh, .38)}`; m['--ui-nav-ol'] = 'none'; }
+  // hero dashboard
+  if (u.grad >= 35) {
+    m['--ui-hero-bg'] = `linear-gradient(120deg, ${P.primary}, ${W.mix(P.primary, P.secondary, .7)})`;
+    m['--c-hero-fg'] = P.onPrimary; m['--c-hero-fg-soft'] = W.rgba(P.onPrimary, .86);
+  } else {
+    m['--ui-hero-bg'] = `linear-gradient(120deg, ${W.mix(P.primary, P.surface, .8)}, ${W.mix(P.primary, P.surface, .66)})`;
+    m['--c-hero-fg'] = P.text; m['--c-hero-fg-soft'] = W.rgba(P.text, .72);
+  }
+  return m;
+}
+
+// ---- Pengendali tema aktif --------------------------------------------------
+const Tampilan = (() => {
+  const CACHE = 'cbt_tema_v2';
+  let terpasang = [];
+  let aktif = null;     // tema (yang sedang tampil)
+  let tersimpan = null; // tema yang terakhir disimpan/dimuat (untuk Batalkan)
+  const mqGelap = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+
+  function normalisasiTema(t) {
+    t = t || {};
+    const D = PALET_PRESET[0], W = Warna;
+    return {
+      primary: W.valid(t.primary) ? t.primary : D.primary,
+      secondary: W.valid(t.secondary) ? t.secondary : D.secondary,
+      accent: W.valid(t.accent) ? t.accent : D.accent,
+      bg: W.valid(t.bg) ? t.bg : D.bg,
+      text: W.valid(t.text) ? t.text : D.text,
+      mode: ['light', 'dark', 'auto'].includes(t.mode) ? t.mode : 'light',
+      rot: ['tetap', 'harian', 'harian-total'].includes(t.rot) ? t.rot : 'tetap',
+      ui: normalisasiUI(t.ui || GAYA_BY_ID.softclay.u)
+    };
+  }
+  function efektif(t, tanpaRotasi) {
+    if (tanpaRotasi || t.rot === 'tetap') return t;
+    const d = new Date(), seed = d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate();
+    const rnd = mulberry32(seed * 7 + 13);
+    const g = buatGayaAcak(rnd);
+    const r = Object.assign({}, t, { ui: normalisasiUI(g.u), mode: t.mode === 'auto' ? 'auto' : g.mode });
+    if (t.rot === 'harian-total') Object.assign(r, buatPaletAcak(rnd));
+    return r;
+  }
+  function gelapEfektif(mode) { return mode === 'dark' || (mode === 'auto' && !!(mqGelap && mqGelap.matches)); }
+
+  function setVars(map) {
+    const st = document.documentElement.style;
+    terpasang.forEach(k => { if (!(k in map)) st.removeProperty(k); });
+    terpasang = Object.keys(map);
+    for (const k in map) st.setProperty(k, map[k]);
+  }
+  function petaUntuk(t, u) {
+    const P = hitungPalet(t, u, gelapEfektif(t.mode));
+    return { P, map: petaVar(t, u, P) };
+  }
+  function terapkan(tema, opsi) {
+    opsi = opsi || {};
+    const t = efektif(normalisasiTema(tema), opsi.tanpaRotasi);
+    aktif = t;
+    muatFont(t.ui.font);
+    const { P, map } = petaUntuk(t, t.ui);
+    setVars(map);
+    const el = document.documentElement;
+    el.style.colorScheme = P.gelap ? 'dark' : 'light';
+    el.dataset.depth = t.ui.depth; el.dataset.glass = t.ui.glass > 0 ? '1' : '0'; el.dataset.mode = P.gelap ? 'dark' : 'light';
+    const mt = document.querySelector('meta[name="theme-color"]');
+    if (mt) mt.setAttribute('content', P.sidebar);
+    return t;
+  }
+  function pasangVarPada(el, tema, u) {
+    const t = normalisasiTema(tema);
+    const { map } = petaUntuk(t, normalisasiUI(u));
+    el.style.cssText = Object.keys(map).map(k => `${k}:${map[k]}`).join(';');
+  }
+  function muatCache() {
+    try { const raw = localStorage.getItem(CACHE); if (raw) { const t = JSON.parse(raw); tersimpan = normalisasiTema(t); terapkan(t); return true; } } catch (e) {}
+    return false;
+  }
+  function simpanCache(t) { try { localStorage.setItem(CACHE, JSON.stringify(t)); } catch (e) {} }
+  function tandaiTersimpan(t) { tersimpan = normalisasiTema(t); simpanCache(tersimpan); }
+  function kode(t) { t = normalisasiTema(t); return btoa(unescape(encodeURIComponent(JSON.stringify({ v: 2, c: [t.primary, t.secondary, t.accent, t.bg, t.text], m: t.mode, u: t.ui })))); }
+  function dariKode(s) {
+    const o = JSON.parse(decodeURIComponent(escape(atob(String(s).trim()))));
+    if (!o || !o.c || o.c.length < 5) throw new Error('Kode tidak valid');
+    return normalisasiTema({ primary: o.c[0], secondary: o.c[1], accent: o.c[2], bg: o.c[3], text: o.c[4], mode: o.m, ui: o.u });
+  }
+  if (mqGelap && mqGelap.addEventListener) mqGelap.addEventListener('change', () => { if (aktif && aktif.mode === 'auto') terapkan(tersimpan || aktif, {}); });
+  return { terapkan, normalisasiTema, pasangVarPada, muatCache, tandaiTersimpan, kode, dariKode, get tersimpan() { return tersimpan; }, get aktif() { return aktif; } };
+})();
+Tampilan.muatCache();
+
+function terapkanTema(tema) { if (tema) { Tampilan.tandaiTersimpan(tema); Tampilan.terapkan(tema); } }
+async function muatTemaGlobal() {
+  const res = await api('getTema', {});
+  if (res.ok) terapkanTema(res.tema);
 }
 
 function unduhTeks(teks, filename) {
@@ -1891,21 +2326,6 @@ const LocalBackend = (function () {
 // ----------------------------------------------------------------------------
 // TEMA
 // ----------------------------------------------------------------------------
-function terapkanTema(tema) {
-  if (!tema) return;
-  const root = document.documentElement.style;
-  if (tema.primary) root.setProperty('--c-primary', tema.primary);
-  if (tema.secondary) root.setProperty('--c-secondary', tema.secondary);
-  if (tema.accent) root.setProperty('--c-accent', tema.accent);
-  if (tema.bg) root.setProperty('--c-bg', tema.bg);
-  if (tema.text) root.setProperty('--c-text', tema.text);
-}
-
-async function muatTemaGlobal() {
-  const res = await api('getTema', {});
-  if (res.ok) terapkanTema(res.tema);
-}
-
 // ----------------------------------------------------------------------------
 // IDENTITAS APLIKASI (Logo & Nama CBT)
 // ----------------------------------------------------------------------------
@@ -2676,7 +3096,7 @@ const Guru = {
     // Donut status ujian
     const bagian = [['Berlangsung', hit.berlangsung, '#6f9f94'], ['Akan datang', hit.terjadwal, '#e9b44c'], ['Selesai', hit.selesai, '#8fa4d8'], ['Nonaktif', hit.nonaktif, '#e58a72']];
     let acc = 0;
-    const stop = ujian.length ? bagian.map(([, n, c]) => { const dari = acc; acc += n / ujian.length * 100; return `${c} ${dari}% ${acc}%`; }).join(',') : '#efe7dd 0 100%';
+    const stop = ujian.length ? bagian.map(([, n, c]) => { const dari = acc; acc += n / ujian.length * 100; return `${c} ${dari}% ${acc}%`; }).join(',') : 'var(--c-line) 0 100%';
     set('dash-donut', `<div class="donut-wrap">
       <div class="donut" style="--dg:conic-gradient(${stop})"><div class="donut-mid"><b>${ujian.length}</b><span>Ujian</span></div></div>
       <div class="legend-list">${bagian.map(([l, n, c]) => `<div class="legend-row"><span class="dot" style="--lc:${c}"></span>${l}<span class="val">${ujian.length ? Math.round(n / ujian.length * 100) : 0}% (${n})</span></div>`).join('')}</div>
@@ -4391,13 +4811,31 @@ const Guru = {
       ]);
   },
 
-  // ---------------- TEMA ----------------
+  // ---------------- TEMA & TAMPILAN ----------------
+  _ui: null, _mode: 'light', _gid: null, _tmGaleriTimer: null,
+
+  _val(id) { return document.getElementById(id).value; },
+
+  bacaFormTema() {
+    return {
+      primary: Guru._val('tema-primary'), secondary: Guru._val('tema-secondary'), accent: Guru._val('tema-accent'),
+      bg: Guru._val('tema-bg'), text: Guru._val('tema-text'),
+      mode: Guru._mode, rot: Guru._val('tema-rot'), ui: Guru._ui
+    };
+  },
+
   isiFormTema(p) {
-    document.getElementById('tema-primary').value = p.primary;
-    document.getElementById('tema-secondary').value = p.secondary;
-    document.getElementById('tema-accent').value = p.accent;
-    document.getElementById('tema-bg').value = p.bg;
-    document.getElementById('tema-text').value = p.text;
+    const t = Tampilan.normalisasiTema(p);
+    ['primary', 'secondary', 'accent', 'bg', 'text'].forEach(k => { document.getElementById('tema-' + k).value = t[k]; });
+    document.getElementById('tema-rot').value = t.rot;
+    Guru._mode = t.mode; Guru._ui = Object.assign({}, t.ui);
+    Guru._sinkronStudio();
+  },
+
+  // Terapkan langsung ke seluruh aplikasi (pratinjau hidup), belum disimpan.
+  pratinjauTema(segarkanGaleri) {
+    Tampilan.terapkan(Guru.bacaFormTema(), { tanpaRotasi: true });
+    if (segarkanGaleri !== false) Guru.renderGaleriGaya(true);
   },
 
   renderPaletPreset() {
@@ -4410,39 +4848,142 @@ const Guru = {
         <span class="dot" style="background:${p.accent}"></span>
         <span class="lbl">${p.nama}</span>
       </button>`).join('');
+    const h = document.getElementById('tema-harmoni');
+    if (h && !h.options.length) h.innerHTML = Object.keys(HARMONI).map(k => `<option value="${k}">${HARMONI[k].nama}</option>`).join('');
+  },
+
+  // Ubah SATU warna utama -> seluruh warna aplikasi ikut berubah.
+  ubahWarnaUtama() {
+    const prim = Guru._val('tema-primary');
+    if (document.getElementById('tema-selaras').checked) {
+      const p = turunkanPalet(prim, Guru._val('tema-harmoni'));
+      ['secondary', 'accent', 'bg', 'text'].forEach(k => { document.getElementById('tema-' + k).value = p[k]; });
+    }
+    Guru.pratinjauTema();
   },
 
   pakaiPalet(i) {
     const p = PALET_PRESET[i];
-    Guru.isiFormTema(p);
-    terapkanTema(p);
+    ['primary', 'secondary', 'accent', 'bg', 'text'].forEach(k => { document.getElementById('tema-' + k).value = p[k]; });
+    Guru.pratinjauTema();
   },
 
   acakPalet() {
     const p = buatPaletAcak();
-    Guru.isiFormTema(p);
-    terapkanTema(p);
-    toast('Palet warna acak diterapkan. Klik "Simpan Tema" untuk menyimpannya.', 'success');
+    ['primary', 'secondary', 'accent', 'bg', 'text'].forEach(k => { document.getElementById('tema-' + k).value = p[k]; });
+    Guru.pratinjauTema();
+    toast('Palet acak diterapkan. Klik "Simpan Tema" untuk menyimpannya.', 'success');
+  },
+
+  setMode(m) { Guru._mode = m; Guru._sinkronStudio(); Guru.pratinjauTema(); },
+
+  pakaiGaya(id) {
+    const g = GAYA_BY_ID[id]; if (!g) return;
+    Guru._ui = Object.assign({}, DEF_UI, g.u);
+    if (g.mode) Guru._mode = g.mode; else if (Guru._mode === 'dark') Guru._mode = 'light';
+    Guru._sinkronStudio(); Guru.pratinjauTema();
+  },
+
+  acakGaya() {
+    const g = buatGayaAcak();
+    Guru._ui = Object.assign({}, DEF_UI, g.u); Guru._mode = g.mode;
+    Guru._sinkronStudio(); Guru.pratinjauTema();
+    toast('Gaya acak baru diterapkan — coba lagi sampai cocok!', 'success');
+  },
+
+  acakTotal() {
+    const p = buatPaletAcak();
+    ['primary', 'secondary', 'accent', 'bg', 'text'].forEach(k => { document.getElementById('tema-' + k).value = p[k]; });
+    Guru.acakGaya();
+  },
+
+  // Slider / pilihan Studio Gaya
+  studio(key, val) {
+    if (['r', 'elev', 'bw', 'glass', 'grad', 'dens'].includes(key)) val = Number(val);
+    else if (['pill', 'ink', 'float', 'caps', 'neon'].includes(key)) val = val ? 1 : 0;
+    Guru._ui[key] = val;
+    if (key === 'depth' && val === 'neu') { Guru._ui.bw = 0; Guru._ui.glass = 0; }
+    if (key === 'depth' && val === 'hard') { Guru._ui.bw = Math.max(Guru._ui.bw, 2); Guru._ui.ink = 1; }
+    if (key === 'glass' && val > 20 && (Guru._ui.pat === 'none' || Guru._ui.pat === 'lines')) Guru._ui.pat = 'aurora';
+    Guru._ui = normalisasiUI(Guru._ui);
+    Guru._sinkronStudio(); Guru.pratinjauTema();
+  },
+
+  _sinkronStudio() {
+    const u = Guru._ui; if (!u) return;
+    const set = (id, v) => { const el = document.getElementById(id); if (!el) return; if (el.type === 'checkbox') el.checked = !!v; else el.value = v; };
+    ['r', 'elev', 'bw', 'glass', 'grad', 'dens'].forEach(k => {
+      set('st-' + k, u[k]);
+      const o = document.getElementById('st-' + k + '-v'); if (o) o.textContent = u[k] + (k === 'dens' ? '%' : (k === 'r' || k === 'bw') ? 'px' : '');
+    });
+    ['depth', 'pat', 'side', 'font'].forEach(k => set('st-' + k, u[k]));
+    ['pill', 'ink', 'float', 'caps', 'neon'].forEach(k => set('st-' + k, u[k]));
+    document.querySelectorAll('#tema-mode-seg button').forEach(b => b.classList.toggle('on', b.dataset.m === Guru._mode));
+    const kd = document.getElementById('tema-kode'); if (kd) kd.value = '';
+  },
+
+  renderStudio() {
+    const sel = (id, opsi) => { const el = document.getElementById(id); if (el && !el.options.length) el.innerHTML = Object.keys(opsi).map(k => `<option value="${k}">${typeof opsi[k] === 'string' ? opsi[k] : opsi[k].nama}</option>`).join(''); };
+    sel('st-depth', OPSI_DEPTH); sel('st-pat', OPSI_POLA); sel('st-side', OPSI_SIDE); sel('st-font', GAYA_FONT);
+  },
+
+  renderGaleriGaya(tunda) {
+    const cont = document.getElementById('gaya-galeri'); if (!cont) return;
+    clearTimeout(Guru._tmGaleriTimer);
+    const kerja = () => {
+      const tema = Guru.bacaFormTema(), u = normalisasiUI(Guru._ui);
+      const cocok = (g) => { const b = normalisasiUI(g.u); return Object.keys(DEF_UI).every(k => b[k] === u[k]); };
+      cont.innerHTML = GAYA_PRESET.map(g => {
+        const mode = g.mode ? g.mode : (Guru._mode === 'dark' ? 'light' : Guru._mode);
+        return `<button type="button" class="gaya-kartu ${cocok(g) ? 'on' : ''}" onclick="Guru.pakaiGaya('${g.id}')" title="${g.info}">
+          <div class="gt" data-g="${g.id}"><div class="gt-side"><i class="a"></i><i></i><i></i></div>
+            <div class="gt-main"><div class="gt-card"><b></b><u></u><u></u><div class="gt-btns"><span class="gt-btn"></span><span class="gt-btn s"></span><span class="gt-btn c"></span></div></div></div></div>
+          <span class="gn">${g.nama}</span><span class="gd">${g.info}</span></button>`;
+      }).join('');
+      cont.querySelectorAll('.gt').forEach(el => {
+        const g = GAYA_BY_ID[el.dataset.g];
+        const t2 = Object.assign({}, tema, { mode: g.mode ? g.mode : (Guru._mode === 'dark' ? 'light' : Guru._mode) });
+        Tampilan.pasangVarPada(el, t2, Object.assign({}, DEF_UI, g.u));
+        muatFont(g.u.font);
+      });
+    };
+    if (tunda) Guru._tmGaleriTimer = setTimeout(kerja, 180); else kerja();
   },
 
   async muatFormTema() {
-    Guru.renderPaletPreset();
+    Guru.renderPaletPreset(); Guru.renderStudio();
     const res = await api('getTema', { guruId: state.user.id });
     if (!res.ok) return;
     state.guru.tema = res.tema;
     Guru.isiFormTema(res.tema);
+    Guru.renderGaleriGaya();
+  },
+
+  batalTema() {
+    const t = Tampilan.tersimpan;
+    if (!t) return;
+    Guru.isiFormTema(t); Guru.pratinjauTema();
+    toast('Perubahan dibatalkan, kembali ke tema tersimpan.');
   },
 
   async simpanTema() {
-    const tema = {
-      primary: document.getElementById('tema-primary').value,
-      secondary: document.getElementById('tema-secondary').value,
-      accent: document.getElementById('tema-accent').value,
-      bg: document.getElementById('tema-bg').value,
-      text: document.getElementById('tema-text').value
-    };
+    const tema = Tampilan.normalisasiTema(Guru.bacaFormTema());
     const res = await api('simpanTema', { guruId: state.user.id, tema: JSON.stringify(tema) });
-    if (res.ok) { terapkanTema(tema); toast('Tema tersimpan & diterapkan.', 'success'); }
+    if (res.ok) { terapkanTema(tema); toast(tema.rot === 'tetap' ? 'Tema tersimpan & diterapkan.' : 'Tema tersimpan. Gaya akan berganti otomatis tiap hari.', 'success'); }
+  },
+
+  salinKodeGaya() {
+    const k = Tampilan.kode(Guru.bacaFormTema());
+    const el = document.getElementById('tema-kode'); el.value = k; el.select();
+    try { navigator.clipboard.writeText(k); toast('Kode gaya disalin. Tempel di perangkat/sekolah lain untuk memakai tampilan yang sama.', 'success'); }
+    catch (e) { toast('Kode ditampilkan — salin manual dari kotak.'); }
+  },
+
+  terapkanKodeGaya() {
+    const v = document.getElementById('tema-kode').value.trim();
+    if (!v) { toast('Tempel kode gaya dulu.', 'error'); return; }
+    try { const t = Tampilan.dariKode(v); Guru.isiFormTema(t); Guru.pratinjauTema(); toast('Kode gaya diterapkan. Klik "Simpan Tema" untuk menyimpan.', 'success'); }
+    catch (e) { toast('Kode gaya tidak valid.', 'error'); }
   },
 
   // ---------------- IDENTITAS APLIKASI (Logo & Nama CBT) ----------------
