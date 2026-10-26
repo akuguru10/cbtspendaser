@@ -168,10 +168,62 @@ function namaUjianUntukFile_(selectId) {
   return (t && t !== 'Pilih ujian...' ? t : 'ujian').replace(/[\\/:*?"<>|]+/g, '-').trim().slice(0, 60);
 }
 
+
+// ----------------------------------------------------------------------------
+// PENCARIAN SISWA + FILTER KELAS (dipakai Rekap Nilai, Pemantauan, Log Pelanggaran,
+// Analisis Jawaban, Data Siswa & Status Login)
+// ----------------------------------------------------------------------------
+function normCari_(s) { return String(s === null || s === undefined ? '' : s).toLowerCase().trim(); }
+
+// Daftar kelas unik (urut natural: 7A, 7B, 8A, ... 10A).
+function kelasUnikDari_(list) {
+  return [...new Set((list || []).map(x => String(x.kelas || '').trim()).filter(k => k && k !== '-'))]
+    .sort((a, b) => a.localeCompare(b, 'id', { numeric: true }));
+}
+
+// Isi <select> filter kelas, pertahankan pilihan lama kalau masih ada.
+function isiOpsiKelas_(selectId, daftarKelas) {
+  const sel = document.getElementById(selectId);
+  if (!sel) return;
+  const lama = sel.value;
+  sel.innerHTML = '<option value="">Semua Kelas</option>' + daftarKelas.map(k => `<option value="${escapeHtml_(k)}">${escapeHtml_(k)}</option>`).join('');
+  sel.value = daftarKelas.includes(lama) ? lama : '';
+}
+
+// true kalau item lolos Filter Kelas (kelasId) & kotak cari (cariId). Pencarian
+// cocok ke nama, username, dan kelas (tidak peka huruf besar/kecil).
+function cocokFilterSiswa_(item, kelasId, cariId) {
+  const kelas = kelasId ? (document.getElementById(kelasId)?.value || '') : '';
+  const q = normCari_(cariId ? document.getElementById(cariId)?.value : '');
+  if (kelas && String(item.kelas || '').trim() !== kelas) return false;
+  if (q && !(normCari_(item.nama).includes(q) || normCari_(item.username).includes(q) || normCari_(item.kelas).includes(q))) return false;
+  return true;
+}
+
+function filterAktif_(kelasId, cariId) {
+  return !!((kelasId && document.getElementById(kelasId)?.value) || (cariId && document.getElementById(cariId)?.value.trim()));
+}
+
+function tampilkanInfoFilter_(infoId, tampil, total, tambahan) {
+  const el = document.getElementById(infoId);
+  if (!el) return;
+  el.textContent = `Menampilkan ${tampil} dari ${total} siswa` + (tambahan ? ' • ' + tambahan : '');
+}
+
+// Nama sheet Excel: maks 31 karakter, tanpa []:*?/\ dan unik.
+function namaSheetUnik_(nama, terpakai) {
+  const dasar = String(nama || 'Sheet').replace(/[\[\]:*?\/\\]/g, '-').trim().slice(0, 31) || 'Sheet';
+  let calon = dasar, n = 2;
+  while (terpakai.has(calon.toLowerCase())) calon = dasar.slice(0, 28) + '-' + (n++);
+  terpakai.add(calon.toLowerCase());
+  return calon;
+}
+
 // ----------------------------------------------------------------------------
 // PALET WARNA SIAP PAKAI + PEMBUAT PALET ACAK
 // ----------------------------------------------------------------------------
 const PALET_PRESET = [
+  { nama: 'Soft Clay', primary: '#e58a72', secondary: '#6f9f94', accent: '#e9b44c', bg: '#faf6f1', text: '#2d2a26' },
   { nama: 'Violet Neon', primary: '#7c3aed', secondary: '#ec4899', accent: '#eab308', bg: '#faf7ff', text: '#211334' },
   { nama: 'Gold Elegan', primary: '#8a5a00', secondary: '#4b3621', accent: '#d4af37', bg: '#fffdf6', text: '#2b2210' },
   { nama: 'Ocean Teal', primary: '#0f766e', secondary: '#0369a1', accent: '#facc15', bg: '#f2fbfa', text: '#0b2a27' },
@@ -1128,7 +1180,7 @@ const LocalBackend = (function () {
   let db = null;
 
   function defaultTemaLocal() {
-    return { primary: '#7c3aed', secondary: '#ec4899', accent: '#eab308', bg: '#faf7ff', text: '#211334' };
+    return { primary: '#e58a72', secondary: '#6f9f94', accent: '#e9b44c', bg: '#faf6f1', text: '#2d2a26' };
   }
 
   function muat() {
@@ -2564,62 +2616,97 @@ const Guru = {
   // fungsi-fungsi itu juga tetap merender tab masing-masing di belakang
   // layar (aman dipanggil walau tab-nya sedang tidak aktif).
   async muatDashboard() {
-    const sapaan = document.getElementById('dashboard-sapaan');
-    if (sapaan) sapaan.textContent = state.user && state.user.nama ? `Halo, ${state.user.nama} 👋` : 'Dashboard';
+    const namaGuru = (state.user && state.user.nama) || 'Guru';
+    const elNama = document.getElementById('dash-nama'); if (elNama) elNama.textContent = namaGuru;
+    const elAv = document.getElementById('dash-avatar'); if (elAv) elAv.textContent = namaGuru.trim().charAt(0).toUpperCase();
     await Promise.all([Guru.muatBankSoal(), Guru.muatDaftarUjian(), Guru.muatDaftarSiswa()]);
     Guru.renderDashboard();
   },
 
   renderDashboard() {
     const cont = document.getElementById('dashboard-cards');
-    const contUjian = document.getElementById('dashboard-ujian-terbaru');
     if (!cont) return;
-
-    const soal = state.guru.bankSoal || [];
+    const soal = (state.guru.bankSoal || []).filter(s => (s.status || 'aktif') !== 'arsip');
     const ujian = state.guru.ujianList || [];
     const siswa = state.guru.daftarSiswa || [];
-
-    const soalAktif = soal.filter(s => (s.status || 'aktif') !== 'arsip');
-    const jumlahMapel = new Set(soalAktif.map(s => s.kategori || '(tanpa kategori)')).size;
-    const ujianAktif = ujian.filter(u => u.status === 'aktif').length;
     const now = new Date();
-    const ujianBerlangsung = ujian.filter(u => u.status === 'aktif' && u.mulai && u.selesai && new Date(u.mulai) <= now && now <= new Date(u.selesai)).length;
-    const siswaOnline = siswa.filter(s => s.online).length;
-    const serverAktif = modeServerAktif();
+    const statusU = u => {
+      if (u.status !== 'aktif') return 'nonaktif';
+      if (!u.mulai || !u.selesai || now < new Date(u.mulai)) return 'terjadwal';
+      return now > new Date(u.selesai) ? 'selesai' : 'berlangsung';
+    };
+    const hit = { berlangsung: 0, terjadwal: 0, selesai: 0, nonaktif: 0 };
+    ujian.forEach(u => hit[statusU(u)]++);
+    const mapel = {};
+    soal.forEach(s => { const k = s.kategori || 'Tanpa mapel'; mapel[k] = (mapel[k] || 0) + 1; });
+    const online = siswa.filter(s => s.online).length;
+    const set = (id, v, html) => { const el = document.getElementById(id); if (el) el[html ? 'innerHTML' : 'textContent'] = v; };
+
+    set('dash-date', now.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }));
+    set('dash-mode-chip', modeServerAktif() ? 'Tersambung ke Google Sheets' : 'Mode lokal');
+    set('dash-ringkas', hit.berlangsung > 0
+      ? `${hit.berlangsung} ujian sedang berlangsung dan ${online} siswa sedang login. Pantau jalannya ujian dari menu Pemantauan.`
+      : `Belum ada ujian yang berlangsung saat ini. ${hit.terjadwal} ujian dijadwalkan dan ${siswa.length} siswa terdaftar.`);
 
     const kartu = [
-      { ico: 'fa-layer-group', label: 'Total Bank Soal', nilai: soalAktif.length, sub: `di ${jumlahMapel} mapel`, tab: 'tab-bank-soal', warna: 'var(--c-primary)' },
-      { ico: 'fa-bolt', label: 'Ujian Berlangsung', nilai: ujianBerlangsung, sub: 'sedang aktif saat ini', tab: 'tab-pemantauan', warna: 'var(--c-success)' },
-      { ico: 'fa-calendar-days', label: 'Ujian Dijadwalkan', nilai: ujian.length, sub: `${ujianAktif} berstatus aktif`, tab: 'tab-ujian', warna: 'var(--c-secondary)' },
-      { ico: 'fa-users', label: 'Siswa Terdaftar', nilai: siswa.length, sub: `${siswaOnline} sedang login`, tab: 'tab-siswa', warna: 'var(--c-accent)' },
-      { ico: 'fa-triangle-exclamation', label: 'Log Pelanggaran', nilai: '→', sub: 'lihat per ujian', tab: 'tab-pelanggaran', warna: 'var(--c-danger)' },
-      { ico: 'fa-database', label: 'Mode Penyimpanan', nilai: serverAktif ? 'Server' : 'Lokal', sub: serverAktif ? 'Tersambung ke Google Sheets' : 'Data hanya di perangkat ini', tab: 'tab-pengaturan', warna: '#131b31' }
+      { ico: 'fa-layer-group', label: 'Total bank soal', nilai: soal.length, sub: `di ${Object.keys(mapel).length} mapel`, tab: 'tab-bank-soal', warna: '#6f9f94' },
+      { ico: 'fa-bolt', label: 'Ujian berlangsung', nilai: hit.berlangsung, sub: 'sedang aktif saat ini', tab: 'tab-pemantauan', warna: '#e58a72' },
+      { ico: 'fa-calendar-days', label: 'Total ujian', nilai: ujian.length, sub: `${hit.terjadwal} akan datang`, tab: 'tab-ujian', warna: '#e9b44c' },
+      { ico: 'fa-users', label: 'Siswa terdaftar', nilai: siswa.length, sub: `${online} sedang login`, tab: 'tab-siswa', warna: '#8fa4d8' }
     ];
-
     cont.innerHTML = kartu.map(k => `
       <div class="dash-card" style="--dash-warna:${k.warna}" onclick="UI.gantiTabGuru('${k.tab}')">
         <div class="dash-card-ico"><i class="fa-solid ${k.ico}"></i></div>
-        <div class="dash-card-body">
-          <div class="dash-card-nilai">${k.nilai}</div>
-          <div class="dash-card-label">${k.label}</div>
-          <div class="dash-card-sub">${k.sub}</div>
-        </div>
+        <div class="dash-card-label">${k.label}</div>
+        <div class="dash-card-nilai">${k.nilai}</div>
+        <div class="dash-card-sub">${k.sub}</div>
       </div>`).join('');
 
+    // Grafik pil: 7 mapel dengan soal terbanyak
+    const top = Object.entries(mapel).sort((a, b) => b[1] - a[1]).slice(0, 7);
+    const warnaPil = ['#e58a72', '#e9b44c', '#8fb3a8', '#8fa4d8', '#c79bc8', '#7fbf9a', '#e8a0b4'];
+    const maks = top.length ? top[0][1] : 1;
+    set('dash-chart-mapel', top.length ? `<div class="pill-chart">` + top.map(([k, n], i) => `
+      <div class="pill-col" title="${escapeHtml_(k)}: ${n} soal">
+        <span class="pill-val">${n}</span>
+        <div class="pill" style="--pc:${warnaPil[i]};height:${Math.max(12, Math.round(n / maks * 78))}%"></div>
+        <span class="pill-lbl">${escapeHtml_(k)}</span>
+      </div>`).join('') + `</div>` : '<p class="kosong-info">Belum ada soal. Tambahkan soal di menu Bank Soal.</p>', true);
+
+    // Donut status ujian
+    const bagian = [['Berlangsung', hit.berlangsung, '#6f9f94'], ['Akan datang', hit.terjadwal, '#e9b44c'], ['Selesai', hit.selesai, '#8fa4d8'], ['Nonaktif', hit.nonaktif, '#e58a72']];
+    let acc = 0;
+    const stop = ujian.length ? bagian.map(([, n, c]) => { const dari = acc; acc += n / ujian.length * 100; return `${c} ${dari}% ${acc}%`; }).join(',') : '#efe7dd 0 100%';
+    set('dash-donut', `<div class="donut-wrap">
+      <div class="donut" style="--dg:conic-gradient(${stop})"><div class="donut-mid"><b>${ujian.length}</b><span>Ujian</span></div></div>
+      <div class="legend-list">${bagian.map(([l, n, c]) => `<div class="legend-row"><span class="dot" style="--lc:${c}"></span>${l}<span class="val">${ujian.length ? Math.round(n / ujian.length * 100) : 0}% (${n})</span></div>`).join('')}</div>
+    </div>`, true);
+
+    // Tabel ujian terbaru (5 teratas; pencarian menelusuri semua ujian)
+    const contUjian = document.getElementById('dashboard-ujian-terbaru');
     if (!contUjian) return;
     if (ujian.length === 0) {
-      contUjian.innerHTML = '<p class="subtitle" style="margin:0">Belum ada ujian dibuat. Klik "Buat Ujian Baru" di atas untuk memulai.</p>';
+      contUjian.innerHTML = '<p class="kosong-info">Belum ada ujian. Klik "Buat Ujian Baru" untuk memulai.</p>';
       return;
     }
-    const terbaru = ujian.slice().reverse().slice(0, 5);
+    const label = { berlangsung: ['ok', 'Berlangsung'], terjadwal: ['warn', 'Akan datang'], selesai: ['mute', 'Selesai'], nonaktif: ['no', 'Nonaktif'] };
     contUjian.innerHTML = `<table class="ledger"><thead><tr><th>Judul</th><th>Token</th><th>Jadwal</th><th>Status</th></tr></thead><tbody>` +
-      terbaru.map(u => `
-        <tr style="cursor:pointer" onclick="UI.gantiTabGuru('tab-ujian')">
+      ujian.slice().reverse().map((u, i) => {
+        const [kls, txt] = label[statusU(u)];
+        return `<tr style="cursor:pointer;${i >= 5 ? 'display:none' : ''}" data-i="${i}" data-cari="${escapeHtml_((u.judul + ' ' + u.token).toLowerCase())}" onclick="UI.gantiTabGuru('tab-ujian')">
           <td><strong>${escapeHtml_(u.judul)}</strong></td>
           <td><code>${u.token}</code></td>
           <td style="font-size:.8rem">${formatTanggal(u.mulai)}<br>s/d ${formatTanggal(u.selesai)}</td>
-          <td><span class="badge ${u.status === 'aktif' ? 'ok' : 'no'}">${u.status}</span></td>
-        </tr>`).join('') + `</tbody></table>`;
+          <td><span class="badge ${kls}">${txt}</span></td>
+        </tr>`;
+      }).join('') + `</tbody></table>`;
+  },
+
+  filterDashboardUjian(q) {
+    q = String(q || '').toLowerCase().trim();
+    document.querySelectorAll('#dashboard-ujian-terbaru tr[data-cari]').forEach(tr => {
+      tr.style.display = (q ? tr.dataset.cari.includes(q) : Number(tr.dataset.i) < 5) ? '' : 'none';
+    });
   },
 
   // ---------------- BANK SOAL ----------------
@@ -3551,14 +3638,25 @@ const Guru = {
     const res = await api('getRekapNilai', { ujianId });
     if (!res.ok) { cont.textContent = 'Gagal memuat.'; return; }
     state.guru._rekapAktif = res.data;
+    isiOpsiKelas_('kelas-rekap', kelasUnikDari_(res.data));
     Guru.renderTabelRekap_();
+  },
+
+  // Data rekap setelah Filter Kelas + kotak cari.
+  rekapTersaring_() {
+    return (state.guru._rekapAktif || []).filter(r => cocokFilterSiswa_(r, 'kelas-rekap', 'cari-rekap'));
   },
 
   renderTabelRekap_() {
     const cont = document.getElementById('tabel-rekap');
-    const data = state.guru._rekapAktif || [];
-    if (data.length === 0) { cont.innerHTML = '<p class="subtitle">Belum ada siswa yang <strong>menyelesaikan</strong> ujian ini (siswa yang masih mengerjakan tidak dihitung di sini — lihat tab "Pemantauan Ujian" untuk yang sedang berlangsung).</p>'; return; }
-    cont.innerHTML = `<table class="ledger"><thead><tr><th style="width:2rem"><input type="checkbox" id="rekap-pilih-semua" title="Pilih semua" onchange="Guru.pilihSemuaRekap(this.checked)"></th><th>Nama</th><th>Kelas</th><th>Nilai</th><th>Status</th><th>Pelanggaran</th><th>Selesai</th><th>Durasi</th><th></th></tr></thead><tbody>` +
+    const semua = state.guru._rekapAktif || [];
+    if (semua.length === 0) { tampilkanInfoFilter_('kelas-rekap-info', 0, 0); cont.innerHTML = '<p class="subtitle">Belum ada siswa yang <strong>menyelesaikan</strong> ujian ini (siswa yang masih mengerjakan tidak dihitung di sini — lihat tab "Pemantauan Ujian" untuk yang sedang berlangsung).</p>'; return; }
+    const data = Guru.rekapTersaring_();
+    const angka = data.map(r => Number(r.nilai)).filter(n => !isNaN(n) && n !== null);
+    const rata = angka.length ? (angka.reduce((a, b) => a + b, 0) / angka.length) : null;
+    tampilkanInfoFilter_('kelas-rekap-info', data.length, semua.length, rata === null ? '' : 'rata-rata nilai ' + (Math.round(rata * 10) / 10));
+    if (data.length === 0) { cont.innerHTML = '<p class="subtitle">Tidak ada siswa yang cocok dengan kelas/pencarian ini.</p>'; return; }
+    cont.innerHTML = `<table class="ledger"><thead><tr><th style="width:2rem"><input type="checkbox" id="rekap-pilih-semua" title="Pilih semua yang tampil" onchange="Guru.pilihSemuaRekap(this.checked)"></th><th>Nama</th><th>Kelas</th><th>Nilai</th><th>Status</th><th>Pelanggaran</th><th>Selesai</th><th>Durasi</th><th></th></tr></thead><tbody>` +
       data.map(r => `<tr>
         <td><input type="checkbox" class="rekap-cek" value="${escapeHtml_(r.sesiId || '')}" ${r.sesiId ? '' : 'disabled'}></td>
         <td>${escapeHtml_(r.nama)}</td><td>${escapeHtml_(r.kelas)}</td><td><strong>${r.nilai}</strong></td>
@@ -3600,22 +3698,32 @@ const Guru = {
   },
 
   hapusSemuaNilaiUjian() {
-    const ids = (state.guru._rekapAktif || []).map(r => r.sesiId).filter(Boolean);
+    const disaring = filterAktif_('kelas-rekap', 'cari-rekap');
+    const ids = Guru.rekapTersaring_().map(r => r.sesiId).filter(Boolean);
     if (!ids.length) { toast('Belum ada nilai untuk dihapus.', 'error'); return; }
-    return Guru.hapusNilaiIds_(ids, `Hapus SEMUA ${ids.length} nilai pada ujian ini? Jawaban & nilai seluruh siswa dihapus PERMANEN dan semuanya bisa mengerjakan ujian ini lagi. Tidak bisa dibatalkan.`);
+    const kelasDipilih = document.getElementById('kelas-rekap')?.value || '';
+    const ruang = disaring ? `yang sedang tampil${kelasDipilih ? ' (kelas ' + kelasDipilih + ')' : ''}` : 'pada ujian ini';
+    return Guru.hapusNilaiIds_(ids, `Hapus ${disaring ? '' : 'SEMUA '}${ids.length} nilai ${ruang}? Jawaban & nilai dihapus PERMANEN dan siswa-siswa tsb bisa mengerjakan ujian ini lagi. Tidak bisa dibatalkan.`);
   },
 
   // Unduh rekap nilai sebagai file Excel (.xlsx) sungguhan: kolom langsung rapi
   // (tidak menumpuk di satu kolom seperti CSV di Excel berpengaturan regional
   // Indonesia yang memakai titik koma), status tertulis "Lulus"/"Remedial"
   // (bukan TRUE/FALSE), dan ada kolom durasi pengerjaan.
-  async unduhRekapCSV() {
-    const data = state.guru._rekapAktif;
-    if (!data || data.length === 0) { toast('Tidak ada data untuk diunduh.', 'error'); return; }
+  // Unduh nilai sebagai file Excel (.xlsx). Tiga mode:
+  //  - (default)  : sesuai Filter Kelas + kotak cari yang sedang tampil
+  //                 (pilih 1 kelas = nilai kelas itu saja).
+  //  - 'semua'    : seluruh siswa pada ujian terpilih -> 1 sheet gabungan + 1 sheet per kelas.
+  //  - 'semuaUjian': seluruh ujian sekaligus (mengikuti Filter Kelas) -> 1 sheet
+  //                 gabungan + 1 sheet per kelas, ada kolom "Ujian".
+  async unduhRekapCSV(mode) {
     try { await muatPustaka_('xlsx'); } catch (e) { toast(e.message, 'error'); return; }
     const sel = document.getElementById('pilih-ujian-rekap');
     const judulUjian = sel && sel.selectedIndex >= 0 ? sel.options[sel.selectedIndex].text : 'Ujian';
-    const urut = [...data].sort((a, b) =>
+    const kelasFilter = document.getElementById('kelas-rekap')?.value || '';
+    const bersih = t => String(t).replace(/[\\/:*?"<>|]+/g, '-').trim().slice(0, 60);
+    const urut = (arr, denganUjian) => [...arr].sort((a, b) =>
+      (denganUjian ? String(a._ujian || '').localeCompare(String(b._ujian || ''), 'id', { numeric: true }) : 0) ||
       String(a.kelas || '').localeCompare(String(b.kelas || ''), 'id', { numeric: true }) ||
       String(a.nama || '').localeCompare(String(b.nama || ''), 'id'));
     const fmtWaktu = iso => {
@@ -3625,31 +3733,76 @@ const Guru = {
       const p = n => String(n).padStart(2, '0');
       return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
     };
-    const headers = ['No', 'Nama', 'Kelas', 'Nilai', 'Keterangan', 'Pelanggaran', 'Mulai', 'Selesai', 'Durasi Pengerjaan', 'Durasi (menit)'];
-    const rows = urut.map((r, i) => {
-      const lulus = r.lulus === true || String(r.lulus).toLowerCase() === 'true';
-      const lulusSalah = r.lulus === false || String(r.lulus).toLowerCase() === 'false';
-      const detik = hitungDurasiDetik_(r.mulai, r.selesai);
-      const nilai = r.nilai === '' || r.nilai === null || r.nilai === undefined ? '' : Number(r.nilai);
-      return [
-        i + 1, r.nama || '', r.kelas || '',
-        isNaN(nilai) ? r.nilai : nilai,
-        lulus ? 'Lulus' : (lulusSalah ? 'Remedial' : '-'),
-        Number(r.pelanggaran) || 0,
-        fmtWaktu(r.mulai), fmtWaktu(r.selesai),
-        detik === null ? '-' : formatDurasi_(detik),
-        detik === null ? '' : Math.round(detik / 6) / 10   // menit, 1 desimal
-      ];
-    });
-    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
-    ws['!cols'] = [{ wch: 5 }, { wch: 30 }, { wch: 10 }, { wch: 8 }, { wch: 12 }, { wch: 12 }, { wch: 18 }, { wch: 18 }, { wch: 20 }, { wch: 14 }];
-    ws['!freeze'] = { xSplit: 0, ySplit: 1 };
-    ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: rows.length, c: headers.length - 1 } }) };
+    const buatSheet = (arr, denganUjian) => {
+      const headers = ['No'].concat(denganUjian ? ['Ujian'] : [], ['Nama', 'Kelas', 'Nilai', 'Keterangan', 'Pelanggaran', 'Mulai', 'Selesai', 'Durasi Pengerjaan', 'Durasi (menit)']);
+      const rows = urut(arr, denganUjian).map((r, i) => {
+        const lulus = r.lulus === true || String(r.lulus).toLowerCase() === 'true';
+        const lulusSalah = r.lulus === false || String(r.lulus).toLowerCase() === 'false';
+        const detik = hitungDurasiDetik_(r.mulai, r.selesai);
+        const nilai = r.nilai === '' || r.nilai === null || r.nilai === undefined ? '' : Number(r.nilai);
+        return [i + 1].concat(denganUjian ? [r._ujian || ''] : [], [
+          r.nama || '', r.kelas || '',
+          isNaN(nilai) ? r.nilai : nilai,
+          lulus ? 'Lulus' : (lulusSalah ? 'Remedial' : '-'),
+          Number(r.pelanggaran) || 0,
+          fmtWaktu(r.mulai), fmtWaktu(r.selesai),
+          detik === null ? '-' : formatDurasi_(detik),
+          detik === null ? '' : Math.round(detik / 6) / 10
+        ]);
+      });
+      const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+      ws['!cols'] = (denganUjian ? [5, 28] : [5]).concat([30, 10, 8, 12, 12, 18, 18, 20, 14]).map(w => ({ wch: w }));
+      ws['!freeze'] = { xSplit: 0, ySplit: 1 };
+      ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: Math.max(rows.length, 1), c: headers.length - 1 } }) };
+      return ws;
+    };
+    // Satu sheet gabungan + satu sheet per kelas.
+    const bukuPerKelas = (arr, denganUjian, namaGabungan) => {
+      const wb = XLSX.utils.book_new();
+      const terpakai = new Set();
+      XLSX.utils.book_append_sheet(wb, buatSheet(arr, denganUjian), namaSheetUnik_(namaGabungan, terpakai));
+      const perKelas = {};
+      arr.forEach(r => { const k = String(r.kelas || 'Tanpa Kelas'); (perKelas[k] = perKelas[k] || []).push(r); });
+      Object.keys(perKelas).sort((a, b) => a.localeCompare(b, 'id', { numeric: true })).forEach(k => {
+        XLSX.utils.book_append_sheet(wb, buatSheet(perKelas[k], denganUjian), namaSheetUnik_('Kelas ' + k, terpakai));
+      });
+      return { wb, jumlahKelas: Object.keys(perKelas).length };
+    };
+
+    if (mode === 'semuaUjian') {
+      toast('Mengumpulkan nilai dari semua ujian...');
+      const daftar = await api('getDaftarUjian', { guruId: state.user.id });
+      if (!daftar.ok) { toast('Gagal memuat daftar ujian: ' + daftar.error, 'error'); return; }
+      let gabungan = [];
+      for (const u of daftar.data) {
+        const r = await api('getRekapNilai', { ujianId: u.id });
+        if (r.ok) gabungan = gabungan.concat(r.data.map(x => Object.assign({}, x, { _ujian: u.judul })));
+      }
+      if (kelasFilter) gabungan = gabungan.filter(r => String(r.kelas || '').trim() === kelasFilter);
+      if (gabungan.length === 0) { toast('Tidak ada nilai untuk diunduh.', 'error'); return; }
+      const { wb, jumlahKelas } = bukuPerKelas(gabungan, true, 'Semua Ujian');
+      XLSX.writeFile(wb, 'rekap-nilai-semua-ujian-' + (kelasFilter ? bersih(kelasFilter) : 'semua-kelas') + '.xlsx');
+      toast(`Nilai ${gabungan.length} data (${daftar.data.length} ujian, ${jumlahKelas} kelas) berhasil diunduh.`, 'success');
+      return;
+    }
+
+    const semuaData = state.guru._rekapAktif;
+    if (!semuaData || semuaData.length === 0) { toast('Tidak ada data untuk diunduh.', 'error'); return; }
+
+    if (mode === 'semua') {
+      const { wb, jumlahKelas } = bukuPerKelas(semuaData, false, 'Semua Kelas');
+      XLSX.writeFile(wb, 'rekap-nilai-' + bersih(judulUjian) + '-semua-kelas.xlsx');
+      toast(`Rekap ${semuaData.length} siswa (${jumlahKelas} kelas) berhasil diunduh.`, 'success');
+      return;
+    }
+
+    const data = Guru.rekapTersaring_();
+    if (data.length === 0) { toast('Tidak ada data yang cocok dengan filter untuk diunduh.', 'error'); return; }
+    const cari = (document.getElementById('cari-rekap')?.value || '').trim();
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Rekap Nilai');
-    const namaFile = 'rekap-nilai-' + judulUjian.replace(/[\\/:*?"<>|]+/g, '-').trim().slice(0, 60) + '.xlsx';
-    XLSX.writeFile(wb, namaFile);
-    toast(`Rekap ${rows.length} siswa berhasil diunduh.`, 'success');
+    XLSX.utils.book_append_sheet(wb, buatSheet(data, false), namaSheetUnik_(kelasFilter ? 'Kelas ' + kelasFilter : 'Rekap Nilai', new Set()));
+    XLSX.writeFile(wb, 'rekap-nilai-' + bersih(judulUjian) + (kelasFilter ? '-' + bersih(kelasFilter) : '') + (cari ? '-hasil-cari' : '') + '.xlsx');
+    toast(`Rekap ${data.length} siswa berhasil diunduh.`, 'success');
   },
 
   // Menghitung ulang nilai SEMUA siswa yang sudah selesai di ujian yang
@@ -3678,9 +3831,30 @@ const Guru = {
     if (!ujianId) { cont.innerHTML = 'Pilih ujian terlebih dahulu.'; return; }
     const res = await api('getLogPelanggaran', { ujianId });
     if (!res.ok) { cont.textContent = 'Gagal memuat.'; return; }
-    if (res.data.length === 0) { cont.innerHTML = '<p class="subtitle">Tidak ada pelanggaran tercatat.</p>'; return; }
-    cont.innerHTML = `<table class="ledger"><thead><tr><th>Siswa</th><th>Jenis Pelanggaran</th><th>Waktu</th></tr></thead><tbody>` +
-      res.data.map(l => `<tr><td>${escapeHtml_(l.siswa_id)}</td><td>${labelPelanggaran(l.jenis)}</td><td>${formatTanggal(l.waktu)}</td></tr>`).join('') +
+    // Butuh data siswa agar log bisa menampilkan nama & kelas (bukan ID mentah).
+    if (!(state.guru.daftarSiswa || []).length) {
+      const rs = await api('getDaftarSiswa', {});
+      if (rs.ok) state.guru.daftarSiswa = rs.data;
+    }
+    state.guru._logAktif = res.data;
+    Guru.renderLogPelanggaran_(true);
+  },
+
+  renderLogPelanggaran_(isiKelas) {
+    const cont = document.getElementById('tabel-log');
+    const peta = {};
+    (state.guru.daftarSiswa || []).forEach(s => { peta[s.id] = s; });
+    const semua = (state.guru._logAktif || []).map(l => {
+      const s = peta[l.siswa_id];
+      return Object.assign({}, l, { nama: s ? s.nama : String(l.siswa_id || ''), kelas: s ? (s.kelas || '-') : '-', username: s ? s.username : '' });
+    });
+    if (isiKelas === true) isiOpsiKelas_('kelas-log', kelasUnikDari_(semua));
+    if (semua.length === 0) { tampilkanInfoFilter_('kelas-log-info', 0, 0); cont.innerHTML = '<p class="subtitle">Tidak ada pelanggaran tercatat.</p>'; return; }
+    const data = semua.filter(l => cocokFilterSiswa_(l, 'kelas-log', 'cari-log'));
+    tampilkanInfoFilter_('kelas-log-info', new Set(data.map(l => l.siswa_id)).size, new Set(semua.map(l => l.siswa_id)).size, data.length + ' catatan');
+    if (data.length === 0) { cont.innerHTML = '<p class="subtitle">Tidak ada pelanggaran yang cocok dengan kelas/pencarian ini.</p>'; return; }
+    cont.innerHTML = `<table class="ledger"><thead><tr><th>Siswa</th><th>Kelas</th><th>Jenis Pelanggaran</th><th>Waktu</th></tr></thead><tbody>` +
+      data.map(l => `<tr><td>${escapeHtml_(l.nama)}</td><td>${escapeHtml_(l.kelas)}</td><td>${labelPelanggaran(l.jenis)}</td><td>${formatTanggal(l.waktu)}</td></tr>`).join('') +
       `</tbody></table>`;
   },
 
@@ -3695,6 +3869,7 @@ const Guru = {
     state.guru._analisisSoal = res.soal;
     state.guru._analisisSiswa = res.siswa;
     state.guru._analisisTotalPeserta = res.totalPeserta;
+    isiOpsiKelas_('kelas-analisis', kelasUnikDari_(res.siswa));
     Guru.renderAnalisisSoal();
     Guru.renderAnalisisJawaban();
   },
@@ -3749,8 +3924,11 @@ const Guru = {
   renderAnalisisJawaban() {
     const cont = document.getElementById('tabel-analisis-jawaban');
     const soalList = state.guru._analisisSoal || [];
-    const siswaList = state.guru._analisisSiswa || [];
-    if (siswaList.length === 0) { cont.innerHTML = '<p class="subtitle">Belum ada siswa yang menyelesaikan ujian ini.</p>'; return; }
+    const semuaSiswa = state.guru._analisisSiswa || [];
+    if (semuaSiswa.length === 0) { tampilkanInfoFilter_('kelas-analisis-info', 0, 0); cont.innerHTML = '<p class="subtitle">Belum ada siswa yang menyelesaikan ujian ini.</p>'; return; }
+    const siswaList = semuaSiswa.filter(sw => cocokFilterSiswa_(sw, 'kelas-analisis', 'cari-analisis'));
+    tampilkanInfoFilter_('kelas-analisis-info', siswaList.length, semuaSiswa.length);
+    if (siswaList.length === 0) { cont.innerHTML = '<p class="subtitle">Tidak ada siswa yang cocok dengan kelas/pencarian ini.</p>'; return; }
     const simbol = { benar: '<span class="jwb-cell jwb-benar">✔</span>', sebagian: '<span class="jwb-cell jwb-sebagian">◐</span>', salah: '<span class="jwb-cell jwb-salah">✘</span>', kosong: '<span class="jwb-cell jwb-kosong">–</span>', na: '<span class="jwb-cell jwb-kosong">–</span>' };
     cont.innerHTML = `<p class="subtitle">✔ = benar &nbsp; ◐ = sebagian benar (checkbox/mencocokkan/uraian) &nbsp; ✘ = salah &nbsp; – = tidak dijawab.</p>
       <div class="table-scroll-x"><table class="ledger"><thead><tr>
@@ -3764,8 +3942,8 @@ const Guru = {
 
   async unduhAnalisisJawabanCSV() {
     const soalList = state.guru._analisisSoal;
-    const siswaList = state.guru._analisisSiswa;
-    if (!siswaList || siswaList.length === 0) { toast('Tidak ada data untuk diunduh.', 'error'); return; }
+    const siswaList = (state.guru._analisisSiswa || []).filter(sw => cocokFilterSiswa_(sw, 'kelas-analisis', 'cari-analisis'));
+    if (siswaList.length === 0) { toast('Tidak ada data untuk diunduh.', 'error'); return; }
     const labelSimbol = { benar: 'Benar', sebagian: 'Sebagian', salah: 'Salah', kosong: 'Kosong', na: 'Kosong' };
     const headers = ['No', 'Nama', 'Kelas', 'Nilai', ...soalList.map(s => 'No ' + s.nomor)];
     const urut = [...siswaList].sort((a, b) =>
@@ -3790,14 +3968,18 @@ const Guru = {
     if (!res.ok) { cont.textContent = 'Gagal memuat: ' + res.error; return; }
     state.guru._pemantauanAktif = res.data;
     state.guru._pemantauanMax = res.maxPelanggaran;
+    isiOpsiKelas_('kelas-pemantauan', kelasUnikDari_(res.data));
     Guru.renderTabelPemantauan();
   },
 
   renderTabelPemantauan() {
     const cont = document.getElementById('tabel-pemantauan');
-    const data = state.guru._pemantauanAktif || [];
+    const semuaPemantauan = state.guru._pemantauanAktif || [];
     const maxPelanggaran = state.guru._pemantauanMax || 999;
-    if (data.length === 0) { cont.innerHTML = '<p class="subtitle">Belum ada siswa yang membuka ujian ini.</p>'; return; }
+    if (semuaPemantauan.length === 0) { tampilkanInfoFilter_('kelas-pemantauan-info', 0, 0); cont.innerHTML = '<p class="subtitle">Belum ada siswa yang membuka ujian ini.</p>'; return; }
+    const data = semuaPemantauan.filter(s => cocokFilterSiswa_(s, 'kelas-pemantauan', 'cari-pemantauan'));
+    tampilkanInfoFilter_('kelas-pemantauan-info', data.length, semuaPemantauan.length, data.filter(s => s.status === 'berlangsung').length + ' sedang mengerjakan');
+    if (data.length === 0) { cont.innerHTML = '<p class="subtitle">Tidak ada siswa yang cocok dengan kelas/pencarian ini.</p>'; return; }
 
     const labelStatus = { berlangsung: 'Sedang Mengerjakan', selesai: 'Selesai', diblokir: 'Diblokir (Pelanggaran)' };
     const kelasBadge = { berlangsung: 'ok', selesai: 'ok', diblokir: 'no' };
@@ -3884,9 +4066,10 @@ const Guru = {
     const cont = document.getElementById('daftar-siswa');
     const filterKelas = document.getElementById('filter-kelas-siswa')?.value || '';
     const semua = state.guru.daftarSiswa || [];
-    const data = filterKelas ? semua.filter(s => s.kelas === filterKelas) : semua;
+    const data = semua.filter(s => cocokFilterSiswa_(s, 'filter-kelas-siswa', 'cari-siswa'));
+    tampilkanInfoFilter_('cari-siswa-info', data.length, semua.length);
     if (semua.length === 0) { cont.innerHTML = '<p class="subtitle">Belum ada data siswa.</p>'; return; }
-    if (data.length === 0) { cont.innerHTML = `<p class="subtitle">Tidak ada siswa di kelas "${escapeHtml_(filterKelas)}".</p>`; return; }
+    if (data.length === 0) { cont.innerHTML = `<p class="subtitle">Tidak ada siswa yang cocok${filterKelas ? ` di kelas "${escapeHtml_(filterKelas)}"` : ''} dengan pencarian ini.</p>`; return; }
     cont.innerHTML = `<table class="ledger"><thead><tr><th>Username</th><th>Password</th><th>Nama</th><th>Kelas</th><th>Status</th><th></th></tr></thead><tbody>` +
       data.map(s => `<tr>
         <td>${escapeHtml_(s.username)}</td><td>${escapeHtml_(s.password)}</td><td>${escapeHtml_(s.nama)}</td><td>${escapeHtml_(s.kelas)}</td>
@@ -4035,9 +4218,10 @@ const Guru = {
     if (!cont) return;
     const filterKelas = document.getElementById('filter-kelas-login')?.value || '';
     const semua = state.guru.daftarSiswa || [];
-    const data = filterKelas ? semua.filter(s => s.kelas === filterKelas) : semua;
+    const data = semua.filter(s => cocokFilterSiswa_(s, 'filter-kelas-login', 'cari-login'));
+    tampilkanInfoFilter_('cari-login-info', data.length, semua.length);
     if (semua.length === 0) { cont.innerHTML = '<p class="subtitle">Belum ada data siswa.</p>'; return; }
-    if (data.length === 0) { cont.innerHTML = `<p class="subtitle">Tidak ada siswa di kelas "${escapeHtml_(filterKelas)}".</p>`; return; }
+    if (data.length === 0) { cont.innerHTML = `<p class="subtitle">Tidak ada siswa yang cocok${filterKelas ? ` di kelas "${escapeHtml_(filterKelas)}"` : ''} dengan pencarian ini.</p>`; return; }
     cont.innerHTML = `<table class="ledger"><thead><tr><th>Nama</th><th>Kelas</th><th>Username</th><th>Status</th><th>Device ID Terkunci</th><th>Terakhir Aktif</th><th></th></tr></thead><tbody>` +
       data.map(s => `<tr>
         <td>${escapeHtml_(s.nama)}</td><td>${escapeHtml_(s.kelas)}</td><td>${escapeHtml_(s.username)}</td>
