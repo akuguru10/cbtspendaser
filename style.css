@@ -727,11 +727,15 @@ table.ledger td.aksi { display: flex; gap: .4rem; flex-wrap: wrap; }
 
 .hasil-instruksi { color: var(--c-muted); font-size: .88rem; line-height: 1.55; margin: 0 0 1.6rem; white-space: pre-line; }
 
-/* Editor pesan per rentang nilai (modal ujian guru) */
-.pesan-nilai-row { border: 1px solid var(--c-line); border-radius: 3px; padding: .6rem; margin-bottom: .6rem; }
-.pesan-nilai-rentang { display: flex; align-items: center; gap: .5rem; margin-bottom: .45rem; }
-.pesan-nilai-rentang input { width: 5.5rem; }
-.pesan-nilai-rentang button { margin-left: auto; }
+/* Editor pesan per nilai 0-100 (modal ujian guru) */
+.pesan-nilai-scroll { max-height: 420px; overflow-y: auto; border: 1px solid var(--c-line); border-radius: 3px; padding: .5rem; }
+.pesan-nilai-row { display: grid; grid-template-columns: 3rem 1fr; gap: .5rem; align-items: start; margin-bottom: .45rem; }
+.pesan-nilai-angka { font-weight: 700; text-align: center; padding: .45rem 0; border: 1px solid var(--c-line); border-radius: 3px; color: var(--c-text); }
+.pesan-nilai-row textarea { width: 100%; }
+.pesan-cepat { border: 1px dashed var(--c-line); border-radius: 3px; padding: .45rem .6rem; margin-bottom: .3rem; }
+.pesan-cepat summary { cursor: pointer; font-size: .85rem; }
+.pesan-cepat-isi { margin-top: .5rem; }
+.pesan-cepat-isi input[type=number] { width: 5.5rem; }
 
 .hasil-btn-beranda { width: 100%; display: inline-flex; align-items: center; justify-content: center; gap: .5rem; }
 
@@ -1083,4 +1087,200 @@ details.tm-det > summary { cursor: pointer; font-weight: 700; font-size: .88rem;
   .opsi-huruf { width: 26px; height: 26px; font-size: .82rem; }
   .question-card { padding: 1.2rem; min-height: 0; }
   .exam-topbar { padding: .7rem 1rem; }
+}
+
+/* ============================================================================
+   v10 — TAMPILAN HP PREMIUM (Portal Guru & Siswa)
+   Semua warna/radius memakai variabel tema, jadi 33 gaya + Studio Gaya tetap
+   berlaku. Hanya aktif di layar kecil; tampilan desktop tidak berubah.
+   ============================================================================ */
+.bottom-nav, .login-hero { display: none; }
+
+@media (max-width: 880px) {
+  :root { --m-nav-h: 64px; }
+  html { -webkit-tap-highlight-color: transparent; }
+  body { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; overflow-x: clip; }
+  button, .nav-tab, .opsi-item, .dash-card, .aksi-card { touch-action: manipulation; }
+
+  /* ---- Top bar: kaca buram, logo + judul halaman ---- */
+  .mobile-topbar {
+    background: color-mix(in srgb, var(--c-surface) 84%, transparent); color: var(--c-text);
+    -webkit-backdrop-filter: saturate(180%) blur(16px); backdrop-filter: saturate(180%) blur(16px);
+    border-bottom: 1px solid var(--c-line); box-shadow: none;
+    padding: calc(.6rem + env(safe-area-inset-top)) 1rem .6rem; gap: .75rem;
+  }
+  .mt-logo {
+    width: 38px; height: 38px; flex-shrink: 0; border-radius: 12px; overflow: hidden;
+    display: flex; align-items: center; justify-content: center; font-size: 1rem;
+    background: linear-gradient(135deg, var(--c-primary), var(--c-secondary)); color: var(--c-on-primary);
+  }
+  .mobile-topbar-title { display: flex; flex-direction: column; min-width: 0; flex: 1; line-height: 1.18; }
+  .mt-brand { font-size: .66rem; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: var(--c-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mobile-topbar-title strong { font-family: var(--font-display); font-size: 1.08rem; font-weight: 700; letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mobile-topbar .hamburger-btn {
+    width: 40px; height: 40px; padding: 0; flex-shrink: 0; font-size: 1.1rem; border-radius: 12px;
+    background: var(--c-surface); color: var(--c-text); border: 1px solid var(--c-line);
+  }
+  #guru-portal .mobile-topbar .hamburger-btn { display: none; }
+
+  /* ---- Bottom navigation (guru) ---- */
+  .bottom-nav {
+    display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
+    padding: .35rem .5rem calc(.35rem + env(safe-area-inset-bottom));
+    background: color-mix(in srgb, var(--c-surface) 88%, transparent);
+    -webkit-backdrop-filter: saturate(180%) blur(18px); backdrop-filter: saturate(180%) blur(18px);
+    border-top: 1px solid var(--c-line); box-shadow: 0 -10px 28px rgba(var(--c-shadow), .09);
+  }
+  .bottom-nav button {
+    flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .22rem;
+    min-height: 52px; padding: .4rem .2rem; position: relative;
+    background: transparent; border: 0; box-shadow: none; border-radius: var(--radius);
+    color: var(--c-muted); font-size: .68rem; font-weight: 600; letter-spacing: .01em;
+  }
+  .bottom-nav button:hover { background: transparent; border-color: transparent; }
+  .bottom-nav button i { font-size: 1.15rem; transition: transform .2s ease; }
+  .bottom-nav button.active { color: color-mix(in srgb, var(--c-primary) 72%, var(--c-text)); }
+  .bottom-nav button.active i { transform: translateY(-1px) scale(1.08); }
+  .bottom-nav button.active::before {
+    content: ''; position: absolute; top: -.36rem; left: 32%; right: 32%; height: 3px;
+    border-radius: 0 0 4px 4px; background: var(--c-primary);
+  }
+
+  /* ---- Area konten ---- */
+  .main { padding: 1.1rem 1rem calc(1.5rem + env(safe-area-inset-bottom)); }
+  #guru-portal .main { padding-bottom: calc(var(--m-nav-h) + 1.6rem + env(safe-area-inset-bottom)); }
+  .main h2 { font-size: 1.45rem; letter-spacing: -.02em; line-height: 1.2; }
+  .main .subtitle { font-size: .9rem; line-height: 1.5; margin-bottom: 1.1rem; }
+  .panel { padding: 1.1rem; margin-bottom: 1rem; }
+  .toolbar { flex-direction: column; align-items: stretch; gap: .7rem; }
+  .toolbar-actions { width: 100%; }
+  .toolbar-actions > button { flex: 1 1 auto; }
+  #toast { bottom: calc(var(--m-nav-h) + .9rem + env(safe-area-inset-bottom)); }
+
+  /* ---- Drawer ---- */
+  .sidebar { width: 86%; padding-top: calc(1.3rem + env(safe-area-inset-top)); padding-bottom: calc(1rem + env(safe-area-inset-bottom)); }
+  .nav-tab { min-height: 48px; font-size: .92rem; }
+
+  /* ---- Dashboard guru ---- */
+  .dash-top { flex-direction: column; align-items: stretch; gap: .7rem; }
+  .dash-search { width: 100%; }
+  #guru-portal .dash-hero { padding: 1.25rem; gap: .9rem; }
+  #guru-portal .dash-avatar { width: 48px; height: 48px; font-size: 1.25rem; border-radius: 15px; }
+  #guru-portal .dash-hero h3 { font-size: 1.28rem; line-height: 1.25; }
+  .dash-hero-btns { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; width: 100%; }
+  .dash-hero-btns > button:first-child { grid-column: 1 / -1; }
+  .dash-grid { grid-template-columns: repeat(2, 1fr); gap: .7rem; margin-bottom: 1.3rem; }
+  .dash-card { flex-direction: column; gap: .6rem; padding: .95rem; }
+  .dash-card-ico { width: 2.3rem; height: 2.3rem; }
+  .dash-card-nilai { font-size: 1.45rem; }
+
+  /* ---- Formulir: sentuh nyaman, tanpa auto-zoom iOS ---- */
+  input[type=text], input[type=password], input[type=number], input[type=datetime-local], input[type=email], select {
+    font-size: 16px; min-height: 48px; padding: .7rem .9rem; border-radius: var(--radius);
+  }
+  textarea { font-size: 16px; padding: .7rem .9rem; border-radius: var(--radius); }
+  :where(.main .panel, .modal, #login-screen) button:where(:not(.small):not(.icon)) { min-height: 46px; }
+  .field label, label { font-size: .8rem; }
+
+  /* ---- Modal -> bottom sheet ---- */
+  .modal-backdrop { padding: 2.2rem 0 0; }
+  .modal {
+    max-width: none; margin-top: auto; border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    padding: 1.1rem 1.1rem 0; box-shadow: 0 -18px 50px rgba(10,14,30,.28);
+    animation: m-sheet .3s cubic-bezier(.2,.8,.2,1);
+  }
+  .modal::before { content: ''; display: block; width: 42px; height: 4px; border-radius: 4px; background: var(--c-line); margin: 0 auto .9rem; }
+  .modal-close-row {
+    position: sticky; bottom: 0; margin: 1rem -1.1rem 0; padding: .8rem 1.1rem calc(.8rem + env(safe-area-inset-bottom));
+    background: var(--c-surface); border-top: 1px solid var(--c-line); z-index: 2;
+  }
+  .modal-close-row > button { flex: 1; }
+  @keyframes m-sheet { from { transform: translateY(40px); opacity: 0; } to { transform: none; opacity: 1; } }
+
+  /* ---- Portal siswa: kolom token ---- */
+  .token-box { max-width: none; }
+  #input-token-ujian { text-align: center; font-size: 1.5rem; font-weight: 800; letter-spacing: .32em; min-height: 62px; font-variant-numeric: tabular-nums; }
+  #siswa-portal .panel .accent { min-height: 52px; font-size: 1rem; }
+  #input-token-ujian::placeholder { letter-spacing: .04em; font-size: 1rem; font-weight: 500; text-transform: none; }
+  /* judul halaman sudah tampil di top bar -> tidak diulang di isi */
+  #siswa-portal .main > h2, .dash-top h2 { display: none; }
+  .field { margin-bottom: .95rem; }
+
+  /* ---- Ruang ujian ---- */
+  .exam-topbar {
+    display: grid; grid-template-columns: 1fr auto; align-items: center; gap: .4rem .7rem;
+    padding: calc(.6rem + env(safe-area-inset-top)) .9rem .6rem;
+  }
+  .exam-topbar .judul { grid-column: 1; grid-row: 1; font-size: .95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .exam-topbar .timer { grid-column: 2; grid-row: 1; font-size: 1.05rem; padding: .25rem .65rem; }
+  .exam-topbar .pelanggaran-indikator { grid-column: 1; grid-row: 2; }
+  .exam-topbar > button { grid-column: 2; grid-row: 2; justify-self: end; min-height: 34px; padding: .3rem .7rem; font-size: .74rem; }
+  .exam-body { padding: .9rem .9rem calc(1rem + env(safe-area-inset-bottom)); gap: 1rem; }
+  .question-card { padding: 1.1rem; border-radius: var(--radius-lg); }
+  .question-card .pertanyaan { font-size: 1.02rem; line-height: 1.65; }
+  .nav-actions {
+    position: sticky; bottom: 0; z-index: 20; margin: 1rem -.9rem 0;
+    padding: .7rem .9rem calc(.7rem + env(safe-area-inset-bottom));
+    background: color-mix(in srgb, var(--c-bg) 90%, transparent);
+    -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); border-top: 1px solid var(--c-line);
+  }
+  .soal-grid { grid-template-columns: repeat(auto-fill, minmax(44px, 1fr)); gap: .45rem; }
+  .soal-grid button { min-height: 44px; padding: 0; }
+  .hasil-card { border-radius: var(--radius-lg); }
+}
+
+/* ---- Tabel -> kartu (layar sangat kecil) ---- */
+@media (max-width: 640px) {
+  :is(#guru-portal, #siswa-portal, #detail-screen) table.ledger.ledger-kartu,
+  :is(#guru-portal, #siswa-portal, #detail-screen) table.ledger.ledger-kartu tbody { display: block; min-width: 0; width: 100%; }
+  table.ledger.ledger-kartu thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  table.ledger.ledger-kartu tr {
+    display: block; background: var(--c-surface); border: 1px solid var(--c-line); border-radius: var(--radius-lg);
+    padding: .35rem .95rem; margin-bottom: .75rem; box-shadow: var(--shadow);
+  }
+  table.ledger.ledger-kartu tr:hover td { background: transparent; }
+  table.ledger.ledger-kartu td {
+    display: flex; justify-content: space-between; align-items: center; gap: 1rem; text-align: right;
+    padding: .6rem 0; border: 0; border-bottom: 1px dashed var(--c-line); word-break: break-word;
+  }
+  table.ledger.ledger-kartu td:last-child { border-bottom: 0; }
+  table.ledger.ledger-kartu td[data-label]::before {
+    content: attr(data-label); flex: 0 0 38%; text-align: left; font-size: .72rem; font-weight: 700;
+    letter-spacing: .04em; text-transform: uppercase; color: var(--c-muted);
+  }
+  table.ledger.ledger-kartu td[data-label=""]::before { display: none; }
+  table.ledger.ledger-kartu td.aksi { justify-content: flex-start; flex-wrap: wrap; padding-top: .8rem; }
+  table.ledger.ledger-kartu td.aksi::before { display: none; }
+  table.ledger.ledger-kartu td.td-penuh { display: block; text-align: center; border: 0; }
+}
+
+/* ---- Login: hero + bottom sheet ala aplikasi ---- */
+@media (max-width: 560px) {
+  #login-screen { flex-direction: column; align-items: stretch; justify-content: flex-end; padding: 0; min-height: 100vh; min-height: 100dvh; }
+  .login-hero {
+    display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; flex: 1;
+    padding: calc(2rem + env(safe-area-inset-top)) 1.5rem 1.6rem; color: var(--c-text);
+  }
+  .login-hero-logo {
+    width: 76px; height: 76px; border-radius: 24px; display: flex; align-items: center; justify-content: center;
+    font-size: 2rem; color: var(--c-on-primary); margin-bottom: 1rem; overflow: hidden;
+    background: linear-gradient(135deg, var(--c-primary), var(--c-secondary));
+    box-shadow: 0 18px 36px -12px color-mix(in srgb, var(--c-primary) 60%, transparent);
+  }
+  .login-hero h1 { margin: 0 0 .3rem; font-size: 1.7rem; font-weight: 800; letter-spacing: -.02em; }
+  .login-hero p { margin: 0; color: var(--c-muted); font-size: .92rem; }
+  .login-card {
+    max-width: none; width: 100%; border-radius: 28px 28px 0 0; border: 1px solid var(--c-line); border-bottom: 0;
+    padding: 1.5rem 1.3rem calc(1.4rem + env(safe-area-inset-bottom));
+    box-shadow: 0 -16px 44px rgba(var(--c-shadow), .16);
+  }
+  .login-card > .login-logo-slot, .login-card > .brand, .login-card > .brand-sub { display: none; }
+  .role-switch { margin-bottom: 1.2rem; }
+  .role-switch button { min-height: 44px; font-size: .92rem; }
+  #btn-login-submit { min-height: 52px; font-size: 1rem; border-radius: var(--radius); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .modal { animation: none; }
+  .bottom-nav button i { transition: none; }
 }
