@@ -794,12 +794,13 @@ function xmlEscape_(s) {
 }
 
 // Tabel OOXML sederhana (dipakai buatDocxSederhana_ utk item {table:{headers,rows}}).
-function buildTableXml_(headers, rows) {
-  const w = Math.floor(9500 / headers.length);
-  const grid = headers.map(() => `<w:gridCol w:w="${w}"/>`).join('');
-  const cell = (text, bold) => `<w:tc><w:tcPr><w:tcW w:w="${w}" w:type="dxa"/></w:tcPr><w:p>${text ? `<w:r>${bold ? '<w:rPr><w:b/></w:rPr>' : ''}<w:t xml:space="preserve">${xmlEscape_(text)}</w:t></w:r>` : ''}</w:p></w:tc>`;
-  const headerRow = `<w:tr>${headers.map(h => cell(h, true)).join('')}</w:tr>`;
-  const bodyRows = rows.map(r => `<w:tr>${r.map(c => cell(c, false)).join('')}</w:tr>`).join('');
+function buildTableXml_(headers, rows, widths) {
+  const wDef = Math.floor(9500 / headers.length);
+  const lebar = (i) => (widths && widths[i]) ? widths[i] : wDef;
+  const grid = headers.map((_, i) => `<w:gridCol w:w="${lebar(i)}"/>`).join('');
+  const cell = (text, bold, i) => `<w:tc><w:tcPr><w:tcW w:w="${lebar(i)}" w:type="dxa"/></w:tcPr><w:p>${text ? `<w:r>${bold ? '<w:rPr><w:b/></w:rPr>' : ''}<w:t xml:space="preserve">${xmlEscape_(text)}</w:t></w:r>` : ''}</w:p></w:tc>`;
+  const headerRow = `<w:tr><w:trPr><w:tblHeader/></w:trPr>${headers.map((h, i) => cell(h, true, i)).join('')}</w:tr>`;
+  const bodyRows = rows.map(r => `<w:tr>${r.map((c, i) => cell(c, false, i)).join('')}</w:tr>`).join('');
   return `<w:tbl><w:tblPr><w:tblW w:w="0" w:type="auto"/><w:tblBorders><w:top w:val="single" w:sz="4" w:color="999999"/><w:left w:val="single" w:sz="4" w:color="999999"/><w:bottom w:val="single" w:sz="4" w:color="999999"/><w:right w:val="single" w:sz="4" w:color="999999"/><w:insideH w:val="single" w:sz="4" w:color="999999"/><w:insideV w:val="single" w:sz="4" w:color="999999"/></w:tblBorders></w:tblPr><w:tblGrid>${grid}</w:tblGrid>${headerRow}${bodyRows}</w:tbl>`;
 }
 
@@ -809,7 +810,7 @@ function buildTableXml_(headers, rows) {
 function buatDocxSederhana_(items) {
   const enc = new TextEncoder();
   const body = items.map(p => {
-    if (p.table) return buildTableXml_(p.table.headers, p.table.rows);
+    if (p.table) return buildTableXml_(p.table.headers, p.table.rows, p.table.widths);
     if (p.heading) {
       return `<w:p><w:pPr><w:spacing w:before="240" w:after="120"/></w:pPr><w:r><w:rPr><w:b/><w:sz w:val="28"/></w:rPr><w:t xml:space="preserve">${xmlEscape_(p.text)}</w:t></w:r></w:p>`;
     }
@@ -1393,7 +1394,8 @@ function toast(msg, jenis) {
 
 // ----------------------------------------------------------------------------
 // PESAN HASIL BERDASARKAN RENTANG NILAI
-// Guru bisa mengisi pesan berbeda untuk tiap rentang nilai (0, 1-5, 6-10, ..., 96-99, 100).
+// Guru bisa mengisi pesan berbeda untuk tiap nilai (0, 1, 2, ..., 100) — manual atau lewat import Word.
+// Default di bawah masih berupa rentang (diperluas otomatis ke tiap nilai di editor).
 // Jika guru tidak mengubah apa pun (kolom pesan_nilai kosong) atau mengosongkan
 // satu pesan, otomatis dipakai pesan DEFAULT di bawah ini.
 // ----------------------------------------------------------------------------
@@ -2615,6 +2617,13 @@ const UI = {
 
   gantiTabGuru(tabId) {
     document.querySelectorAll('#guru-portal .nav-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tabId));
+    // HP: judul top bar + tab aktif di bottom navigation mengikuti halaman.
+    const spanAktif = document.querySelector('#guru-portal .nav-tab[data-tab="' + tabId + '"] span');
+    const judulHP = document.getElementById('mobile-title-guru');
+    if (judulHP && spanAktif) judulHP.textContent = spanAktif.textContent;
+    const adaDiBar = !!document.querySelector('#bottom-nav-guru button[data-tab="' + tabId + '"]');
+    document.querySelectorAll('#bottom-nav-guru button').forEach(b => b.classList.toggle('active', adaDiBar ? b.dataset.tab === tabId : b.dataset.tab === 'menu'));
+    const mainEl = document.querySelector('#guru-portal .main'); if (mainEl) mainEl.scrollTop = 0; window.scrollTo(0, 0);
     document.querySelectorAll('#guru-portal .main > section').forEach(s => s.classList.toggle('hidden', s.id !== tabId));
     if (tabId === 'tab-dashboard') Guru.muatDashboard();
     if (tabId === 'tab-bank-soal') Guru.muatBankSoal();
@@ -2986,71 +2995,172 @@ const UI = {
 // GURU
 // ============================================================================
 const Guru = {
-  // ---------------- PESAN HASIL PER RENTANG NILAI ----------------
+  // ---------------- PESAN HASIL PER NILAI (0, 1, 2, ... 100) ----------------
+  // Draft = array 101 string; indeks = nilai. Pesan kosong = pakai pesan default.
+  // Data tersimpan tetap berformat [{min,max,pesan}] (kompatibel dgn ujian lama &
+  // pesanUntukNilai_); nilai-nilai berurutan yg pesannya identik digabung jadi 1 rentang
+  // agar ringkas (batas sel Google Sheets 50.000 karakter).
   pesanNilaiDraft: [],
 
+  pesanDefaultPerNilai_() {
+    const arr = new Array(101).fill('');
+    DEFAULT_PESAN_NILAI.forEach(r => { for (let n = Number(r.min); n <= Number(r.max); n++) if (n >= 0 && n <= 100) arr[n] = r.pesan; });
+    return arr;
+  },
+
   muatEditorPesanNilai(raw) {
-    const tersimpan = parsePesanNilai_(raw);
-    // Belum pernah diatur -> isi editor dengan pesan default
-    Guru.pesanNilaiDraft = (tersimpan.length ? tersimpan : DEFAULT_PESAN_NILAI).map(r => ({ min: r.min, max: r.max, pesan: r.pesan || '' }));
+    const arr = Guru.pesanDefaultPerNilai_();
+    // Ujian lama tersimpan sbg rentang (mis. 1-5) -> dipecah ke tiap nilai.
+    parsePesanNilai_(raw).forEach(r => {
+      const teks = String(r.pesan || '').trim();
+      if (!teks) return;
+      for (let n = Math.max(0, Number(r.min)); n <= Math.min(100, Number(r.max)); n++) arr[n] = teks;
+    });
+    Guru.pesanNilaiDraft = arr;
     Guru.renderEditorPesanNilai();
   },
 
   renderEditorPesanNilai() {
     const cont = document.getElementById('pesan-nilai-editor');
     if (!cont) return;
-    cont.innerHTML = Guru.pesanNilaiDraft.map((r, i) => `
+    cont.innerHTML = Guru.pesanNilaiDraft.map((teks, n) => `
       <div class="pesan-nilai-row">
-        <div class="pesan-nilai-rentang">
-          <input type="number" min="0" max="100" value="${escapeHtml_(String(r.min))}" oninput="Guru.ubahPesanNilai(${i},'min',this.value)" aria-label="Nilai awal">
-          <span>s/d</span>
-          <input type="number" min="0" max="100" value="${escapeHtml_(String(r.max))}" oninput="Guru.ubahPesanNilai(${i},'max',this.value)" aria-label="Nilai akhir">
-          <button type="button" class="secondary" title="Hapus rentang ini" onclick="Guru.hapusRentangPesan(${i})"><i class="fa-solid fa-trash"></i></button>
-        </div>
-        <textarea rows="2" oninput="Guru.ubahPesanNilai(${i},'pesan',this.value)" placeholder="Kosongkan untuk memakai pesan default">${escapeHtml_(r.pesan)}</textarea>
+        <div class="pesan-nilai-angka" title="Pesan untuk nilai ${n}">${n}</div>
+        <textarea rows="2" oninput="Guru.ubahPesanNilai(${n},this.value)" aria-label="Pesan untuk nilai ${n}" placeholder="Kosongkan untuk memakai pesan default">${escapeHtml_(teks)}</textarea>
       </div>`).join('');
+    Guru.perbaruiInfoPesanNilai_();
   },
 
-  ubahPesanNilai(i, kolom, nilai) {
-    if (!Guru.pesanNilaiDraft[i]) return;
-    Guru.pesanNilaiDraft[i][kolom] = nilai;
+  ubahPesanNilai(n, teks) {
+    if (n < 0 || n > 100) return;
+    Guru.pesanNilaiDraft[n] = teks;
   },
 
-  tambahRentangPesan() {
-    const terakhir = Guru.pesanNilaiDraft[Guru.pesanNilaiDraft.length - 1];
-    const mulai = terakhir ? Math.min(100, Number(terakhir.max) + 1) : 0;
-    Guru.pesanNilaiDraft.push({ min: mulai, max: 100, pesan: '' });
+  perbaruiInfoPesanNilai_() {
+    const el = document.getElementById('pesan-nilai-info');
+    if (!el) return;
+    const terisi = Guru.pesanNilaiDraft.filter(t => String(t || '').trim()).length;
+    el.textContent = terisi + ' dari 101 nilai (0–100) memiliki pesan.';
+  },
+
+  // Isi cepat: satu pesan yang sama untuk beberapa nilai berurutan (mis. 76–80).
+  isiCepatPesanNilai() {
+    const dari = Number(document.getElementById('pesan-cepat-dari').value);
+    const sampai = Number(document.getElementById('pesan-cepat-sampai').value);
+    const teks = document.getElementById('pesan-cepat-teks').value.trim();
+    if (!Number.isInteger(dari) || !Number.isInteger(sampai) || dari < 0 || sampai > 100 || dari > sampai) {
+      toast('Rentang isi cepat tidak valid. Isi nilai awal ≤ nilai akhir, di antara 0–100.', 'error'); return;
+    }
+    if (!teks) { toast('Tulis dulu pesan yang ingin diterapkan.', 'error'); return; }
+    for (let n = dari; n <= sampai; n++) Guru.pesanNilaiDraft[n] = teks;
     Guru.renderEditorPesanNilai();
-  },
-
-  hapusRentangPesan(i) {
-    Guru.pesanNilaiDraft.splice(i, 1);
-    Guru.renderEditorPesanNilai();
+    toast(`Pesan diterapkan ke nilai ${dari}–${sampai}. Jangan lupa klik Simpan Ujian.`, 'success');
   },
 
   resetPesanNilai() {
-    if (!confirm('Kembalikan semua rentang dan pesan ke pengaturan default?')) return;
+    if (!confirm('Kembalikan semua pesan (nilai 0–100) ke pengaturan default?')) return;
     Guru.muatEditorPesanNilai('');
   },
 
-  // Validasi + ubah editor menjadi JSON. Jika isinya sama persis dengan default
-  // dikembalikan string kosong, sehingga ujian tetap memakai default terbaru.
+  // Draft -> JSON. Hanya pesan yang BERBEDA dari default yang disimpan (nilai lain
+  // otomatis memakai default terbaru). Nilai berurutan dgn pesan sama digabung.
   ambilPesanNilaiUntukSimpan() {
-    const rows = Guru.pesanNilaiDraft.map(r => ({ min: Number(r.min), max: Number(r.max), pesan: String(r.pesan || '').trim() }));
-    for (const r of rows) {
-      if (!Number.isFinite(r.min) || !Number.isFinite(r.max) || r.min < 0 || r.max > 100 || r.min > r.max) {
-        return { error: 'Rentang nilai pesan tidak valid. Pastikan nilai awal ≤ nilai akhir dan berada di antara 0–100.' };
-      }
+    const def = Guru.pesanDefaultPerNilai_();
+    const rows = [];
+    for (let n = 0; n <= 100; n++) {
+      const teks = String(Guru.pesanNilaiDraft[n] || '').trim();
+      if (!teks || teks === def[n]) continue;
+      const akhir = rows[rows.length - 1];
+      if (akhir && akhir.max === n - 1 && akhir.pesan === teks) akhir.max = n;
+      else rows.push({ min: n, max: n, pesan: teks });
     }
-    const urut = rows.slice().sort((a, b) => a.min - b.min);
-    for (let k = 1; k < urut.length; k++) {
-      if (urut[k].min <= urut[k - 1].max) {
-        return { error: 'Ada rentang nilai pesan yang saling tumpang tindih (' + urut[k - 1].min + '–' + urut[k - 1].max + ' dan ' + urut[k].min + '–' + urut[k].max + ').' };
+    if (!rows.length) return { json: '' };
+    const json = JSON.stringify(rows);
+    if (json.length > 45000) return { error: 'Total pesan terlalu panjang (' + json.length + ' karakter, batas ±45.000). Persingkat beberapa pesan.' };
+    return { json };
+  },
+
+  // Template Word: tabel 2 kolom (Nilai | Pesan), 101 baris (0-100), sudah berisi pesan
+  // yang saat ini ada di editor sehingga guru cukup mengubah teksnya di Word.
+  unduhTemplatePesanNilaiDocx() {
+    const rows = Guru.pesanNilaiDraft.map((teks, n) => [String(n), String(teks || '')]);
+    const items = [
+      { text: 'TEMPLATE PESAN HASIL PER NILAI — CBT Online', heading: true },
+      { text: 'Isi/ubah kolom "Pesan" pada tabel di bawah. SATU BARIS = SATU NILAI (0 sampai 100). Jangan mengubah kolom "Nilai" dan baris judul tabel. Pesan yang dikosongkan akan memakai pesan default (atau pesan yang sudah ada di editor). Boleh juga menulis rentang di kolom Nilai, mis. "76-80", maka pesan itu berlaku untuk semua nilai 76 sampai 80 (hapus baris-baris nilai 77, 78, 79, 80 di bawahnya agar tidak menimpa). Setelah selesai, simpan file lalu klik "Import dari Word" pada halaman pengaturan ujian.' },
+      { table: { headers: ['Nilai', 'Pesan'], rows, widths: [1300, 13200] } }
+    ];
+    unduhDocx_('Template_Pesan_Nilai_CBT.docx', items);
+    toast('Template pesan nilai (.docx) berhasil diunduh.', 'success');
+  },
+
+  // Baca .docx -> isi editor (BELUM tersimpan sampai guru klik Simpan Ujian).
+  // Format utama: tabel dgn kolom Nilai & Pesan (urutan bebas, nama header dicocokkan).
+  // Cadangan: paragraf biasa "85: pesan" / "76-80 = pesan".
+  async importPesanNilaiDariDocx(ev) {
+    const file = ev.target.files[0];
+    if (!file) return;
+    try { await muatPustaka_('mammoth'); } catch (err) { toast('Pustaka pembaca .docx belum termuat. ' + err.message, 'error'); ev.target.value = ''; return; }
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      try {
+        const hasil = await mammoth.convertToHtml({ arrayBuffer: e.target.result }, { convertImage: mammoth.images.imgElement(() => Promise.resolve({ src: '' })) });
+        const dom = new DOMParser().parseFromString(hasil.value, 'text/html');
+        const teksSel = (td) => {
+          const klon = td.cloneNode(true);
+          klon.querySelectorAll('br').forEach(br => br.replaceWith('\n'));
+          const ps = Array.from(klon.querySelectorAll('p'));
+          const t = ps.length ? ps.map(p => p.textContent.trim()).filter(Boolean).join('\n') : klon.textContent.trim();
+          return t.trim();
+        };
+        const entri = []; // {min,max,pesan}
+        const bacaNilai = (str) => {
+          const m = /^\s*(\d{1,3})(?:\s*(?:-|–|—|s\/d|sd|sampai)\s*(\d{1,3}))?\s*$/i.exec(String(str || ''));
+          if (!m) return null;
+          const a = Number(m[1]), b = m[2] != null ? Number(m[2]) : a;
+          return { min: a, max: b };
+        };
+        const peringatan = [];
+        for (const tbl of Array.from(dom.querySelectorAll('table'))) {
+          const trList = Array.from(tbl.querySelectorAll('tr'));
+          if (!trList.length) continue;
+          const header = Array.from(trList[0].querySelectorAll('th,td')).map(td => kunciHeader_(td.textContent));
+          let iNilai = header.indexOf('nilai'), iPesan = header.indexOf('pesan');
+          if (iNilai < 0 || iPesan < 0) { iNilai = 0; iPesan = 1; }
+          trList.slice(1).forEach((tr, k) => {
+            const sel = Array.from(tr.querySelectorAll('th,td'));
+            if (sel.length <= Math.max(iNilai, iPesan)) return;
+            const rentang = bacaNilai(sel[iNilai].textContent);
+            const pesan = teksSel(sel[iPesan]);
+            if (!rentang) { if (pesan || sel[iNilai].textContent.trim()) peringatan.push('Baris ' + (k + 2) + ': nilai "' + sel[iNilai].textContent.trim() + '" tidak dikenali.'); return; }
+            if (rentang.min > rentang.max || rentang.max > 100) { peringatan.push('Baris ' + (k + 2) + ': rentang nilai tidak valid.'); return; }
+            entri.push({ min: rentang.min, max: rentang.max, pesan });
+          });
+        }
+        if (!entri.length) { // cadangan: paragraf biasa
+          dom.querySelectorAll('p').forEach((p, k) => {
+            const m = /^\s*(\d{1,3}(?:\s*(?:-|–|—|s\/d|sd|sampai)\s*\d{1,3})?)\s*[:=\t)]\s*([\s\S]+)$/i.exec(p.textContent);
+            if (!m) return;
+            const rentang = bacaNilai(m[1]);
+            if (!rentang || rentang.min > rentang.max || rentang.max > 100) { peringatan.push('Paragraf ' + (k + 1) + ': rentang nilai tidak valid.'); return; }
+            entri.push({ min: rentang.min, max: rentang.max, pesan: m[2].trim() });
+          });
+        }
+        if (!entri.length) { toast('Tidak ada pesan yang terbaca. Pakai template: tabel dengan kolom "Nilai" dan "Pesan".', 'error'); return; }
+        const dihitung = new Set(); let kosong = 0;
+        entri.forEach(r => {
+          if (!r.pesan) { kosong++; return; }
+          for (let n = r.min; n <= r.max; n++) { Guru.pesanNilaiDraft[n] = r.pesan; dihitung.add(n); }
+        });
+        Guru.renderEditorPesanNilai();
+        toast(`${dihitung.size} nilai terisi dari Word${kosong ? ` (${kosong} baris kosong dilewati)` : ''}. Klik "Simpan Ujian" untuk menyimpan.`, 'success');
+        if (peringatan.length) alert('Selesai diimpor, TAPI ada baris yang dilewati:\n\n' + peringatan.slice(0, 15).join('\n') + (peringatan.length > 15 ? '\n...dan ' + (peringatan.length - 15) + ' lainnya.' : ''));
+      } catch (err) {
+        toast('Gagal membaca file .docx: ' + err.message, 'error');
+      } finally {
+        ev.target.value = '';
       }
-    }
-    const samaDenganDefault = rows.length === DEFAULT_PESAN_NILAI.length &&
-      rows.every((r, i) => r.min === DEFAULT_PESAN_NILAI[i].min && r.max === DEFAULT_PESAN_NILAI[i].max && (r.pesan === '' || r.pesan === DEFAULT_PESAN_NILAI[i].pesan));
-    return { json: samaDenganDefault ? '' : JSON.stringify(rows) };
+    };
+    reader.readAsArrayBuffer(file);
   },
 
   async init() {
@@ -5952,3 +6062,35 @@ document.addEventListener('visibilitychange', () => {
     if (activeTab) UI.mulaiAutoRefreshGuru(activeTab.id);
   }
 });
+
+
+// ----------------------------------------------------------------------------
+// TAMPILAN HP: tabel "ledger" otomatis tampil sebagai KARTU di layar kecil.
+// Tiap <td> diberi data-label dari judul kolomnya (dipakai CSS ::before). Tabel
+// lebar (> 8 kolom, mis. matriks jawaban siswa x soal) dibiarkan sebagai tabel
+// yang bisa digeser. Aman terhadap render ulang (MutationObserver, ber-debounce).
+// ----------------------------------------------------------------------------
+(function () {
+  let jadwal = null;
+  function labeli() {
+    jadwal = null;
+    document.querySelectorAll('table.ledger').forEach(t => {
+      if (t.dataset.kartu === '0') return;
+      const ths = Array.from(t.querySelectorAll('thead tr:first-child > th, tr:first-child > th'));
+      if (!ths.length || ths.length > 8) { t.dataset.kartu = '0'; return; }
+      t.classList.add('ledger-kartu'); t.dataset.kartu = '1';
+      const label = ths.map(th => th.textContent.trim());
+      t.querySelectorAll('tbody tr, tr').forEach(tr => {
+        if (tr.parentElement.tagName === 'THEAD') return;
+        const tds = Array.from(tr.children).filter(c => c.tagName === 'TD');
+        if (tds.length !== label.length) { if (tds.length === 1) tds[0].classList.add('td-penuh'); return; }
+        tds.forEach((td, i) => { if (!td.hasAttribute('data-label')) td.setAttribute('data-label', label[i]); });
+      });
+    });
+  }
+  function minta() { if (!jadwal) jadwal = setTimeout(labeli, 80); }
+  window.addEventListener('DOMContentLoaded', () => {
+    new MutationObserver(minta).observe(document.body, { childList: true, subtree: true });
+    minta();
+  });
+})();
