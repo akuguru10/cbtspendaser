@@ -683,7 +683,8 @@
 
         <div class="tm-sec">
           <h4>2. Gaya Tampilan</h4>
-          <p class="tm-hint">Pilih gaya UI supaya tidak bosan. Kartu di bawah memakai warna Anda saat ini.</p>
+          <p class="tm-hint">Pilih gaya UI supaya tidak bosan. Kartu bertanda paket (mis. Portal Navy Magenta) ikut mengganti warna; yang lain memakai warna Anda saat ini.</p>
+          <div class="tm-seg" id="gaya-filter"><button type="button" class="on" data-f="semua" onclick="Guru.filterGaya('semua')">Semua</button><button type="button" data-f="terang" onclick="Guru.filterGaya('terang')">☀️ Terang</button><button type="button" data-f="gelap" onclick="Guru.filterGaya('gelap')">🌙 Gelap</button><button type="button" data-f="paket" onclick="Guru.filterGaya('paket')">🎨 Paket + warna</button></div>
           <div id="gaya-galeri" class="gaya-galeri"></div>
           <div class="tm-actions">
             <button class="violet" onclick="Guru.acakGaya()">🎲 Acak Gaya</button>
