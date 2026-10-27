@@ -1027,7 +1027,12 @@ function barisTabelJadiSoal_(headerIdx, nilai, guruId, kategoriDefault, petaGamb
   }
   const item = {
     guru_id: guruId,
-    kategori: normalisasiKategoriSoal_(ambil('kategori') || kategoriDefault || 'Kuis'),
+    // Impor dilakukan dari dalam halaman Kelola Soal 1 mapel -> SEMUA baris masuk
+    // ke mapel yang sedang dibuka (persis seperti ejaan namanya), tidak peduli isi
+    // kolom Kategori di file (template lama berisi "Simulasi"/"IPA", yang dulu
+    // membuat soal menumpuk di kategori lama). Kolom Kategori di file hanya dipakai
+    // bila tidak ada mapel yang sedang dibuka.
+    kategori: kategoriDefault ? String(kategoriDefault).trim() : normalisasiKategoriSoal_(ambil('kategori') || 'Kuis'),
     subkategori: ambil('subkategori') || ambil('sub-kategori'),
     topik: ambil('topik'),
     tipe,
@@ -1311,17 +1316,27 @@ const MAPEL_WARNA_LIST = ['#16a97e', '#4a5cf0', '#f5a524', '#e0433d', '#7b5cf5',
 function bacaSemuaMetaMapel_() {
   try { return JSON.parse(localStorage.getItem(MAPEL_META_KEY) || '{}'); } catch (e) { return {}; }
 }
-function ambilMetaMapel_(kategori) {
+function ambilMetaMapel_(kategori, tandaiBuatan) {
   const semua = bacaSemuaMetaMapel_();
   const kunci = String(kategori || '').toLowerCase();
+  let berubah = false;
   if (!semua[kunci]) {
     semua[kunci] = {
       token: buatTokenAman_(),
       warna: MAPEL_WARNA_LIST[Object.keys(semua).length % MAPEL_WARNA_LIST.length]
     };
-    try { localStorage.setItem(MAPEL_META_KEY, JSON.stringify(semua)); } catch (e) {}
+    berubah = true;
   }
+  // Mapel yang dibuat lewat "Tambah Mapel Baru" (nama asli disimpan) tetap muncul
+  // sebagai kartu walau belum punya soal, supaya tidak hilang sebelum diisi.
+  if (tandaiBuatan && !semua[kunci].buatan) { semua[kunci].buatan = String(kategori).trim(); berubah = true; }
+  if (berubah) { try { localStorage.setItem(MAPEL_META_KEY, JSON.stringify(semua)); } catch (e) {} }
   return semua[kunci];
+}
+function hapusMapelBuatan_(kategori) {
+  const semua = bacaSemuaMetaMapel_();
+  const kunci = String(kategori || '').toLowerCase();
+  if (semua[kunci]) { delete semua[kunci].buatan; try { localStorage.setItem(MAPEL_META_KEY, JSON.stringify(semua)); } catch (e) {} }
 }
 
 // ----------------------------------------------------------------------------
@@ -3200,8 +3215,11 @@ const Guru = {
     // ditampilkan di grid utama -- tetap bisa ditemukan & dikembalikan lewat
     // tombol "🗄 Arsip" (lihat Guru.bukaArsipSoal). Begitu 1 soal saja
     // dikembalikan, mapelnya otomatis muncul lagi di sini.
+    Object.values(bacaSemuaMetaMapel_()).forEach(m => {
+      if (m && m.buatan && !Object.keys(peta).some(k => samaTeks_(k, m.buatan))) peta[m.buatan] = { total: 0, arsip: 0, kosong: true };
+    });
     const unik = Object.keys(peta)
-      .filter(k => (peta[k].total - peta[k].arsip) > 0)
+      .filter(k => peta[k].kosong || (peta[k].total - peta[k].arsip) > 0)
       .sort((a, b) => labelKategori(a).localeCompare(labelKategori(b), 'id'));
     const jumlahArsip = semua.filter(s => (s.status || 'aktif') === 'arsip').length;
     const tombolArsip = document.getElementById('btn-lihat-arsip');
@@ -3235,8 +3253,12 @@ const Guru = {
   tambahMapelBaru() {
     const nama = prompt('Nama Mapel / kategori soal baru (mis. "Matematika", "Simulasi", "Tryout"):');
     if (!nama || !nama.trim()) return;
-    ambilMetaMapel_(nama.trim()); // langsung siapkan token/warna kartunya
-    Guru.bukaKelolaSoal(nama.trim());
+    const bersih = nama.trim();
+    // Pakai ejaan yang sudah ada kalau mapel ini sebenarnya sudah ada (beda huruf besar/kecil saja).
+    const ada = (state.guru.bankSoal || []).map(x => x.kategori).find(k => samaTeks_(k, bersih));
+    const namaFinal = ada || bersih;
+    ambilMetaMapel_(namaFinal, true); // siapkan token/warna & tandai sbg mapel buatan guru
+    Guru.bukaKelolaSoal(namaFinal);
   },
 
   // ---------------- BANK SOAL: KELOLA SOAL (1 mapel/kategori, dgn tab tipe soal) ----------------
@@ -3613,6 +3635,10 @@ const Guru = {
   // lewat filter status "Arsip"), lalu kategorinya otomatis hilang dari
   // daftar aktif karena tidak ada lagi soal aktif yang memakainya.
   async hapusKategoriSoal(kategori) {
+    if (!(state.guru.bankSoal || []).some(s => samaTeks_(s.kategori, kategori))) {
+      // Mapel kosong buatan sendiri: cukup dilepas dari daftar kartu.
+      hapusMapelBuatan_(kategori); Guru.renderMapelGrid(); Guru.renderKelolaKategori(); return;
+    }
     const cocok = (state.guru.bankSoal || []).filter(s => (s.status || 'aktif') !== 'arsip' && samaTeks_(s.kategori, kategori));
     if (cocok.length === 0) { toast('Kategori ini sudah tidak memiliki soal aktif.', 'error'); Guru.renderKelolaKategori(); return; }
     if (!confirm(`Hapus kategori "${labelKategori(kategori)}"? ${cocok.length} soal di dalamnya akan dipindahkan ke Arsip (TIDAK dihapus permanen — bisa diedit & dikembalikan lagi lewat filter status "Arsip" di Bank Soal).`)) return;
@@ -3943,11 +3969,11 @@ const Guru = {
   unduhTemplateSoalDocx() {
     const headers = ['Kategori', 'Topik', 'Tipe', 'Pertanyaan', 'Gambar', 'Opsi A', 'Opsi B', 'Opsi C', 'Opsi D', 'Opsi E', 'Kunci', 'Bobot', 'Kesulitan'];
     const rows = [
-      ['Simulasi', 'Sejarah Indonesia', 'PG', 'Siapakah Presiden Indonesia pada tahun 1999?', '', 'Soekarno', 'Soeharto', 'B. J. Habibie', 'Abdurrahman Wahid', '', 'C', '10', 'Sedang'],
-      ['Simulasi', 'Biologi', 'PGK', 'Manakah yang termasuk hewan mamalia? (kunci boleh lebih dari 1, pisah koma)', '', 'Paus', 'Ular', 'Kelelawar', 'Buaya', '', 'A,C', '10', 'Sedang'],
-      ['Simulasi', 'Geografi', 'BS', 'Indonesia terletak di antara dua benua, yaitu Asia dan Australia.', '', 'Benar', 'Salah', '', '', '', 'Benar', '5', 'Mudah'],
-      ['Simulasi', 'Biologi', 'Essay', 'Jelaskan proses terjadinya fotosintesis pada tumbuhan.', '', '', '', '', '', '', 'fotosintesis, klorofil, karbon dioksida', '15', 'Sedang'],
-      ['Simulasi', 'Geografi', 'Jodohkan', 'Jodohkan negara dengan ibu kotanya.', '', 'Indonesia = Jakarta', 'Jepang = Tokyo', 'Prancis = Paris', '', '', '', '10', 'Sedang'],
+      ['', 'Sejarah Indonesia', 'PG', 'Siapakah Presiden Indonesia pada tahun 1999?', '', 'Soekarno', 'Soeharto', 'B. J. Habibie', 'Abdurrahman Wahid', '', 'C', '10', 'Sedang'],
+      ['', 'Biologi', 'PGK', 'Manakah yang termasuk hewan mamalia? (kunci boleh lebih dari 1, pisah koma)', '', 'Paus', 'Ular', 'Kelelawar', 'Buaya', '', 'A,C', '10', 'Sedang'],
+      ['', 'Geografi', 'BS', 'Indonesia terletak di antara dua benua, yaitu Asia dan Australia.', '', 'Benar', 'Salah', '', '', '', 'Benar', '5', 'Mudah'],
+      ['', 'Biologi', 'Essay', 'Jelaskan proses terjadinya fotosintesis pada tumbuhan.', '', '', '', '', '', '', 'fotosintesis, klorofil, karbon dioksida', '15', 'Sedang'],
+      ['', 'Geografi', 'Jodohkan', 'Jodohkan negara dengan ibu kotanya.', '', 'Indonesia = Jakarta', 'Jepang = Tokyo', 'Prancis = Paris', '', '', '', '10', 'Sedang'],
       ['', '', '', '(tambahkan baris baru di bawah sini, ikuti pola di atas — boleh sebanyak yang dibutuhkan)', '', '', '', '', '', '', '', '', '']
     ];
     const items = [
@@ -4817,11 +4843,11 @@ const Guru = {
     unduhXlsx('Template_Import_Soal_CBT.xlsx',
       ['Kategori', 'Topik', 'Tipe', 'Pertanyaan', 'Gambar', 'Opsi A', 'Opsi B', 'Opsi C', 'Opsi D', 'Opsi E', 'Kunci', 'Bobot', 'Kesulitan'],
       [
-        ['Simulasi', 'Sejarah Indonesia', 'PG', 'Siapakah Presiden Indonesia pada tahun 1999?', '', 'Soekarno', 'Soeharto', 'B. J. Habibi', 'Abdurrahman Wahid', '', 'C', '10', 'Sedang'],
-        ['Simulasi', 'Biologi', 'PGK', 'Manakah yang termasuk hewan mamalia? (kunci boleh lebih dari 1, pisah koma)', '', 'Paus', 'Ular', 'Kelelawar', 'Buaya', '', 'A,C', '10', 'Sedang'],
-        ['Simulasi', 'Geografi', 'BS', 'Indonesia terletak di antara dua benua, yaitu Asia dan Australia.', '', 'Benar', 'Salah', '', '', '', 'Benar', '5', 'Mudah'],
-        ['Simulasi', 'Biologi', 'Essay', 'Jelaskan proses terjadinya fotosintesis pada tumbuhan.', '', '', '', '', '', '', 'fotosintesis, klorofil, karbon dioksida', '15', 'Sedang'],
-        ['Simulasi', 'Geografi', 'Jodohkan', 'Jodohkan negara dengan ibu kotanya.', '', 'Indonesia = Jakarta', 'Jepang = Tokyo', 'Prancis = Paris', '', '', '', '10', 'Sedang'],
+        ['', 'Sejarah Indonesia', 'PG', 'Siapakah Presiden Indonesia pada tahun 1999?', '', 'Soekarno', 'Soeharto', 'B. J. Habibi', 'Abdurrahman Wahid', '', 'C', '10', 'Sedang'],
+        ['', 'Biologi', 'PGK', 'Manakah yang termasuk hewan mamalia? (kunci boleh lebih dari 1, pisah koma)', '', 'Paus', 'Ular', 'Kelelawar', 'Buaya', '', 'A,C', '10', 'Sedang'],
+        ['', 'Geografi', 'BS', 'Indonesia terletak di antara dua benua, yaitu Asia dan Australia.', '', 'Benar', 'Salah', '', '', '', 'Benar', '5', 'Mudah'],
+        ['', 'Biologi', 'Essay', 'Jelaskan proses terjadinya fotosintesis pada tumbuhan.', '', '', '', '', '', '', 'fotosintesis, klorofil, karbon dioksida', '15', 'Sedang'],
+        ['', 'Geografi', 'Jodohkan', 'Jodohkan negara dengan ibu kotanya.', '', 'Indonesia = Jakarta', 'Jepang = Tokyo', 'Prancis = Paris', '', '', '', '10', 'Sedang'],
         ['', '', '', '(tambahkan baris baru di bawah sini, ikuti pola di atas)', '', '', '', '', '', '', '', '', '']
       ]);
   },
@@ -5184,13 +5210,17 @@ function samaTeks_(a, b) {
 // spasi, dsb.) ke kode baku itu, supaya soal langsung cocok dengan filter di
 // Buat Ujian tanpa perlu diketik persis huruf kecil semua di file impor.
 function normalisasiKategoriSoal_(raw) {
-  const KODE_BAKU = ['kuis', 'ulangan_harian', 'uts', 'uas'];
-  const bersih = String(raw || 'kuis').trim().toLowerCase().replace(/[\s-]+/g, '_');
-  if (KODE_BAKU.includes(bersih)) return bersih;
+  const asli = String(raw || '').trim() || 'Kuis';
+  const bersih = asli.toLowerCase().replace(/[\s-]+/g, '_');
+  // Hanya kode lama (kuis, ulangan harian, UTS, UAS) yang disatukan ke kode baku.
+  // Nama bebas lain (mis. "Tekanan Zat") dibiarkan PERSIS seperti diketik -- dulu
+  // diubah jadi "tekanan_zat" sehingga tidak cocok dgn mapel yang dibuka & soalnya
+  // "hilang"/menumpuk di kategori lain.
+  if (['kuis', 'ulangan_harian', 'uts', 'uas'].includes(bersih)) return bersih;
   if (bersih === 'ulanganharian' || bersih === 'harian') return 'ulangan_harian';
-  if (bersih.indexOf('tengah') > -1) return 'uts';
-  if (bersih.indexOf('akhir') > -1) return 'uas';
-  return bersih || 'kuis';
+  if (/^(ujian_)?tengah_semester$|^penilaian_tengah_semester$/.test(bersih)) return 'uts';
+  if (/^(ujian_)?akhir_semester$|^penilaian_akhir_semester$/.test(bersih)) return 'uas';
+  return asli;
 }
 
 function labelKategori(k) {
@@ -5595,21 +5625,37 @@ const ExamEngine = {
     statusEl.textContent = isLulus ? 'LULUS' : 'PERLU REMEDIAL';
     statusEl.style.background = isLulus ? 'rgba(22,163,74,.12)' : 'rgba(224,67,61,.12)';
     statusEl.style.color = isLulus ? 'var(--c-success)' : 'var(--c-danger)';
-    // Tampilkan pesan default dulu (instan), lalu ganti dengan pesan buatan guru
-    // begitu data ujian selesai diambil.
+    // BUG LAMA: pesan default ditampilkan dulu, lalu diganti pesan guru setelah getHasil
+    // selesai. Kalau getHasil gagal/lambat (sinyal siswa jelek, server sibuk) kegagalannya
+    // diam-diam ditelan dan pesan DEFAULT tertinggal -- pesan guru "kadang tidak muncul".
+    // Sekarang: tampilkan "memuat", ambil pesan guru dgn beberapa kali percobaan, dan
+    // pesan default HANYA dipakai bila semua percobaan gagal (atau guru memang tak mengisi).
     const elPesan = document.getElementById('hasil-instruksi');
     const btnDetail = document.getElementById('btn-detail-jawaban');
     if (btnDetail) btnDetail.style.display = 'none';
     ExamEngine.detailSesiId = state.sesiId;
-    elPesan.textContent = pesanUntukNilai_(nilai, '');
-    if (state.sesiId) {
-      api('getHasil', { sesiId: state.sesiId }).then(res => {
-        if (!res || !res.ok) return;
-        let teks = pesanUntukNilai_(nilai, res.pesanNilai);
-        if (!isLulus && res.instruksiRemedial) teks += '\n\n' + res.instruksiRemedial;
-        elPesan.textContent = teks;
-        if (btnDetail && res.tampilDetail !== false) btnDetail.style.display = '';
-      }).catch(() => {});
+    const sesiIdSaatIni = state.sesiId;
+    const tokenTampil = (ExamEngine._tokenHasil = (ExamEngine._tokenHasil || 0) + 1);
+    const pakaiDefault = () => { if (ExamEngine._tokenHasil === tokenTampil) elPesan.textContent = pesanUntukNilai_(nilai, ''); };
+    if (!sesiIdSaatIni) { pakaiDefault(); }
+    else {
+      elPesan.textContent = 'Memuat pesan dari guru...';
+      (async () => {
+        for (let k = 1; k <= 4; k++) {
+          let res = null;
+          try { res = await api('getHasil', { sesiId: sesiIdSaatIni }); } catch (e) { res = null; }
+          if (ExamEngine._tokenHasil !== tokenTampil) return; // layar hasil sudah berganti
+          if (res && res.ok) {
+            let teks = pesanUntukNilai_(nilai, res.pesanNilai);
+            if (!isLulus && res.instruksiRemedial) teks += '\n\n' + res.instruksiRemedial;
+            elPesan.textContent = teks;
+            if (btnDetail && res.tampilDetail !== false) btnDetail.style.display = '';
+            return;
+          }
+          await new Promise(r => setTimeout(r, 800 * k));
+        }
+        pakaiDefault();
+      })();
     }
 
     // Ikon lingkaran (centang utk lulus, seru utk perlu remedial) + ring skor
