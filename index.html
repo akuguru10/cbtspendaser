@@ -50,6 +50,11 @@
 
 <!-- ======================= LOGIN ======================= -->
 <div id="login-screen">
+  <div class="login-hero">
+    <div class="app-logo-slot login-hero-logo"><i class="fa-solid fa-graduation-cap"></i></div>
+    <h1 class="app-brand-nama">CBT Sekolah</h1>
+    <p>Portal ujian online — Guru &amp; Siswa</p>
+  </div>
   <div class="login-card">
     <div class="app-logo-slot login-logo-slot"><i class="fa-solid fa-graduation-cap"></i></div>
     <h1 class="brand app-brand-nama">CBT Sekolah</h1>
@@ -126,9 +131,17 @@
 <!-- ======================= PORTAL GURU ======================= -->
 <div id="guru-portal" class="shell hidden">
   <div class="mobile-topbar">
+    <span class="mt-logo app-logo-slot"><i class="fa-solid fa-graduation-cap"></i></span>
+    <span class="mobile-topbar-title"><small class="mt-brand"><span class="app-brand-nama">CBT Sekolah</span> · Guru</small><strong id="mobile-title-guru">Dashboard</strong></span>
     <button type="button" class="hamburger-btn" onclick="UI.bukaMenuMobile('guru')" aria-label="Buka menu">☰</button>
-    <span class="mobile-topbar-title"><span class="app-brand-nama">CBT Sekolah</span> — Portal Guru</span>
   </div>
+  <nav class="bottom-nav" id="bottom-nav-guru" aria-label="Navigasi utama">
+    <button type="button" class="active" data-tab="tab-dashboard" onclick="UI.gantiTabGuru('tab-dashboard')"><i class="fa-solid fa-gauge-high"></i><span>Beranda</span></button>
+    <button type="button" data-tab="tab-bank-soal" onclick="UI.gantiTabGuru('tab-bank-soal')"><i class="fa-solid fa-layer-group"></i><span>Soal</span></button>
+    <button type="button" data-tab="tab-ujian" onclick="UI.gantiTabGuru('tab-ujian')"><i class="fa-solid fa-calendar-days"></i><span>Ujian</span></button>
+    <button type="button" data-tab="tab-rekap" onclick="UI.gantiTabGuru('tab-rekap')"><i class="fa-solid fa-clipboard-check"></i><span>Nilai</span></button>
+    <button type="button" data-tab="menu" onclick="UI.bukaMenuMobile('guru')"><i class="fa-solid fa-bars"></i><span>Lainnya</span></button>
+  </nav>
   <div class="sidebar-overlay" id="sidebar-overlay-guru" onclick="UI.tutupMenuMobile('guru')"></div>
   <aside class="sidebar" id="sidebar-guru">
     <button type="button" class="sidebar-close-btn" onclick="UI.tutupMenuMobile('guru')" aria-label="Tutup menu">✕</button>
@@ -987,13 +1000,27 @@
       <label><input type="checkbox" id="ujian-tampil-detail" checked style="width:auto"> Izinkan siswa melihat detail jawaban setelah selesai (soal yang salah, kunci jawaban, dan pembahasan)</label>
     </div>
     <div class="field">
-      <label>Pesan untuk Siswa Berdasarkan Rentang Nilai</label>
-      <p style="font-size:.8rem;color:var(--c-muted);margin:0 0 .5rem">Pesan ini muncul di layar hasil siswa sesuai nilai yang diperoleh. Sudah terisi pesan default; ubah seperlunya. Pesan yang dikosongkan otomatis memakai default.</p>
-      <div id="pesan-nilai-editor"></div>
-      <div style="display:flex;gap:.5rem;flex-wrap:wrap">
-        <button type="button" class="secondary" onclick="Guru.tambahRentangPesan()"><i class="fa-solid fa-plus"></i> Tambah Rentang</button>
-        <button type="button" class="secondary" onclick="Guru.resetPesanNilai()"><i class="fa-solid fa-rotate-left"></i> Kembalikan ke Default</button>
+      <label>Pesan untuk Siswa Berdasarkan Nilai (0 – 100)</label>
+      <p style="font-size:.8rem;color:var(--c-muted);margin:0 0 .5rem">Setiap nilai (0, 1, 2, … 100) bisa punya pesan sendiri. Tidak perlu mengisi satu per satu: <strong>unduh template Word</strong>, ubah pesannya, lalu <strong>import</strong> — semua nilai terisi sekaligus. Pesan yang dikosongkan otomatis memakai default.</p>
+      <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.6rem">
+        <button type="button" class="secondary small" onclick="Guru.unduhTemplatePesanNilaiDocx()"><i class="fa-solid fa-download"></i> Unduh Template Word</button>
+        <button type="button" class="secondary small" onclick="document.getElementById('input-import-pesan-docx').click()"><i class="fa-solid fa-file-word"></i> Import dari Word (.docx)</button>
+        <input type="file" id="input-import-pesan-docx" accept=".docx" class="hidden" onchange="Guru.importPesanNilaiDariDocx(event)">
+        <button type="button" class="secondary small" onclick="Guru.resetPesanNilai()"><i class="fa-solid fa-rotate-left"></i> Kembalikan ke Default</button>
       </div>
+      <details class="pesan-cepat">
+        <summary>Isi cepat: satu pesan untuk beberapa nilai</summary>
+        <div class="pesan-cepat-isi">
+          <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.45rem">
+            <input type="number" id="pesan-cepat-dari" min="0" max="100" placeholder="dari" aria-label="Nilai awal"> <span>s/d</span>
+            <input type="number" id="pesan-cepat-sampai" min="0" max="100" placeholder="sampai" aria-label="Nilai akhir">
+          </div>
+          <textarea id="pesan-cepat-teks" rows="2" placeholder="Tulis pesan yang berlaku untuk semua nilai pada rentang itu"></textarea>
+          <button type="button" class="secondary small" style="margin-top:.45rem" onclick="Guru.isiCepatPesanNilai()">Terapkan</button>
+        </div>
+      </details>
+      <p id="pesan-nilai-info" style="font-size:.78rem;color:var(--c-muted);margin:.4rem 0 .3rem"></p>
+      <div id="pesan-nilai-editor" class="pesan-nilai-scroll"></div>
     </div>
     <div class="modal-close-row">
       <button class="secondary" onclick="UI.tutupModal('modal-ujian')">Batal</button>
@@ -1005,8 +1032,9 @@
 <!-- ======================= PORTAL SISWA (sebelum ujian) ======================= -->
 <div id="siswa-portal" class="shell hidden">
   <div class="mobile-topbar">
+    <span class="mt-logo app-logo-slot"><i class="fa-solid fa-graduation-cap"></i></span>
+    <span class="mobile-topbar-title"><small class="mt-brand"><span class="app-brand-nama">CBT Sekolah</span> · Siswa</small><strong>Masuk Ujian</strong></span>
     <button type="button" class="hamburger-btn" onclick="UI.bukaMenuMobile('siswa')" aria-label="Buka menu">☰</button>
-    <span class="mobile-topbar-title"><span class="app-brand-nama">CBT Sekolah</span> — Portal Siswa</span>
   </div>
   <div class="sidebar-overlay" id="sidebar-overlay-siswa" onclick="UI.tutupMenuMobile('siswa')"></div>
   <aside class="sidebar" id="sidebar-siswa">
