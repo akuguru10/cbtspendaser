@@ -350,7 +350,7 @@ function muatFont(key) {
 const DEF_UI = { r: 14, pill: 0, depth: 'soft', elev: 50, bw: 0, ink: 0, glass: 0, grad: 0, pat: 'blobs', side: 'tint', float: 1, font: 'jakarta', hw: 800, caps: 0, dens: 100, neon: 0 };
 const OPSI_DEPTH = { flat: 'Rata (tanpa bayangan)', line: 'Garis tipis', soft: 'Lembut', layer: 'Berlapis (material)', clay: 'Clay (empuk 3D)', neu: 'Neumorphism (timbul)', hard: 'Keras (brutalis)', pop: 'Pop 3D (tombol tebal)', glow: 'Cahaya (glow)' };
 const OPSI_POLA = { none: 'Polos', blobs: 'Gumpalan lembut', aurora: 'Aurora', mesh: 'Mesh gradien', waves: 'Gelombang', dots: 'Titik-titik', grid: 'Kotak-kotak', lines: 'Buku bergaris', checker: 'Papan catur' };
-const OPSI_SIDE = { tint: 'Warna pastel', light: 'Putih bersih', solid: 'Warna utama', dark: 'Gelap pekat', glass: 'Kaca transparan' };
+const OPSI_SIDE = { tint: 'Warna pastel', light: 'Putih bersih', solid: 'Warna utama', dark: 'Gelap pekat', glass: 'Kaca transparan', navy: 'Gelap navy (ikut warna sekunder)' };
 
 const GAYA_PRESET = [
   { id: 'softclay', nama: 'Soft Pastel', info: 'Bawaan, lembut & hangat', u: { r: 14, depth: 'soft', elev: 50, pat: 'blobs', side: 'tint', float: 1, font: 'jakarta', hw: 800 } },
@@ -372,7 +372,21 @@ const GAYA_PRESET = [
   { id: 'mono', nama: 'Mono Ink Elegan', info: 'Garis tinta tipis, serif', u: { r: 2, depth: 'flat', bw: 1, ink: 1, pat: 'none', side: 'light', float: 0, font: 'fraunces', hw: 700 } },
   { id: 'gloss', nama: 'Glossy Skeuomorphic', info: 'Tombol mengkilap', u: { r: 12, depth: 'clay', elev: 45, grad: 75, bw: 1, pat: 'waves', side: 'dark', float: 0, font: 'poppins', hw: 700 } },
   { id: 'vapor', nama: 'Vaporwave Gelap', mode: 'dark', info: 'Gelap, gradien, neon lembut', u: { r: 16, depth: 'glow', elev: 65, grad: 90, glass: 30, pat: 'mesh', side: 'glass', float: 1, font: 'outfit', hw: 700, neon: 1 } },
-  { id: 'dream', nama: 'Pastel Dream', info: 'Mesh pastel berkaca', u: { r: 26, depth: 'soft', elev: 45, glass: 35, grad: 20, pat: 'mesh', side: 'glass', float: 1, font: 'nunito', hw: 800 } }
+  { id: 'dream', nama: 'Pastel Dream', info: 'Mesh pastel berkaca', u: { r: 26, depth: 'soft', elev: 45, glass: 35, grad: 20, pat: 'mesh', side: 'glass', float: 1, font: 'nunito', hw: 800 } },
+  { id: 'portal', nama: 'Portal Navy Magenta', pal: { primary: '#d6249f', secondary: '#1b2559', accent: '#f5a524', bg: '#ffffff', text: '#161a33' }, info: 'Sidebar navy, menu aktif magenta, kartu putih bergaris', u: { r: 12, depth: 'line', bw: 1, pat: 'none', side: 'navy', float: 0, font: 'inter', hw: 800 } },
+  { id: 'sunset', nama: 'Senja Hangat', pal: { primary: '#f2562b', secondary: '#c2255c', accent: '#fbbf24', bg: '#fff6ef', text: '#3b1d12' }, info: 'Gradien jingga-merah, sidebar berwarna', u: { r: 24, depth: 'soft', elev: 55, grad: 70, pat: 'waves', side: 'solid', float: 1, font: 'poppins', hw: 700 } },
+  { id: 'forest', nama: 'Hutan Tenang', pal: { primary: '#2f7d4f', secondary: '#8a5a2b', accent: '#e0a526', bg: '#f1f5ee', text: '#1d2b21' }, info: 'Hijau tua, serif, sidebar gelap', u: { r: 12, depth: 'layer', elev: 40, pat: 'none', side: 'dark', float: 0, font: 'fraunces', hw: 700 } },
+  { id: 'koran', nama: 'Koran Klasik', pal: { primary: '#222222', secondary: '#7a1f1f', accent: '#b8860b', bg: '#f4efe4', text: '#1a1a1a' }, info: 'Kertas krem, huruf kapital, tinta hitam', u: { r: 0, depth: 'line', bw: 1, ink: 1, pat: 'lines', side: 'light', float: 0, font: 'fraunces', hw: 800, caps: 1 } },
+  { id: 'midnight', nama: 'Midnight Slate', mode: 'dark', pal: { primary: '#7c8cff', secondary: '#4cc9f0', accent: '#ffb86b', bg: '#0e1020', text: '#e8eaf6' }, info: 'Gelap elegan dengan kisi halus', u: { r: 14, depth: 'layer', elev: 60, pat: 'grid', side: 'dark', float: 0, font: 'inter', hw: 700 } },
+  { id: 'sakura', nama: 'Sakura Lembut', pal: { primary: '#ec5f9a', secondary: '#9b7fe6', accent: '#ffc15e', bg: '#fff3f8', text: '#3d1f31' }, info: 'Merah muda bulat, tombol kapsul empuk', u: { r: 30, pill: 1, depth: 'clay', elev: 55, grad: 30, pat: 'dots', side: 'tint', float: 1, font: 'nunito', hw: 800 } },
+  { id: 'mint', nama: 'Mint Segar', pal: { primary: '#0f9d8a', secondary: '#2b6cb0', accent: '#f6ad55', bg: '#f2fbf9', text: '#12302c' }, info: 'Datar, hijau toska, ruang lega', u: { r: 16, depth: 'flat', bw: 1, pat: 'none', side: 'light', float: 1, font: 'lexend', hw: 600, dens: 105 } },
+  { id: 'blueprint', nama: 'Blueprint Teknik', mode: 'dark', pal: { primary: '#4fc3f7', secondary: '#81d4fa', accent: '#ffd54f', bg: '#0b2545', text: '#e3f2fd' }, info: 'Biru malam, kisi gambar teknik, huruf kode', u: { r: 2, depth: 'line', bw: 1, pat: 'grid', side: 'dark', float: 0, font: 'mono', hw: 600, caps: 1 } },
+  { id: 'kuning', nama: 'Kuning Kontras', pal: { primary: '#ffd400', secondary: '#111111', accent: '#ff4d4d', bg: '#fffbe0', text: '#111111' }, info: 'Kuning-hitam, garis tebal, sangat jelas', u: { r: 6, depth: 'hard', elev: 60, bw: 3, ink: 1, pat: 'checker', side: 'solid', float: 0, font: 'space', hw: 800, caps: 1 } },
+  { id: 'lavender', nama: 'Lavender Kaca', pal: { primary: '#8b5cf6', secondary: '#ec4899', accent: '#38bdf8', bg: '#f5f0ff', text: '#2a1f4d' }, info: 'Ungu berkaca di atas aurora', u: { r: 24, depth: 'soft', elev: 45, glass: 55, grad: 40, pat: 'aurora', side: 'glass', float: 1, font: 'outfit', hw: 600 } },
+  { id: 'sporty', nama: 'Sporty Bold', pal: { primary: '#e11d48', secondary: '#0f172a', accent: '#facc15', bg: '#f8fafc', text: '#0f172a' }, info: 'Merah tegas, sidebar navy, tombol 3D', u: { r: 6, depth: 'pop', elev: 50, bw: 2, pat: 'none', side: 'navy', float: 0, font: 'sora', hw: 800, caps: 1 } },
+  { id: 'zen', nama: 'Zen Putih', pal: { primary: '#475569', secondary: '#94a3b8', accent: '#f59e0b', bg: '#fafaf9', text: '#1c1917' }, info: 'Sangat minimalis, abu-abu tenang', u: { r: 14, depth: 'line', bw: 1, pat: 'none', side: 'light', float: 0, font: 'sora', hw: 600, dens: 110 } },
+  { id: 'royal', nama: 'Royal Gold', mode: 'dark', pal: { primary: '#e0b04c', secondary: '#6d5bd0', accent: '#f08a5d', bg: '#14112b', text: '#f3efe2' }, info: 'Gelap ungu tua dengan aksen emas', u: { r: 8, depth: 'glow', elev: 40, bw: 1, pat: 'mesh', side: 'dark', float: 0, font: 'fraunces', hw: 700 } },
+  { id: 'pantai', nama: 'Pantai Biru', pal: { primary: '#0891b2', secondary: '#f59e0b', accent: '#fb7185', bg: '#effcff', text: '#083344' }, info: 'Biru laut, gelombang, sidebar pastel', u: { r: 20, depth: 'soft', elev: 50, grad: 55, pat: 'waves', side: 'tint', float: 1, font: 'baloo', hw: 700 } }
 ];
 const GAYA_BY_ID = Object.fromEntries(GAYA_PRESET.map(g => [g.id, g]));
 
@@ -444,6 +458,7 @@ function hitungPalet(t, u, gelap) {
   let sidebar, onSb = text, sideBg;
   switch (t._side || u.side) {
     case 'solid': sidebar = gelap ? W.dariHsl(hp, 45, 25) : W.geser(primary, -8); onSb = W.teksDi(sidebar); break;
+    case 'navy': { const ss = W.hsl(secondary)[1]; sidebar = gelap ? W.dariHsl(hs, Math.min(ss, 55) * .8, 7) : W.dariHsl(hs, Math.min(Math.max(ss, 35), 60), 13); onSb = W.teksDi(sidebar); break; }
     case 'dark': sidebar = gelap ? W.dariHsl(hp, 30, 6) : W.dariHsl(hp, 32, 13); onSb = W.teksDi(sidebar); break;
     case 'light': sidebar = surface; break;
     case 'glass': sidebar = W.mix(surface, bg, .2); break;
@@ -4881,7 +4896,14 @@ const Guru = {
     const g = GAYA_BY_ID[id]; if (!g) return;
     Guru._ui = Object.assign({}, DEF_UI, g.u);
     if (g.mode) Guru._mode = g.mode; else if (Guru._mode === 'dark') Guru._mode = 'light';
+    if (g.pal) ['primary', 'secondary', 'accent', 'bg', 'text'].forEach(k => { const el = document.getElementById('tema-' + k); if (el) el.value = g.pal[k]; });
     Guru._sinkronStudio(); Guru.pratinjauTema();
+  },
+
+  filterGaya(f) {
+    Guru._fGaya = f;
+    document.querySelectorAll('#gaya-filter button').forEach(b => b.classList.toggle('on', b.dataset.f === f));
+    Guru.renderGaleriGaya();
   },
 
   acakGaya() {
@@ -4933,16 +4955,17 @@ const Guru = {
     const kerja = () => {
       const tema = Guru.bacaFormTema(), u = normalisasiUI(Guru._ui);
       const cocok = (g) => { const b = normalisasiUI(g.u); return Object.keys(DEF_UI).every(k => b[k] === u[k]); };
-      cont.innerHTML = GAYA_PRESET.map(g => {
+      const fl = Guru._fGaya || 'semua';
+      cont.innerHTML = GAYA_PRESET.filter(g => fl === 'semua' || (fl === 'gelap' && g.mode === 'dark') || (fl === 'terang' && g.mode !== 'dark') || (fl === 'paket' && g.pal)).map(g => {
         const mode = g.mode ? g.mode : (Guru._mode === 'dark' ? 'light' : Guru._mode);
-        return `<button type="button" class="gaya-kartu ${cocok(g) ? 'on' : ''}" onclick="Guru.pakaiGaya('${g.id}')" title="${g.info}">
+        return `<div role="button" tabindex="0" class="gaya-kartu ${cocok(g) ? 'on' : ''}" onclick="Guru.pakaiGaya('${g.id}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();Guru.pakaiGaya('${g.id}')}" title="${g.info}">
           <div class="gt" data-g="${g.id}"><div class="gt-side"><i class="a"></i><i></i><i></i></div>
             <div class="gt-main"><div class="gt-card"><b></b><u></u><u></u><div class="gt-btns"><span class="gt-btn"></span><span class="gt-btn s"></span><span class="gt-btn c"></span></div></div></div></div>
-          <span class="gn">${g.nama}</span><span class="gd">${g.info}</span></button>`;
+          <span class="gn">${g.nama}</span><span class="gd">${g.info}</span></div>`;
       }).join('');
       cont.querySelectorAll('.gt').forEach(el => {
         const g = GAYA_BY_ID[el.dataset.g];
-        const t2 = Object.assign({}, tema, { mode: g.mode ? g.mode : (Guru._mode === 'dark' ? 'light' : Guru._mode) });
+        const t2 = Object.assign({}, tema, g.pal || {}, { mode: g.mode ? g.mode : (Guru._mode === 'dark' ? 'light' : Guru._mode) });
         Tampilan.pasangVarPada(el, t2, Object.assign({}, DEF_UI, g.u));
         muatFont(g.u.font);
       });
