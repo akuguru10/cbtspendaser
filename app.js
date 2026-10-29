@@ -5444,6 +5444,7 @@ const Siswa = {
     const res = await api('mulaiUjian', { ujianId: state.ujian.id, siswaId: state.user.id, deviceId: state.deviceId });
     if (!res.ok) { toast(res.error, 'error'); return; }
 
+    state.submitting = false; // reset sisa ujian sebelumnya
     state.sesiId = res.sesiId;
     state.soal = res.soal;
     state.sisaDetik = res.sisaDetik;
@@ -5478,17 +5479,106 @@ const Siswa = {
     ExamEngine.renderGridSoal();
   },
 
-  konfirmasiSubmit() {
-    const belumDijawab = state.soal.filter(s => state.jawaban[s.id] === undefined).length;
-    const pesan = belumDijawab > 0
-      ? `Masih ada ${belumDijawab} soal yang belum dijawab. Yakin ingin mengumpulkan ujian sekarang?`
-      : 'Yakin ingin mengumpulkan ujian sekarang? Jawaban tidak dapat diubah setelah dikumpulkan.';
-    if (confirm(pesan)) ExamEngine.submitUjian();
-  },
+  konfirmasiSubmit() { KumpulUI.buka(); },
 
   kembaliKeUjian() {
     document.getElementById('anticheat-warning').classList.add('hidden');
     AntiCheat.mintaFullscreen();
+  }
+};
+
+// ============================================================================
+// KONFIRMASI KUMPULKAN UJIAN & LAYAR PENGIRIMAN (pengganti confirm() bawaan browser)
+// ============================================================================
+const KumpulUI = {
+  _percobaan: 0,
+  _el(id) { return document.getElementById(id); },
+  _dijawab(v) { return v !== undefined && v !== null && v !== '' && !(Array.isArray(v) && v.length === 0); },
+
+  buka() {
+    if (state.submitting) return;
+    const total = state.soal.length;
+    const kosong = [], ragu = [];
+    state.soal.forEach((s, i) => {
+      if (!KumpulUI._dijawab(state.jawaban[s.id])) kosong.push(i);
+      if (state.ragu.includes(s.id)) ragu.push(i);
+    });
+    const e = KumpulUI._el.bind(KumpulUI);
+    e('kumpul-n-jawab').textContent = total - kosong.length;
+    e('kumpul-n-kosong').textContent = kosong.length;
+    e('kumpul-n-ragu').textContent = ragu.length;
+    e('kumpul-waktu').textContent = formatSisaWaktu(state.sisaDetik);
+    const perhatian = kosong.length > 0 || ragu.length > 0;
+    e('kumpul-ikon').className = 'kumpul-ikon' + (perhatian ? ' warn' : '');
+    e('kumpul-ikon').innerHTML = perhatian ? '<i class="fa-solid fa-triangle-exclamation"></i>' : '<i class="fa-solid fa-paper-plane"></i>';
+    e('kumpul-judul').textContent = perhatian ? 'Periksa Dulu Jawaban Anda' : 'Kumpulkan Jawaban?';
+    e('kumpul-sub').textContent = perhatian
+      ? 'Masih ada soal yang perlu diperhatikan sebelum ujian dikumpulkan.'
+      : 'Semua soal sudah dijawab. Setelah dikumpulkan, jawaban tidak dapat diubah.';
+    const peringatan = e('kumpul-peringatan');
+    peringatan.classList.toggle('hidden', !perhatian);
+    if (perhatian) {
+      const teks = [];
+      if (kosong.length) teks.push(kosong.length + ' soal belum dijawab');
+      if (ragu.length) teks.push(ragu.length + ' soal masih ditandai ragu-ragu');
+      e('kumpul-peringatan-teks').textContent = teks.join(' dan ') + '. Ketuk nomor untuk kembali ke soal:';
+      const chip = (i, cls) => `<button type="button" class="${cls}" onclick="KumpulUI.lompat(${i})">${i + 1}</button>`;
+      const semua = Array.from(new Set(kosong.concat(ragu))).sort((a, b) => a - b);
+      e('kumpul-chips').innerHTML = semua.map(i => chip(i, kosong.includes(i) ? '' : 'rg')).join('');
+    }
+    const perluCek = kosong.length > 0;
+    e('kumpul-cek-wrap').classList.toggle('hidden', !perluCek);
+    e('kumpul-cek').checked = false;
+    e('kumpul-btn-ya').disabled = perluCek;
+    e('modal-kumpul').classList.remove('hidden');
+    document.addEventListener('keydown', KumpulUI._esc);
+    setTimeout(() => { try { e('kumpul-btn-ya').parentNode.firstElementChild.focus(); } catch (x) {} }, 50);
+  },
+  _esc(ev) { if (ev.key === 'Escape') KumpulUI.tutup(); },
+  cekBerubah() { KumpulUI._el('kumpul-btn-ya').disabled = !KumpulUI._el('kumpul-cek').checked; },
+  tutup() {
+    KumpulUI._el('modal-kumpul').classList.add('hidden');
+    document.removeEventListener('keydown', KumpulUI._esc);
+  },
+  lompat(i) { KumpulUI.tutup(); Siswa.lompatKeSoal(i); },
+  kirim() {
+    if (KumpulUI._el('kumpul-btn-ya').disabled) return;
+    KumpulUI.tutup();
+    ExamEngine.submitUjian();
+  },
+
+  tampilKirim(alasan) {
+    KumpulUI.tutup();
+    KumpulUI._percobaan = 0;
+    const e = KumpulUI._el.bind(KumpulUI);
+    e('kirim-spinner').className = 'kumpul-spinner';
+    e('kirim-judul').textContent = alasan === 'waktu' ? 'Waktu Ujian Habis' : 'Mengirim jawaban...';
+    e('kirim-sub').textContent = alasan === 'waktu'
+      ? 'Jawaban Anda sedang dikumpulkan otomatis. Jangan menutup halaman ini.'
+      : 'Mohon tunggu dan jangan menutup halaman ini.';
+    e('overlay-kirim').classList.remove('hidden');
+  },
+  gagal() {
+    const e = KumpulUI._el.bind(KumpulUI);
+    KumpulUI._percobaan++;
+    e('kirim-spinner').className = 'kumpul-spinner err';
+    e('kirim-judul').textContent = 'Koneksi bermasalah';
+    e('kirim-sub').textContent = 'Jawaban Anda aman di perangkat ini. Mencoba mengirim ulang otomatis (percobaan ke-' + (KumpulUI._percobaan + 1) + ')...';
+    setTimeout(() => { if (state.submitting) e('kirim-spinner').className = 'kumpul-spinner'; }, 2500);
+  },
+  sukses() {
+    const e = KumpulUI._el.bind(KumpulUI);
+    e('kirim-spinner').className = 'kumpul-spinner ok';
+    e('kirim-spinner').innerHTML = '<i class="fa-solid fa-check" style="font-size:1.6rem;line-height:44px;color:var(--c-success)"></i>';
+    e('kirim-judul').textContent = 'Jawaban Terkirim';
+    e('kirim-sub').textContent = 'Menyiapkan hasil ujian Anda...';
+    return new Promise(r => setTimeout(r, 900));
+  },
+  sembunyikanSemua() {
+    const e = KumpulUI._el.bind(KumpulUI);
+    e('overlay-kirim').classList.add('hidden');
+    e('kirim-spinner').innerHTML = '';
+    KumpulUI.tutup();
   }
 };
 
@@ -5566,7 +5656,7 @@ const ExamEngine = {
     state.timerHandle = setInterval(() => {
       state.sisaDetik--;
       ExamEngine.tampilkanWaktu();
-      if (state.sisaDetik <= 0) { clearInterval(state.timerHandle); toast('Waktu ujian habis. Jawaban dikumpulkan otomatis.', 'error'); ExamEngine.submitUjian(); }
+      if (state.sisaDetik <= 0) { clearInterval(state.timerHandle); ExamEngine.submitUjian('waktu'); }
     }, 1000);
   },
 
@@ -5600,20 +5690,22 @@ const ExamEngine = {
     toast('Jawaban tersimpan ke server.', 'success');
   },
 
-  async submitUjian() {
+  async submitUjian(alasan) {
     if (state.submitting) return;
     state.submitting = true;
     clearTimeout(state._uraianTimer);
     clearInterval(state.timerHandle);
     clearInterval(state.autosaveHandle);
     AntiCheat.nonaktifkan();
+    KumpulUI.tampilKirim(alasan);
     const res = await api('submitUjian', { sesiId: state.sesiId, jawaban: JSON.stringify(state.jawaban) });
     hapusCacheLokal(state.sesiId);
     if (res.ok) {
+      await KumpulUI.sukses();
       ExamEngine.tampilkanHasil(res.nilai, res.lulus, state.ujian.judul);
     } else {
-      toast('Gagal mengumpulkan ujian, mencoba lagi...', 'error');
-      setTimeout(() => ExamEngine.submitUjian(), 3000);
+      KumpulUI.gagal();
+      setTimeout(() => ExamEngine.submitUjian(alasan), 3000);
       state.submitting = false;
     }
   },
@@ -5727,6 +5819,7 @@ const ExamEngine = {
   },
 
   tampilkanHasil(nilai, lulus, judul) {
+    KumpulUI.sembunyikanSemua();
     UI.tampilkan('hasil-screen');
     document.getElementById('hasil-judul-ujian').textContent = judul;
     document.getElementById('hasil-nilai').textContent = nilai;
