@@ -872,6 +872,12 @@
 
     <div id="soal-form-opsi"></div>
 
+    <div class="field">
+      <label>Pembahasan <span class="subtitle" style="display:inline">— penjelasan jawaban yang benar (opsional; tampil ke siswa hanya bila diaktifkan di pengaturan ujian)</span></label>
+      <div id="soal-pembahasan-toolbar"></div>
+      <div id="soal-pembahasan" class="rich-editable" contenteditable="true" data-placeholder="Tulis alasan/penjelasan jawaban di sini..."></div>
+    </div>
+
     <div class="modal-close-row">
       <button class="secondary" onclick="UI.tutupModal('modal-soal')">Batal</button>
       <button class="accent" id="btn-simpan-soal" onclick="Guru.simpanSoal()">Simpan Soal</button>
@@ -997,7 +1003,10 @@
       <textarea id="ujian-instruksi-remedial" rows="2" placeholder="mis. Temui Bu Guru di ruang guru untuk jadwal remedial."></textarea>
     </div>
     <div class="field">
-      <label><input type="checkbox" id="ujian-tampil-detail" checked style="width:auto"> Izinkan siswa melihat detail jawaban setelah selesai (soal yang salah, kunci jawaban, dan pembahasan)</label>
+      <label><input type="checkbox" id="ujian-tampil-detail" checked style="width:auto" onchange="Guru.sinkronDetailPembahasan()"> Izinkan siswa melihat detail jawaban setelah selesai (soal yang salah &amp; kunci jawaban)</label>
+    </div>
+    <div class="field">
+      <label><input type="checkbox" id="ujian-tampil-pembahasan" checked style="width:auto"> Tampilkan pembahasan soal pada detail jawaban <span class="subtitle" style="display:inline">— cocok untuk latihan; matikan untuk ulangan. Hanya berlaku bila detail jawaban diaktifkan.</span></label>
     </div>
     <div class="field">
       <label>Pesan untuk Siswa Berdasarkan Nilai (0 – 100)</label>
@@ -1088,6 +1097,12 @@
   </div>
   <div class="exam-body">
     <div class="exam-question-col">
+      <div class="skala-bar" role="group" aria-label="Ukuran tampilan soal">
+        <span class="skala-label"><i class="fa-solid fa-text-height"></i> Ukuran soal</span>
+        <button type="button" class="secondary" id="skala-kecil" title="Perkecil teks, jawaban &amp; gambar" onclick="SkalaSoal.ubah(-1)" aria-label="Perkecil">A&minus;</button>
+        <button type="button" class="secondary skala-nilai" id="skala-nilai" title="Kembalikan ke ukuran normal" onclick="SkalaSoal.reset()">100%</button>
+        <button type="button" class="secondary" id="skala-besar" title="Perbesar teks, jawaban &amp; gambar" onclick="SkalaSoal.ubah(1)" aria-label="Perbesar">A+</button>
+      </div>
       <div class="question-card" id="question-card">Memuat soal...</div>
       <div class="nav-actions">
         <button class="secondary" id="btn-soal-prev" onclick="Siswa.soalSebelumnya()">&larr; Sebelumnya</button>
