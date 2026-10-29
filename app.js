@@ -62,7 +62,9 @@ function toggleLihatSandi(idInput, tombol) {
 // layar ujian siswa tidak menunggu ~1,5 MB skrip yang tidak mereka pakai.
 const PUSTAKA_EKSTERNAL = {
   xlsx: { url: 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js', siap: () => typeof XLSX !== 'undefined' },
-  mammoth: { url: 'https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js', siap: () => typeof mammoth !== 'undefined' }
+  mammoth: { url: 'https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js', siap: () => typeof mammoth !== 'undefined' },
+  // JSZip: dipakai untuk membuka .docx & mengubah rumus Word (OMML) -> LaTeX sebelum dibaca mammoth
+  jszip: { url: 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js', siap: () => typeof JSZip !== 'undefined' }
 };
 const _janjiPustaka = {};
 function muatPustaka_(nama) {
@@ -1231,6 +1233,258 @@ document.addEventListener('error', function (ev) {
   if (img.parentNode) img.parentNode.replaceChild(placeholder, img);
 }, true);
 
+// ----------------------------------------------------------------------------
+// RUMUS WORD (OMML) -> LaTeX untuk IMPOR .docx
+//
+// MASALAH LAMA: rumus yang dibuat lewat Insert > Equation di Word (pecahan,
+// pangkat, akar, tanda coret, dst) disimpan Word sbg elemen OMML <m:oMath>.
+// mammoth.js TIDAK mengenal OMML, jadi seluruh rumus DIBUANG diam-diam saat
+// import (mis. "1 cm = 1/100 m" hanya tersisa "1 cm = , maka:").
+//
+// SOLUSI: sebelum dokumen diberikan ke mammoth, setiap <m:oMath> diganti dgn
+// sebuah run teks biasa berisi "$...LaTeX...$" (format yang sudah dirender
+// KaTeX di seluruh aplikasi: pertanyaan, opsi, pembahasan). Jadi tampilan rumus
+// di aplikasi = rumus di Word.
+// ----------------------------------------------------------------------------
+const NS_OMML_ = 'http://schemas.openxmlformats.org/officeDocument/2006/math';
+const NS_WORD_ = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
+const NS_XML_ = 'http://www.w3.org/XML/1998/namespace';
+
+function ommlAnak_(el, nama) {
+  for (const c of Array.from(el.children)) if (c.namespaceURI === NS_OMML_ && c.localName === nama) return c;
+  return null;
+}
+// Atribut m:val; elemen flag tanpa val (mis. <m:nor/>) dianggap BENAR.
+function ommlFlag_(el) {
+  if (!el) return false;
+  const v = el.getAttributeNS(NS_OMML_, 'val');
+  return v === null || v === '' ? true : !/^(0|false|off)$/i.test(v);
+}
+function ommlVal_(el) { return el ? el.getAttributeNS(NS_OMML_, 'val') : null; }
+
+const OMML_SIMBOL_ = {
+  '×': '\\times ', '÷': '\\div ', '−': '-', '–': '-', '—': '-', '·': '\\cdot ', '⋅': '\\cdot ', '°': '^\\circ ',
+  '≈': '\\approx ', '≠': '\\neq ', '≤': '\\leq ', '≥': '\\geq ', '±': '\\pm ', '∓': '\\mp ', '→': '\\rightarrow ',
+  '←': '\\leftarrow ', '↔': '\\leftrightarrow ', '⇒': '\\Rightarrow ', '⇌': '\\rightleftharpoons ', '∞': '\\infty ',
+  '∝': '\\propto ', '√': '\\surd ', '∑': '\\sum ', '∏': '\\prod ', '∫': '\\int ', '∆': '\\Delta ', 'µ': '\\mu ',
+  '∥': '\\parallel ', '⊥': '\\perp ', '∠': '\\angle ', '∴': '\\therefore ', '…': '\\ldots ', '′': "'", '″': "''",
+  '%': '\\%', '#': '\\#', '&': '\\&', '$': '\\$', '_': '\\_', '{': '\\{', '}': '\\}', '\\': '\\backslash ', '^': '\\^{}', '~': '\\sim ',
+  ' ': ' ', '\u00a0': ' ', '\u2009': ' ', '\u202f': ' '
+};
+const OMML_SUPER_ = { '⁰': '^{0}', '¹': '^{1}', '²': '^{2}', '³': '^{3}', '⁴': '^{4}', '⁵': '^{5}', '⁶': '^{6}', '⁷': '^{7}', '⁸': '^{8}', '⁹': '^{9}', '⁻': '^{-}', '⁺': '^{+}',
+  '₀': '_{0}', '₁': '_{1}', '₂': '_{2}', '₃': '_{3}', '₄': '_{4}', '₅': '_{5}', '₆': '_{6}', '₇': '_{7}', '₈': '_{8}', '₉': '_{9}' };
+const OMML_ESC_TEKS_ = { '\\': '\\textbackslash{}', '{': '\\{', '}': '\\}', '$': '\\$', '&': '\\&', '#': '\\#', '%': '\\%', '_': '\\_', '^': '\\^{}', '~': '\\~{}', '<': '\\textless{}', '>': '\\textgreater{}', '|': '\\textbar{}', '"': '\\textquotedbl{}' };
+function ommlTeksBiasa_(s) {
+  // Teks "normal" (m:nor) -> \text{...} (spasi persis seperti di Word). Karakter di luar ASCII
+  // (×, −, ρ, ², dst) tidak punya huruf di mode teks KaTeX, jadi diselipkan sbg simbol matematika.
+  let out = '', buf = '';
+  const kosongkan = () => { if (buf) { out += '\\text{' + buf + '}'; buf = ''; } };
+  for (const ch of String(s)) {
+    if (/[\u00a0\u2009\u202f]/.test(ch)) { buf += ' '; continue; }
+    if (Object.prototype.hasOwnProperty.call(OMML_ESC_TEKS_, ch)) { buf += OMML_ESC_TEKS_[ch]; continue; }
+    if (/^[\x20-\x7e]$/.test(ch)) { buf += ch; continue; }
+    kosongkan();
+    if (Object.prototype.hasOwnProperty.call(OMML_SUPER_, ch)) out += OMML_SUPER_[ch];
+    else if (Object.prototype.hasOwnProperty.call(OMML_SIMBOL_, ch)) out += OMML_SIMBOL_[ch];
+    else out += ch;
+  }
+  kosongkan();
+  return out;
+}
+function ommlTeksMatematika_(s) {
+  // Teks "matematika" (italik Word): spasi diabaikan kecuali di antara huruf/angka.
+  s = String(s).replace(/(\d),(?=\d)/g, '$1{,}');
+  let out = '';
+  const arr = Array.from(s);
+  arr.forEach((ch, i) => {
+    if (ch === ' ' || ch === '\u00a0' || ch === '\u2009' || ch === '\u202f') {
+      const kiri = arr[i - 1], kanan = arr[i + 1];
+      if (kiri && kanan && /[\p{L}\p{N}]/u.test(kiri) && /[\p{L}\p{N}]/u.test(kanan)) out += '\\ ';
+      return;
+    }
+    out += Object.prototype.hasOwnProperty.call(OMML_SUPER_, ch) ? OMML_SUPER_[ch] : (Object.prototype.hasOwnProperty.call(OMML_SIMBOL_, ch) ? OMML_SIMBOL_[ch] : ch);
+  });
+  return out;
+}
+
+const OMML_NARY_ = { '∑': '\\sum', '∏': '\\prod', '∐': '\\coprod', '∫': '\\int', '∬': '\\iint', '∭': '\\iiint', '∮': '\\oint', '⋃': '\\bigcup', '⋂': '\\bigcap', '⋁': '\\bigvee', '⋀': '\\bigwedge' };
+const OMML_AKSEN_ = { '\u0302': '\\hat', '\u0303': '\\tilde', '\u0304': '\\bar', '\u0305': '\\overline', '\u0307': '\\dot', '\u0308': '\\ddot', '\u20d7': '\\vec', '\u0301': '\\acute', '\u0300': '\\grave', '\u030c': '\\check', '\u0306': '\\breve', '^': '\\hat', '~': '\\tilde', '¯': '\\bar', 'ˉ': '\\bar', '→': '\\vec', '⃗': '\\vec' };
+const OMML_KURUNG_ = { '': '.', '{': '\\{', '}': '\\}', '⟨': '\\langle', '⟩': '\\rangle', '〈': '\\langle', '〉': '\\rangle', '⌊': '\\lfloor', '⌋': '\\rfloor', '⌈': '\\lceil', '⌉': '\\rceil', '‖': '\\|', '∥': '\\|', '|': '|', '(': '(', ')': ')', '[': '[', ']': ']' };
+
+function ommlAnakKeLatex_(el) {
+  return Array.from(el.children).map(ommlKeLatex_).join('');
+}
+function ommlBungkus_(s) { return '{' + s + '}'; }
+
+function ommlKeLatex_(el) {
+  if (!el || el.namespaceURI !== NS_OMML_) return '';
+  const n = el.localName;
+  const sub = (nama) => { const c = ommlAnak_(el, nama); return c ? ommlAnakKeLatex_(c) : ''; };
+  switch (n) {
+    case 'r': {
+      const pr = ommlAnak_(el, 'rPr');
+      const nor = pr && ommlFlag_(ommlAnak_(pr, 'nor'));
+      const sty = pr ? ommlVal_(ommlAnak_(pr, 'sty')) : null;
+      const teks = Array.from(el.children).filter(c => c.namespaceURI === NS_OMML_ && c.localName === 't').map(c => c.textContent).join('');
+      if (!teks) return '';
+      if (nor) return ommlTeksBiasa_(teks);
+      const m = ommlTeksMatematika_(teks);
+      // Kata multi-huruf (mis. "Ph", "kg") dibuat tegak bila gaya Word = plain (p/b)
+      if ((sty === 'p' || sty === 'b') && /^[A-Za-z]{2,}$/.test(teks)) return '\\mathrm{' + teks + '}';
+      if (sty === 'b' || sty === 'bi') return '\\boldsymbol{' + m + '}';
+      return m;
+    }
+    case 'f': {
+      const tipe = ommlVal_(ommlAnak_(ommlAnak_(el, 'fPr') || el, 'type'));
+      const a = sub('num'), b = sub('den');
+      if (tipe === 'noBar') return '{' + a + '\\atop ' + b + '}';
+      if (tipe === 'lin') return ommlBungkus_(a) + '/' + ommlBungkus_(b);
+      return '\\frac' + ommlBungkus_(a) + ommlBungkus_(b);
+    }
+    case 'sSup': return ommlBungkus_(sub('e')) + '^' + ommlBungkus_(sub('sup'));
+    case 'sSub': return ommlBungkus_(sub('e')) + '_' + ommlBungkus_(sub('sub'));
+    case 'sSubSup': return ommlBungkus_(sub('e')) + '_' + ommlBungkus_(sub('sub')) + '^' + ommlBungkus_(sub('sup'));
+    case 'sPre': return '{}_' + ommlBungkus_(sub('sub')) + '^' + ommlBungkus_(sub('sup')) + ommlBungkus_(sub('e'));
+    case 'rad': {
+      const pr = ommlAnak_(el, 'radPr');
+      const hide = pr && ommlFlag_(ommlAnak_(pr, 'degHide'));
+      const deg = sub('deg');
+      return hide || !deg.trim() ? '\\sqrt' + ommlBungkus_(sub('e')) : '\\sqrt[' + deg + ']' + ommlBungkus_(sub('e'));
+    }
+    case 'd': {
+      const pr = ommlAnak_(el, 'dPr');
+      const ambilChr = (nama, def) => { const c = pr && ommlAnak_(pr, nama); if (!c) return def; const v = c.getAttributeNS(NS_OMML_, 'val'); return v === null ? def : v; };
+      const beg = ambilChr('begChr', '('), end = ambilChr('endChr', ')'), sep = ambilChr('sepChr', '|');
+      const isi = Array.from(el.children).filter(c => c.namespaceURI === NS_OMML_ && c.localName === 'e').map(ommlAnakKeLatex_);
+      const k = (c) => Object.prototype.hasOwnProperty.call(OMML_KURUNG_, c) ? OMML_KURUNG_[c] : c;
+      return '\\left' + k(beg) + ' ' + isi.join(sep === '|' ? '\\mid ' : (sep || '')) + ' \\right' + k(end);
+    }
+    case 'nary': {
+      const pr = ommlAnak_(el, 'naryPr');
+      const chrEl = pr && ommlAnak_(pr, 'chr');
+      const chr = chrEl ? (chrEl.getAttributeNS(NS_OMML_, 'val') || '') : '∫';
+      const op = OMML_NARY_[chr] || (chr ? chr : '');
+      const subHide = pr && ommlFlag_(ommlAnak_(pr, 'subHide'));
+      const supHide = pr && ommlFlag_(ommlAnak_(pr, 'supHide'));
+      const b = subHide ? '' : sub('sub'), a = supHide ? '' : sub('sup');
+      return op + (b ? '_' + ommlBungkus_(b) : '') + (a ? '^' + ommlBungkus_(a) : '') + ' ' + ommlBungkus_(sub('e'));
+    }
+    case 'func': {
+      const nama = sub('fName').trim();
+      const fn = /^[A-Za-z]+$/.test(nama) ? '\\operatorname{' + nama + '}' : nama;
+      return fn + '\\,' + ommlBungkus_(sub('e'));
+    }
+    case 'acc': {
+      const pr = ommlAnak_(el, 'accPr');
+      const chrEl = pr && ommlAnak_(pr, 'chr');
+      const chr = chrEl ? (chrEl.getAttributeNS(NS_OMML_, 'val') || '\u0302') : '\u0302';
+      return (OMML_AKSEN_[chr] || '\\hat') + ommlBungkus_(sub('e'));
+    }
+    case 'bar': {
+      const pr = ommlAnak_(el, 'barPr');
+      const pos = pr ? ommlVal_(ommlAnak_(pr, 'pos')) : null;
+      return (pos === 'bot' ? '\\underline' : '\\overline') + ommlBungkus_(sub('e'));
+    }
+    case 'borderBox': {
+      const pr = ommlAnak_(el, 'borderBoxPr');
+      const isi = sub('e');
+      const f = (nama) => pr && ommlFlag_(ommlAnak_(pr, nama));
+      // Tanda coret (mis. mencoret angka nol saat menyederhanakan pecahan)
+      if (f('strikeH') || f('strikeV') || f('strikeBLTR') || f('strikeTLBR')) return '\\cancel' + ommlBungkus_(isi);
+      if (f('hideTop') && f('hideBot') && f('hideLeft') && f('hideRight')) return isi;
+      return '\\boxed' + ommlBungkus_(isi);
+    }
+    case 'groupChr': {
+      const pr = ommlAnak_(el, 'groupChrPr');
+      const pos = pr ? ommlVal_(ommlAnak_(pr, 'pos')) : null;
+      return (pos === 'top' ? '\\overbrace' : '\\underbrace') + ommlBungkus_(sub('e'));
+    }
+    case 'limLow': return '\\underset' + ommlBungkus_(sub('lim')) + ommlBungkus_(sub('e'));
+    case 'limUpp': return '\\overset' + ommlBungkus_(sub('lim')) + ommlBungkus_(sub('e'));
+    case 'eqArr': {
+      const baris = Array.from(el.children).filter(c => c.namespaceURI === NS_OMML_ && c.localName === 'e').map(ommlAnakKeLatex_);
+      return '\\begin{aligned}' + baris.join(' \\\\ ') + '\\end{aligned}';
+    }
+    case 'm': {
+      const baris = Array.from(el.children).filter(c => c.namespaceURI === NS_OMML_ && c.localName === 'mr').map(mr =>
+        Array.from(mr.children).filter(c => c.namespaceURI === NS_OMML_ && c.localName === 'e').map(ommlAnakKeLatex_).join(' & '));
+      return '\\begin{matrix}' + baris.join(' \\\\ ') + '\\end{matrix}';
+    }
+    case 'box': case 'phant': case 'e': case 'num': case 'den': case 'sub': case 'sup': case 'deg': case 'lim': case 'fName': case 'oMath': case 'oMathPara':
+      return ommlAnakKeLatex_(el);
+    default:
+      return ''; // properti (…Pr, ctrlPr) dan elemen lain: dilewati
+  }
+}
+
+// Ganti semua <m:oMath> di dokumen XML dgn run teks "$latex$". Mengembalikan jumlah yg diganti.
+function ganti_omml_dalam_xml_(doc) {
+  let jumlah = 0;
+  const buatRun = (teks) => {
+    const r = doc.createElementNS(NS_WORD_, 'w:r');
+    const t = doc.createElementNS(NS_WORD_, 'w:t');
+    t.setAttributeNS(NS_XML_, 'xml:space', 'preserve');
+    t.textContent = teks;
+    r.appendChild(t);
+    return r;
+  };
+  const gantiSatu = (node, daftarOMath) => {
+    const induk = node.parentNode;
+    if (!induk) return;
+    daftarOMath.forEach((om, i) => {
+      const latex = ommlKeLatex_(om).replace(/\s+/g, ' ').trim();
+      if (!latex) return;
+      if (i > 0) { const br = doc.createElementNS(NS_WORD_, 'w:r'); br.appendChild(doc.createElementNS(NS_WORD_, 'w:br')); induk.insertBefore(br, node); }
+      induk.insertBefore(buatRun('$' + latex + '$'), node);
+      jumlah++;
+    });
+    induk.removeChild(node);
+  };
+  Array.from(doc.getElementsByTagNameNS(NS_OMML_, 'oMathPara')).forEach(p =>
+    gantiSatu(p, Array.from(p.children).filter(c => c.namespaceURI === NS_OMML_ && c.localName === 'oMath')));
+  Array.from(doc.getElementsByTagNameNS(NS_OMML_, 'oMath')).forEach(om => { if (om.parentNode) gantiSatu(om, [om]); });
+  return jumlah;
+}
+
+// Buka .docx (zip), ubah rumus OMML -> "$LaTeX$", kembalikan ArrayBuffer .docx baru
+// yang siap dibaca mammoth. Bila gagal/tak ada rumus, dokumen asli dikembalikan apa adanya.
+async function siapkanDocxUntukMammoth_(arrayBuffer) {
+  const hasil = { buffer: arrayBuffer, jumlahRumus: 0, gagal: false };
+  try {
+    await muatPustaka_('jszip');
+    const zip = await JSZip.loadAsync(arrayBuffer);
+    const berkas = Object.keys(zip.files).filter(n => /^word\/(document|header\d*|footer\d*|footnotes|endnotes)\.xml$/.test(n));
+    for (const nama of berkas) {
+      const xml = await zip.file(nama).async('string');
+      if (xml.indexOf('oMath') === -1) continue;
+      const doc = new DOMParser().parseFromString(xml, 'application/xml');
+      if (doc.getElementsByTagName('parsererror').length) continue;
+      const n = ganti_omml_dalam_xml_(doc);
+      if (!n) continue;
+      zip.file(nama, new XMLSerializer().serializeToString(doc));
+      hasil.jumlahRumus += n;
+    }
+    if (hasil.jumlahRumus > 0) hasil.buffer = await zip.generateAsync({ type: 'arraybuffer', compression: 'DEFLATE' });
+  } catch (err) {
+    console.error('Konversi rumus Word gagal:', err);
+    hasil.gagal = true;
+    hasil.buffer = arrayBuffer;
+  }
+  return hasil;
+}
+
+// Sel tabel Word -> teks kaya untuk Pertanyaan/Opsi/Pembahasan. Satu paragraf polos
+// -> teks polos (sama seperti data lama); beberapa paragraf / ada format (tebal, miring,
+// pangkat, gambar) -> HTML, supaya baris baru, tebal, dst. TIDAK hilang seperti textContent.
+function htmlSelKaya_(td) {
+  const html = td.innerHTML.trim();
+  if (!html) return '';
+  if (!td.querySelector('img') && !td.textContent.trim()) return '';
+  const anak = Array.from(td.children);
+  if (anak.length === 1 && anak[0].tagName === 'P' && !anak[0].children.length && !td.querySelector('img')) return td.textContent.trim();
+  return html;
+}
+
 // Uraikan data URI (dihasilkan mammoth.images.dataUri saat membaca gambar yang ditempel
 // langsung di dokumen Word) jadi bagian-bagian siap kirim ke action 'uploadGambar':
 // {mimeType, base64, ekstensi}. Mengembalikan null kalau bukan data URI gambar yang valid.
@@ -1458,7 +1712,7 @@ function teksSoalHtml(str) { return escapeHtml_(str).replace(/\n/g, '<br>'); }
 // (sanitasi) sebelum disimpan maupun ditampilkan, hanya tag/atribut pemformatan
 // teks dasar yang diizinkan — supaya aman dari HTML/skrip yang tidak diinginkan.
 // ----------------------------------------------------------------------------
-const RT_TAG_DIIZINKAN = { B: 1, STRONG: 1, I: 1, EM: 1, U: 1, S: 1, STRIKE: 1, SPAN: 1, BR: 1, DIV: 1, P: 1, FONT: 1, SUB: 1, SUP: 1, IMG: 1 };
+const RT_TAG_DIIZINKAN = { B: 1, STRONG: 1, I: 1, EM: 1, U: 1, S: 1, STRIKE: 1, SPAN: 1, BR: 1, DIV: 1, P: 1, FONT: 1, SUB: 1, SUP: 1, IMG: 1, UL: 1, OL: 1, LI: 1 };
 const RT_STYLE_DIIZINKAN = /^(color|background-color|text-decoration|font-weight|font-style|font-family|font-size)\s*:/i;
 // src gambar inline (disisipkan lewat tombol 🖼 di toolbar) boleh berupa data:
 // URL (Mode Lokal) atau http(s) URL (Mode Server/Drive) -- selain itu dibuang.
@@ -3984,11 +4238,16 @@ const Guru = {
     const reader = new FileReader();
     reader.onload = async (e) => {
       try {
+        // Rumus Word (Insert > Equation: pecahan, pangkat, akar, coretan, dst) diubah dulu jadi
+        // teks "$LaTeX$" -- kalau tidak, mammoth membuangnya (rumus "hilang" setelah import).
+        const siap = await siapkanDocxUntukMammoth_(e.target.result);
+        if (siap.gagal) toast('Rumus Word tidak dapat dikonversi (koneksi/pustaka JSZip). Soal tetap diimpor, tetapi rumus mungkin tidak muncul.', 'error');
+        else if (siap.jumlahRumus) toast(`${siap.jumlahRumus} rumus Word dikonversi...`);
         // PERF: gambar TIDAK disisipkan sbg data URI raksasa di HTML (membuat
         // DOMParser & innerHTML sangat berat). Cukup ditandai "cbt-img:N", isi
         // base64-nya disimpan terpisah di `gambarDokumen`.
         const gambarDokumen = [];
-        const hasil = await mammoth.convertToHtml({ arrayBuffer: e.target.result }, {
+        const hasil = await mammoth.convertToHtml({ arrayBuffer: siap.buffer }, {
           convertImage: mammoth.images.imgElement(function (image) {
             return image.read('base64').then(function (b64) {
               const idx = gambarDokumen.push({ mimeType: image.contentType, base64: b64 }) - 1;
@@ -4050,9 +4309,11 @@ const Guru = {
             for (let cIdx = 0; cIdx < selList.length; cIdx++) {
               const td = selList[cIdx];
               if (rIdx === 0) { nilai.push(td.textContent.trim()); continue; }
-              // Sel TANPA gambar -> teks biasa (penting utk kolom Tipe/Kunci/Bobot dst.
-              // agar tidak terbaca sbg "<p>PGK</p>" dan salah dideteksi).
-              if (!td.querySelector('img')) { nilai.push(td.textContent.trim()); continue; }
+              // Kolom teks kaya (Pertanyaan, Opsi A-H, Pembahasan) dibaca sbg HTML supaya baris baru,
+              // huruf tebal, pangkat/indeks, rumus "$...$" & gambar TIDAK hilang. Kolom lain (Tipe/Kunci/
+              // Bobot dst.) tetap teks biasa agar tidak terbaca sbg "<p>PGK</p>" dan salah dideteksi.
+              const kolomKaya = /^(pertanyaan|opsi[a-h]|pembahasan)$/.test(headerKey[cIdx] || '');
+              if (!td.querySelector('img')) { nilai.push(kolomKaya ? htmlSelKaya_(td) : td.textContent.trim()); continue; }
               td.querySelectorAll('img').forEach(img => {
                 const m = /^cbt-img:(\d+)$/.exec(img.getAttribute('src') || '');
                 const url = m && petaIdxKeUnik.has(Number(m[1])) ? urlUnik[petaIdxKeUnik.get(Number(m[1]))] : null;
@@ -4061,7 +4322,7 @@ const Guru = {
               if ((headerKey[cIdx] || '') === 'gambar') {
                 const imgPertama = td.querySelector('img');
                 nilai.push(imgPertama ? imgPertama.getAttribute('src') : td.textContent.trim());
-              } else if (/^(pertanyaan|opsi[a-h])$/.test(headerKey[cIdx] || '')) {
+              } else if (kolomKaya) {
                 nilai.push(td.innerHTML.trim()); // teks kaya + <img> inline
               } else {
                 nilai.push(td.textContent.trim());
@@ -4109,7 +4370,7 @@ const Guru = {
     ];
     const items = [
       { text: 'TEMPLATE IMPORT SOAL — CBT Online', heading: true },
-      { text: 'Isi tabel di bawah, SATU BARIS = SATU SOAL (kolom Pembahasan opsional: penjelasan jawaban yang bisa dilihat siswa bila guru mengaktifkannya di pengaturan ujian). Kolom Tipe: PG (pilihan ganda), PGK (pilihan ganda kompleks/kunci boleh lebih dari 1), BS (benar/salah), Jodohkan, Essay. Kolom Kunci cukup diisi HURUF opsi yang benar (mis. "C"), untuk PGK pisah dgn koma (mis. "A,C"), untuk BS isi "Benar"/"Salah", untuk Essay isi kata kunci penilaian dipisah koma. Kolom Gambar: boleh dikosongkan, boleh diisi link gambar publik, ATAU cukup TEMPEL/SISIPKAN gambarnya langsung di dalam sel itu (Insert > Pictures di Word) -- saat diimpor gambar tersebut otomatis terdeteksi & terunggah sendiri, tanpa perlu file gambar terpisah. Gambar juga boleh ditempel langsung di tengah sel Pertanyaan/Opsi kalau perlu. Kolom yang tidak dipakai (mis. Opsi E utk soal 4 opsi) boleh dikosongkan. Tipe Jodohkan sebaiknya dibuat lewat "Tambah Soal Manual" karena pasangannya lebih mudah diatur lewat formulir.' },
+      { text: 'Isi tabel di bawah, SATU BARIS = SATU SOAL (kolom Pembahasan opsional: penjelasan jawaban yang bisa dilihat siswa bila guru mengaktifkannya di pengaturan ujian). Kolom Tipe: PG (pilihan ganda), PGK (pilihan ganda kompleks/kunci boleh lebih dari 1), BS (benar/salah), Jodohkan, Essay. Kolom Kunci cukup diisi HURUF opsi yang benar (mis. "C"), untuk PGK pisah dgn koma (mis. "A,C"), untuk BS isi "Benar"/"Salah", untuk Essay isi kata kunci penilaian dipisah koma. Kolom Gambar: boleh dikosongkan, boleh diisi link gambar publik, ATAU cukup TEMPEL/SISIPKAN gambarnya langsung di dalam sel itu (Insert > Pictures di Word) -- saat diimpor gambar tersebut otomatis terdeteksi & terunggah sendiri, tanpa perlu file gambar terpisah. Gambar juga boleh ditempel langsung di tengah sel Pertanyaan/Opsi kalau perlu. Kolom yang tidak dipakai (mis. Opsi E utk soal 4 opsi) boleh dikosongkan. Tipe Jodohkan sebaiknya dibuat lewat "Tambah Soal Manual" karena pasangannya lebih mudah diatur lewat formulir. RUMUS: tulis lewat Insert > Equation di Word (pecahan, pangkat, akar, tanda coret, dst) -- otomatis ikut terbaca & tampil sama di aplikasi. Kolom Pembahasan juga mempertahankan baris baru, huruf tebal, pangkat/indeks, dan gambar.' },
       { table: { headers, rows } }
     ];
     unduhDocx_('Template_Import_Soal_CBT.docx', items);
