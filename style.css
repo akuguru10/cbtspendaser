@@ -1284,3 +1284,47 @@ details.tm-det > summary { cursor: pointer; font-weight: 700; font-size: .88rem;
   .modal { animation: none; }
   .bottom-nav button i { transition: none; }
 }
+
+
+/* ---------- Konfirmasi kumpulkan ujian & layar pengiriman (siswa) ---------- */
+.kumpul-backdrop { position: fixed; inset: 0; z-index: 900; display: flex; align-items: center; justify-content: center;
+  padding: 1rem; background: rgba(15,20,28,.62); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); overflow-y: auto; }
+.kumpul-backdrop.hidden { display: none; }
+.kumpul-card { width: 100%; max-width: 460px; background: var(--c-surface); color: var(--c-text); border-radius: 22px;
+  padding: 1.6rem 1.4rem 1.3rem; text-align: center; box-shadow: 0 24px 60px rgba(10,14,30,.35); animation: hasil-muncul .25s ease; }
+.kumpul-card h3 { margin: .2rem 0 .3rem; font-size: 1.25rem; }
+.kumpul-sub { margin: 0 0 1rem; color: var(--c-muted); font-size: .92rem; line-height: 1.5; }
+.kumpul-ikon { width: 64px; height: 64px; border-radius: 50%; margin: 0 auto .7rem; display: flex; align-items: center; justify-content: center;
+  font-size: 1.6rem; background: var(--c-ok-bg); color: var(--c-success); }
+.kumpul-ikon.warn { background: var(--c-warn-bg); color: var(--c-warn-ink); }
+.kumpul-stat { display: grid; grid-template-columns: repeat(3, 1fr); gap: .5rem; margin-bottom: .8rem; }
+.kumpul-stat-item { border-radius: 14px; padding: .65rem .3rem; border: 1px solid var(--c-line); background: var(--c-bg); }
+.kumpul-stat-item b { display: block; font-size: 1.5rem; line-height: 1.1; font-family: var(--font-display); }
+.kumpul-stat-item span { font-size: .72rem; color: var(--c-muted); }
+.kumpul-stat-item.ok b { color: var(--c-success); }
+.kumpul-stat-item.no b { color: var(--c-danger); }
+.kumpul-stat-item.rg b { color: var(--c-warn-ink); }
+.kumpul-waktu { font-size: .88rem; color: var(--c-muted); margin-bottom: .8rem; }
+.kumpul-waktu b { color: var(--c-text); font-variant-numeric: tabular-nums; }
+.kumpul-peringatan { text-align: left; background: var(--c-warn-bg); border-radius: 14px; padding: .75rem .85rem; margin-bottom: .8rem; }
+.kumpul-peringatan p { margin: 0 0 .5rem; font-size: .84rem; color: var(--c-warn-ink); line-height: 1.45; }
+.kumpul-chips { display: flex; flex-wrap: wrap; gap: .35rem; max-height: 96px; overflow-y: auto; }
+.kumpul-chips button { min-width: 36px; padding: .3rem .55rem; font-size: .82rem; border-radius: 10px; background: var(--c-surface);
+  color: var(--c-text); border: 1px solid var(--c-line); }
+.kumpul-chips button.rg { border-color: var(--c-accent); }
+.kumpul-cek { display: flex; gap: .6rem; align-items: flex-start; text-align: left; font-size: .84rem; line-height: 1.45; margin-bottom: .9rem; cursor: pointer; }
+.kumpul-cek.hidden { display: none; }
+.kumpul-cek input { margin-top: .2rem; width: 18px; height: 18px; flex: none; }
+.kumpul-aksi { display: flex; gap: .6rem; }
+.kumpul-aksi button { flex: 1; padding: .8rem .6rem; border-radius: 14px; font-weight: 600; }
+.kumpul-aksi button:disabled { opacity: .45; cursor: not-allowed; box-shadow: none; }
+.kumpul-peringatan.hidden { display: none; }
+@media (max-width: 480px) { .kumpul-aksi { flex-direction: column-reverse; } }
+.kumpul-spinner { width: 54px; height: 54px; margin: .2rem auto 1rem; border-radius: 50%; border: 5px solid var(--c-line);
+  border-top-color: var(--c-secondary); animation: kumpul-putar .9s linear infinite; }
+.kumpul-spinner.ok { animation: none; border-color: var(--c-success); background: var(--c-ok-bg); }
+.kumpul-spinner.err { animation: none; border-color: var(--c-danger); background: var(--c-no-bg); }
+@keyframes kumpul-putar { to { transform: rotate(360deg); } }
+.kirim-bar { height: 5px; border-radius: 99px; background: var(--c-line); overflow: hidden; margin-top: .4rem; }
+.kirim-bar i { display: block; height: 100%; width: 40%; border-radius: 99px; background: var(--c-secondary); animation: kumpul-geser 1.2s ease-in-out infinite; }
+@keyframes kumpul-geser { 0% { margin-left: -40%; } 100% { margin-left: 100%; } }
