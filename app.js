@@ -5870,7 +5870,7 @@ const ExamEngine = {
         <span class="dj-skor">Skor ${it.skor} / ${it.bobot}</span>
       </header>
       <div class="pertanyaan">${kontenSoalHtml(it.pertanyaan)}</div>
-      ${it.gambar ? tagGambarAman_(it.gambar, 'gambar-soal', 'Gambar soal') : ''}
+      ${it.gambar ? tagGambarAman_(it.gambar, 'gambar-soal', 'Gambar soal') + '<div class="dj-zoom-hint"><i class="fa-solid fa-magnifying-glass-plus"></i> Ketuk gambar untuk memperbesar</div>' : ''}
       ${isi}
       ${pembahasan}
     </article>`;
@@ -6152,7 +6152,7 @@ const ImageLightbox = {
   // pilihan jawaban (label opsi) di baliknya.
   pasang() {
     document.addEventListener('click', (ev) => {
-      const img = ev.target.closest('.question-card img');
+      const img = ev.target.closest('.question-card img, .dj-card img');
       if (!img) return;
       ev.preventDefault();
       ev.stopPropagation();
