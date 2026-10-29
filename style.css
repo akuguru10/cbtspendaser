@@ -1390,3 +1390,10 @@ details.tm-det > summary { cursor: pointer; font-weight: 700; font-size: .88rem;
 .log-tag { display: inline-block; margin-top: .15rem; font-size: .68rem; color: var(--c-muted); }
 .log-kosong { text-align: center; padding: 2rem 1rem; color: var(--c-muted); }
 @media (max-width: 520px) { .log-timeline li { flex-wrap: wrap; } .log-waktu { min-width: 100%; } }
+
+
+/* Impor Word: paragraf/daftar di dalam Pertanyaan, Opsi & Pembahasan (baris tidak lagi menyatu) */
+.pertanyaan p, .opsi-konten p, .dj-pembahasan p { margin: 0 0 .3rem; }
+.pertanyaan p:last-child, .opsi-konten p:last-child, .dj-pembahasan p:last-child { margin-bottom: 0; }
+.pertanyaan ul, .pertanyaan ol, .opsi-konten ul, .opsi-konten ol, .dj-pembahasan ul, .dj-pembahasan ol { margin: .2rem 0 .3rem 1.2rem; padding: 0; }
+.dj-pembahasan .katex { font-size: 1.05em; }
