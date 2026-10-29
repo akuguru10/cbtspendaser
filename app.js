@@ -2742,6 +2742,36 @@ const Auth = {
 // ============================================================================
 // UI (navigasi umum, modal, tab)
 // ============================================================================
+// ----------------------------------------------------------------------------
+// RUMUS DI KOTAK EDITOR (Pertanyaan, Opsi, Pembahasan)
+// Sebelumnya rumus "$...$" tampil sbg teks mentah di kotak edit (mis. "$\\frac{1}{100}$") dan baru
+// jadi pecahan di tampilan siswa. Sekarang rumus langsung DIRENDER (seperti di Word) di dalam kotak
+// edit sbg 1 blok utuh (tidak bisa diedit per huruf); saat disimpan dikembalikan jadi "$...$".
+// Klik 2x pada rumus untuk mengubahnya; hapus dengan Backspace/Delete.
+// ----------------------------------------------------------------------------
+function rtTampilkanRumus_(el) {
+  if (!el || !window.renderMathInElement) return;
+  try { renderMathInElement(el, { delimiters: [{ left: '$', right: '$', display: false }], throwOnError: false }); } catch (e) { return; }
+  el.querySelectorAll('.katex').forEach(k => { k.setAttribute('contenteditable', 'false'); k.setAttribute('title', 'Klik 2x untuk mengubah rumus'); });
+}
+// Isi kotak editor -> HTML siap simpan (rumus yang sudah dirender dikembalikan jadi "$LaTeX$").
+function rtHtmlSerial_(el) {
+  const salin = el.cloneNode(true);
+  salin.querySelectorAll('.katex').forEach(k => {
+    const ann = k.querySelector('annotation[encoding="application/x-tex"]');
+    k.replaceWith(document.createTextNode(ann ? '$' + ann.textContent + '$' : (k.textContent || '')));
+  });
+  // pembungkus <span> tanpa atribut (dibuat auto-render KaTeX) dibuang supaya data tetap bersih
+  salin.querySelectorAll('span').forEach(sp => { if (!sp.attributes.length) sp.replaceWith(...Array.from(sp.childNodes)); });
+  salin.normalize();
+  return salin.innerHTML.trim();
+}
+// Render ulang seluruh isi kotak (mis. setelah rumus disisipkan/diubah).
+function rtRenderUlang_(el) {
+  el.innerHTML = rtHtmlSerial_(el);
+  rtTampilkanRumus_(el);
+}
+
 const UI = {
   // ---------------- Rich text toolbar (Pertanyaan & Opsi Jawaban) ----------------
   // Satu toolbar dipakai bersama untuk semua kotak ber-class "rich-editable"
@@ -2791,7 +2821,8 @@ const UI = {
     const formula = prompt('Tulis rumus dalam format LaTeX (tanpa tanda $), contoh: x^2+1=0');
     if (!formula) return;
     try { document.execCommand('insertText', false, `$${formula}$`); } catch (e) {}
-    UI.rtSimpanSeleksi();
+    if (UI._rtEditable) rtRenderUlang_(UI._rtEditable);
+    UI._rtRange = null;
   },
   // Sisip gambar LANGSUNG di tengah teks pertanyaan/opsi (beda dari kotak upload
   // "Gambar Soal" di bawah, yang selalu tampil di bawah pertanyaan). Dipakai lewat
@@ -3031,8 +3062,10 @@ const UI = {
     document.getElementById('soal-topik').value = soal && soal.topik ? soal.topik : '';
     document.getElementById('soal-tipe').value = soal ? soal.tipe : (tipePraset || state.guru.tipeTabKelola || 'pilihan_ganda');
     document.getElementById('soal-pertanyaan').innerHTML = soal ? kontenSoalHtml(soal.pertanyaan) : '';
+    rtTampilkanRumus_(document.getElementById('soal-pertanyaan'));
     document.getElementById('soal-pembahasan-toolbar').innerHTML = UI.htmlRichToolbar(false);
     document.getElementById('soal-pembahasan').innerHTML = soal && soal.pembahasan ? kontenSoalHtml(soal.pembahasan) : '';
+    rtTampilkanRumus_(document.getElementById('soal-pembahasan'));
     document.getElementById('soal-bobot').value = soal ? soal.bobot : 10;
     document.getElementById('soal-tingkat-kesulitan').value = soal && soal.tingkat_kesulitan ? soal.tingkat_kesulitan : 'sedang';
     ['gambar', 'audio', 'video'].forEach(jenis => {
@@ -3090,6 +3123,7 @@ const UI = {
       });
       if (bisaHapusTambah) html += `<button type="button" class="secondary small" id="btn-tambah-opsi" onclick="UI.tambahOpsiKosong()">+ Tambah Opsi</button>`;
       cont.innerHTML = html;
+      cont.querySelectorAll('.opsi-teks-rich').forEach(rtTampilkanRumus_);
       UI.perbaruiCounterOpsi();
     } else if (tipe === 'menjodohkan') {
       const kiri = (opsi && opsi.kiri) || ['', ''];
@@ -4089,20 +4123,20 @@ const Guru = {
         subkategori: document.getElementById('soal-subkategori').value.trim(),
         topik: document.getElementById('soal-topik').value.trim(),
         tipe,
-        pertanyaan: sanitasiHtmlKaya_(document.getElementById('soal-pertanyaan').innerHTML.trim()),
+        pertanyaan: sanitasiHtmlKaya_(rtHtmlSerial_(document.getElementById('soal-pertanyaan'))),
         gambar: document.getElementById('soal-gambar-url').value,
         audio: document.getElementById('soal-audio-url').value,
         video: document.getElementById('soal-video-url').value,
         bobot: Number(document.getElementById('soal-bobot').value) || 10,
         tingkat_kesulitan: document.getElementById('soal-tingkat-kesulitan').value,
-        pembahasan: (() => { const v = sanitasiHtmlKaya_(document.getElementById('soal-pembahasan').innerHTML.trim()); return richTeksKosong_(v) ? '' : v; })()
+        pembahasan: (() => { const v = sanitasiHtmlKaya_(rtHtmlSerial_(document.getElementById('soal-pembahasan'))); return richTeksKosong_(v) ? '' : v; })()
       };
       if (richTeksKosong_(soal.pertanyaan)) { toast('Pertanyaan tidak boleh kosong.', 'error'); return; }
 
       if (tipe === 'pilihan_ganda' || tipe === 'checkbox' || tipe === 'benar_salah') {
         const baris = document.querySelectorAll('#soal-form-opsi .opsi-row');
         const opsi = Array.from(baris).map(row => {
-          const teks = sanitasiHtmlKaya_(row.querySelector('.opsi-teks-rich').innerHTML.trim());
+          const teks = sanitasiHtmlKaya_(rtHtmlSerial_(row.querySelector('.opsi-teks-rich')));
           const gambar = row.querySelector('.opsi-gambar-url').value.trim();
           const o = { teks };
           if (gambar) o.gambar = gambar;
@@ -6545,6 +6579,26 @@ window.addEventListener('DOMContentLoaded', () => {
 // Jawaban (lihat UI.rtExec dkk.) — supaya tombol toolbar (termasuk color
 // picker, yang memindahkan fokus keluar dari kotaknya) tetap tahu di mana
 // pemformatan harus diterapkan.
+// Rumus yang baru diketik manual ("$...$") otomatis dirender begitu kursor keluar dari kotak.
+document.addEventListener('focusout', (ev) => {
+  const ed = ev.target && ev.target.closest ? ev.target.closest('.rich-editable') : null;
+  if (!ed) return;
+  const salin = ed.cloneNode(true);
+  salin.querySelectorAll('.katex').forEach(k => k.remove());
+  if (/\$[^$\n]+\$/.test(salin.textContent)) rtRenderUlang_(ed);
+});
+// Klik 2x pada rumus di kotak editor -> ubah rumusnya (LaTeX).
+document.addEventListener('dblclick', (ev) => {
+  const k = ev.target && ev.target.closest ? ev.target.closest('.rich-editable .katex') : null;
+  if (!k) return;
+  const ed = k.closest('.rich-editable');
+  const ann = k.querySelector('annotation[encoding="application/x-tex"]');
+  const baru = prompt('Ubah rumus (format LaTeX, tanpa tanda $). Kosongkan untuk menghapus rumus:', ann ? ann.textContent : '');
+  if (baru === null) return;
+  if (!baru.trim()) k.remove(); else k.replaceWith(document.createTextNode('$' + baru.trim() + '$'));
+  rtRenderUlang_(ed);
+});
+
 document.addEventListener('selectionchange', () => {
   if (document.activeElement && document.activeElement.closest && document.activeElement.closest('.rich-editable')) {
     UI.rtSimpanSeleksi();
