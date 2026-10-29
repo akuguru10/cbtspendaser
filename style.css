@@ -1397,3 +1397,5 @@ details.tm-det > summary { cursor: pointer; font-weight: 700; font-size: .88rem;
 .pertanyaan p:last-child, .opsi-konten p:last-child, .dj-pembahasan p:last-child { margin-bottom: 0; }
 .pertanyaan ul, .pertanyaan ol, .opsi-konten ul, .opsi-konten ol, .dj-pembahasan ul, .dj-pembahasan ol { margin: .2rem 0 .3rem 1.2rem; padding: 0; }
 .dj-pembahasan .katex { font-size: 1.05em; }
+
+.rich-editable .katex { cursor: pointer; user-select: all; }
