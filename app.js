@@ -2319,6 +2319,18 @@ const LocalBackend = (function () {
         }
         return { ok: true, blokir: false, pelanggaran: sesi.pelanggaran };
       }
+      case 'catatAktivitas': {
+        const sesi = D.sesi.find(s => s.id === data.sesiId);
+        if (sesi && sesi.status === 'berlangsung') {
+          D.log.push({ id: genId('LOG'), sesi_id: sesi.id, siswa_id: sesi.siswa_id, ujian_id: sesi.ujian_id, waktu: new Date().toISOString(), jenis: String(data.jenis || 'tidak diketahui').slice(0, 40), detail: String(data.detail || '').slice(0, 120) });
+          simpan();
+        }
+        return { ok: true };
+      }
+      case 'getLogPelanggaran': {
+        const daftar = D.log.filter(l => String(l.sesi_id) === String(data.sesiId)).sort((a, b) => new Date(a.waktu) - new Date(b.waktu));
+        return { ok: true, data: daftar.map(l => ({ waktu: l.waktu, jenis: l.jenis, detail: l.detail || '' })) };
+      }
       case 'submitUjian': {
         const sesi = D.sesi.find(s => s.id === data.sesiId);
         if (!sesi) return { ok: false, error: 'Sesi tidak ditemukan.' };
@@ -4580,6 +4592,7 @@ const Guru = {
           <td><span class="badge ${warnPelanggaran}">${s.pelanggaran} / ${maxPelanggaran}</span></td>
           <td>${s.status === 'berlangsung' ? '-' : (s.nilai === '' || s.nilai === undefined ? '-' : s.nilai)}</td>
           <td class="aksi">
+            <button class="secondary small" title="Lihat kronologi pelanggaran siswa ini" onclick="Guru.bukaLogPelanggaran('${s.sesiId}', '${escapeHtml_(s.nama)}')">🛡 Detail Pelanggaran</button>
             <button class="secondary small" title="Tambah waktu untuk siswa ini" onclick="Guru.pemantauanTambahWaktu('${s.sesiId}', '${escapeHtml_(s.nama)}')">⏱ Tambah Waktu</button>
             ${s.pelanggaran > 0 ? `<button class="secondary small" title="Pelanggaran jadi 0, siswa lanjut dari soal terakhir tanpa mengulang dari awal" onclick="Guru.pemantauanHapusPelanggaran('${s.sesiId}', '${escapeHtml_(s.nama)}')">🧹 Hapus Pelanggaran</button>` : ''}
             ${s.status !== 'selesai' ? `<button class="secondary small" title="Selesaikan ujian siswa ini sekarang juga memakai jawaban terakhir yang tersimpan" onclick="Guru.pemantauanForceFinish('${s.sesiId}', '${escapeHtml_(s.nama)}')">✅ Selesaikan Paksa</button>` : ''}
@@ -4587,6 +4600,39 @@ const Guru = {
           </td>
         </tr>`;
       }).join('') + `</tbody></table>`;
+  },
+
+  // ---------------- DETAIL PELANGGARAN (kronologi per siswa) ----------------
+  JENIS_LOG: {
+    keluar_fullscreen: { ikon: '🖥', label: 'Keluar dari layar penuh', hitung: true },
+    pindah_tab: { ikon: '🔀', label: 'Pindah tab / aplikasi lain / layar dimatikan', hitung: true },
+    keluar_aplikasi: { ikon: '🚪', label: 'Keluar dari aplikasi ujian', hitung: true },
+    kembali: { ikon: '↩', label: 'Kembali ke halaman ujian', hitung: false },
+    salin_teks: { ikon: '📋', label: 'Mencoba menyalin teks (diblokir)', hitung: false },
+    tempel_teks: { ikon: '📥', label: 'Mencoba menempel teks (diblokir)', hitung: false },
+    potong_teks: { ikon: '✂', label: 'Mencoba memotong teks (diblokir)', hitung: false },
+    klik_kanan: { ikon: '🖱', label: 'Mencoba klik kanan (diblokir)', hitung: false }
+  },
+
+  async bukaLogPelanggaran(sesiId, nama) {
+    document.getElementById('log-pelanggaran-judul').textContent = 'Detail Pelanggaran — ' + nama;
+    const isi = document.getElementById('log-pelanggaran-isi');
+    isi.innerHTML = '<p class="subtitle">Memuat...</p>';
+    document.getElementById('modal-log-pelanggaran').classList.remove('hidden');
+    const res = await api('getLogPelanggaran', { sesiId });
+    if (!res.ok) { isi.innerHTML = '<p class="subtitle">Gagal memuat: ' + escapeHtml_(res.error || '') + '</p>'; return; }
+    const data = res.data || [];
+    if (!data.length) { isi.innerHTML = '<div class="log-kosong">✅ Tidak ada pelanggaran atau aktivitas mencurigakan tercatat untuk siswa ini.</div>'; return; }
+    const info = (jenis) => Guru.JENIS_LOG[jenis] || { ikon: '⚠', label: jenis, hitung: true };
+    const total = {};
+    data.forEach(l => { if (info(l.jenis).hitung) total[l.jenis] = (total[l.jenis] || 0) + 1; });
+    const ringkas = Object.keys(total).map(k => `<span class="log-chip">${info(k).ikon} ${escapeHtml_(info(k).label)}: <b>${total[k]}×</b></span>`).join('');
+    const fmt = (iso) => { const d = new Date(iso); return isNaN(d) ? '-' : d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short' }) + ' ' + d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' }); };
+    isi.innerHTML = (ringkas ? `<div class="log-ringkas">${ringkas}</div>` : '') +
+      '<ol class="log-timeline">' + data.map(l => {
+        const i = info(l.jenis);
+        return `<li class="${i.hitung ? 'log-hitung' : 'log-info'}"><span class="log-waktu">${fmt(l.waktu)}</span><span class="log-ikon">${i.ikon}</span><div><strong>${escapeHtml_(i.label)}</strong>${l.detail ? `<div class="log-detail">${escapeHtml_(l.detail)}</div>` : ''}<span class="log-tag">${i.hitung ? 'Dihitung sebagai pelanggaran' : 'Tidak dihitung'}</span></div></li>`;
+      }).join('') + '</ol>';
   },
 
   async pemantauanTambahWaktu(sesiId, nama) {
@@ -5987,7 +6033,23 @@ const AntiCheat = {
     if (req) req.call(el).catch(() => { /* beberapa browser mobile tidak mendukung fullscreen API */ });
   },
 
-  blokirAksi(ev) { ev.preventDefault(); },
+  // Catat percobaan salin/tempel/potong/klik kanan (tetap diblokir, TIDAK menambah hitungan pelanggaran).
+  _terakhirCatat: {},
+  blokirAksi(ev) {
+    ev.preventDefault();
+    const peta = { copy: 'salin_teks', paste: 'tempel_teks', cut: 'potong_teks', contextmenu: 'klik_kanan' };
+    const jenis = peta[ev.type];
+    const now = Date.now();
+    if (jenis && now - (AntiCheat._terakhirCatat[jenis] || 0) > 10000) { // dibatasi 1x / 10 detik per jenis
+      AntiCheat._terakhirCatat[jenis] = now;
+      AntiCheat.catat(jenis, '');
+    }
+  },
+
+  catat(jenis, detail) {
+    if (!state.sesiId || state.submitting) return;
+    api('catatAktivitas', { sesiId: state.sesiId, jenis, detail: detail || '' }).catch(() => {});
+  },
 
   onBeforeUnload(ev) {
     if (AntiCheat.aktif) { ev.preventDefault(); ev.returnValue = ''; }
@@ -5997,8 +6059,17 @@ const AntiCheat = {
     if (AntiCheat.aktif && !document.fullscreenElement) AntiCheat.laporPelanggaran('keluar_fullscreen', 'Anda keluar dari mode layar penuh.');
   },
 
+  _hiddenSejak: 0,
   onVisibilityChange() {
-    if (AntiCheat.aktif && document.hidden) AntiCheat.laporPelanggaran('pindah_tab', 'Anda berpindah tab atau aplikasi lain.');
+    if (!AntiCheat.aktif) return;
+    if (document.hidden) {
+      AntiCheat._hiddenSejak = Date.now();
+      AntiCheat.laporPelanggaran('pindah_tab', 'Anda berpindah tab atau aplikasi lain.');
+    } else if (AntiCheat._hiddenSejak) {
+      const detik = Math.round((Date.now() - AntiCheat._hiddenSejak) / 1000);
+      AntiCheat._hiddenSejak = 0;
+      AntiCheat.catat('kembali', 'Pergi selama ' + (detik >= 60 ? Math.floor(detik / 60) + ' menit ' + (detik % 60) + ' detik' : detik + ' detik'));
+    }
   },
 
   onBlur() {
