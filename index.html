@@ -1114,6 +1114,43 @@
   <button class="accent" onclick="Siswa.kembaliKeUjian()">Kembali ke Ujian (Layar Penuh)</button>
 </div>
 
+<!-- ======================= KONFIRMASI KUMPULKAN UJIAN ======================= -->
+<div id="modal-kumpul" class="kumpul-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="kumpul-judul">
+  <div class="kumpul-card">
+    <div class="kumpul-ikon" id="kumpul-ikon"><i class="fa-solid fa-paper-plane"></i></div>
+    <h3 id="kumpul-judul">Kumpulkan Jawaban?</h3>
+    <p class="kumpul-sub" id="kumpul-sub"></p>
+    <div class="kumpul-stat">
+      <div class="kumpul-stat-item ok"><b id="kumpul-n-jawab">0</b><span>Terjawab</span></div>
+      <div class="kumpul-stat-item no"><b id="kumpul-n-kosong">0</b><span>Belum dijawab</span></div>
+      <div class="kumpul-stat-item rg"><b id="kumpul-n-ragu">0</b><span>Ragu-ragu</span></div>
+    </div>
+    <div class="kumpul-waktu"><i class="fa-regular fa-clock"></i> Sisa waktu <b id="kumpul-waktu">00:00</b></div>
+    <div id="kumpul-peringatan" class="kumpul-peringatan hidden">
+      <p id="kumpul-peringatan-teks"></p>
+      <div class="kumpul-chips" id="kumpul-chips"></div>
+    </div>
+    <label id="kumpul-cek-wrap" class="kumpul-cek hidden">
+      <input type="checkbox" id="kumpul-cek" onchange="KumpulUI.cekBerubah()">
+      <span>Saya mengerti soal yang belum dijawab akan dinilai kosong dan jawaban tidak dapat diubah lagi.</span>
+    </label>
+    <div class="kumpul-aksi">
+      <button type="button" class="secondary" onclick="KumpulUI.tutup()"><i class="fa-solid fa-arrow-left"></i> Kembali Periksa</button>
+      <button type="button" class="accent" id="kumpul-btn-ya" onclick="KumpulUI.kirim()"><i class="fa-solid fa-paper-plane"></i> Ya, Kumpulkan</button>
+    </div>
+  </div>
+</div>
+
+<!-- ======================= LAYAR PENGIRIMAN JAWABAN ======================= -->
+<div id="overlay-kirim" class="kumpul-backdrop kumpul-kirim hidden" role="alertdialog" aria-live="assertive">
+  <div class="kumpul-card">
+    <div class="kumpul-spinner" id="kirim-spinner"></div>
+    <h3 id="kirim-judul">Mengirim jawaban...</h3>
+    <p class="kumpul-sub" id="kirim-sub">Mohon tunggu dan jangan menutup halaman ini.</p>
+    <div class="kirim-bar"><i></i></div>
+  </div>
+</div>
+
 <!-- ======================= HASIL UJIAN ======================= -->
 <div id="hasil-screen" class="hidden">
   <div class="hasil-card" id="hasil-card">
