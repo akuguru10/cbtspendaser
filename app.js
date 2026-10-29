@@ -1040,7 +1040,8 @@ function barisTabelJadiSoal_(headerIdx, nilai, guruId, kategoriDefault, petaGamb
     pertanyaan,
     gambar,
     bobot: Number(ambil('bobot')) || 10,
-    tingkat_kesulitan: (ambil('kesulitan') || ambil('tingkatkesulitan') || 'sedang').toLowerCase()
+    tingkat_kesulitan: (ambil('kesulitan') || ambil('tingkatkesulitan') || 'sedang').toLowerCase(),
+    pembahasan: ambil('pembahasan')
   };
   const potonganPertanyaan = (s) => { const teks = String(s).replace(/<[^>]*>/g, '').trim(); return teks.length > 60 ? teks.slice(0, 60) + '…' : teks; };
   if (tipe === 'menjodohkan') {
@@ -2333,7 +2334,10 @@ const LocalBackend = (function () {
         if (sesi.status === 'berlangsung') return { ok: false, error: 'Detail jawaban baru bisa dilihat setelah ujian selesai.' };
         const ujian = D.ujian.find(u => u.id === sesi.ujian_id);
         if (ujian && String(ujian.tampil_detail) === 'false') return { ok: false, error: 'Guru tidak mengaktifkan detail jawaban untuk ujian ini.' };
-        return { ok: true, judulUjian: ujian ? ujian.judul : '-', nilai: sesi.nilai, lulus: sesi.lulus, items: bangunDetailJawaban_(D, sesi) };
+        const items = bangunDetailJawaban_(D, sesi);
+        const tampilPembahasan = !(ujian && String(ujian.tampil_pembahasan).toLowerCase() === 'false');
+        if (!tampilPembahasan && data.siswaId) items.forEach(it => { it.pembahasan = ''; });
+        return { ok: true, judulUjian: ujian ? ujian.judul : '-', nilai: sesi.nilai, lulus: sesi.lulus, items, tampilPembahasan };
       }
       case 'getHasil': {
         const sesi = D.sesi.find(s => s.id === data.sesiId);
@@ -2761,6 +2765,8 @@ const UI = {
     document.getElementById('soal-topik').value = soal && soal.topik ? soal.topik : '';
     document.getElementById('soal-tipe').value = soal ? soal.tipe : (tipePraset || state.guru.tipeTabKelola || 'pilihan_ganda');
     document.getElementById('soal-pertanyaan').innerHTML = soal ? kontenSoalHtml(soal.pertanyaan) : '';
+    document.getElementById('soal-pembahasan-toolbar').innerHTML = UI.htmlRichToolbar(false);
+    document.getElementById('soal-pembahasan').innerHTML = soal && soal.pembahasan ? kontenSoalHtml(soal.pembahasan) : '';
     document.getElementById('soal-bobot').value = soal ? soal.bobot : 10;
     document.getElementById('soal-tingkat-kesulitan').value = soal && soal.tingkat_kesulitan ? soal.tingkat_kesulitan : 'sedang';
     ['gambar', 'audio', 'video'].forEach(jenis => {
@@ -2965,6 +2971,8 @@ const UI = {
     document.getElementById('ujian-acak-opsi').checked = ujian ? (String(ujian.acak_opsi) === 'true') : true;
     document.getElementById('ujian-instruksi-remedial').value = ujian && ujian.instruksi_remedial ? ujian.instruksi_remedial : '';
     document.getElementById('ujian-tampil-detail').checked = ujian ? (String(ujian.tampil_detail) !== 'false') : true;
+    document.getElementById('ujian-tampil-pembahasan').checked = ujian ? (String(ujian.tampil_pembahasan).toLowerCase() !== 'false') : true;
+    Guru.sinkronDetailPembahasan();
     Guru.muatEditorPesanNilai(ujian && ujian.pesan_nilai);
     // null (bukan array kosong) khusus menandai "ujian baru, belum ada
     // pilihan tersimpan" -> semua soal yang cocok otomatis tercentang.
@@ -3820,7 +3828,8 @@ const Guru = {
         audio: document.getElementById('soal-audio-url').value,
         video: document.getElementById('soal-video-url').value,
         bobot: Number(document.getElementById('soal-bobot').value) || 10,
-        tingkat_kesulitan: document.getElementById('soal-tingkat-kesulitan').value
+        tingkat_kesulitan: document.getElementById('soal-tingkat-kesulitan').value,
+        pembahasan: (() => { const v = sanitasiHtmlKaya_(document.getElementById('soal-pembahasan').innerHTML.trim()); return richTeksKosong_(v) ? '' : v; })()
       };
       if (richTeksKosong_(soal.pertanyaan)) { toast('Pertanyaan tidak boleh kosong.', 'error'); return; }
 
@@ -4077,18 +4086,18 @@ const Guru = {
   // menambah baris baru di bawah contoh mengikuti pola yang sama, TANPA perlu
   // paham format label/kode apa pun. Ditulis langsung tanpa pustaka pihak ketiga.
   unduhTemplateSoalDocx() {
-    const headers = ['Kategori', 'Topik', 'Tipe', 'Pertanyaan', 'Gambar', 'Opsi A', 'Opsi B', 'Opsi C', 'Opsi D', 'Opsi E', 'Kunci', 'Bobot', 'Kesulitan'];
+    const headers = ['Kategori', 'Topik', 'Tipe', 'Pertanyaan', 'Gambar', 'Opsi A', 'Opsi B', 'Opsi C', 'Opsi D', 'Opsi E', 'Kunci', 'Bobot', 'Kesulitan', 'Pembahasan'];
     const rows = [
-      ['', 'Sejarah Indonesia', 'PG', 'Siapakah Presiden Indonesia pada tahun 1999?', '', 'Soekarno', 'Soeharto', 'B. J. Habibie', 'Abdurrahman Wahid', '', 'C', '10', 'Sedang'],
-      ['', 'Biologi', 'PGK', 'Manakah yang termasuk hewan mamalia? (kunci boleh lebih dari 1, pisah koma)', '', 'Paus', 'Ular', 'Kelelawar', 'Buaya', '', 'A,C', '10', 'Sedang'],
-      ['', 'Geografi', 'BS', 'Indonesia terletak di antara dua benua, yaitu Asia dan Australia.', '', 'Benar', 'Salah', '', '', '', 'Benar', '5', 'Mudah'],
-      ['', 'Biologi', 'Essay', 'Jelaskan proses terjadinya fotosintesis pada tumbuhan.', '', '', '', '', '', '', 'fotosintesis, klorofil, karbon dioksida', '15', 'Sedang'],
-      ['', 'Geografi', 'Jodohkan', 'Jodohkan negara dengan ibu kotanya.', '', 'Indonesia = Jakarta', 'Jepang = Tokyo', 'Prancis = Paris', '', '', '', '10', 'Sedang'],
-      ['', '', '', '(tambahkan baris baru di bawah sini, ikuti pola di atas — boleh sebanyak yang dibutuhkan)', '', '', '', '', '', '', '', '', '']
+      ['', 'Sejarah Indonesia', 'PG', 'Siapakah Presiden Indonesia pada tahun 1999?', '', 'Soekarno', 'Soeharto', 'B. J. Habibie', 'Abdurrahman Wahid', '', 'C', '10', 'Sedang', 'Contoh pembahasan: tulis alasan jawaban yang benar dan penjelasan singkatnya di sini.'],
+      ['', 'Biologi', 'PGK', 'Manakah yang termasuk hewan mamalia? (kunci boleh lebih dari 1, pisah koma)', '', 'Paus', 'Ular', 'Kelelawar', 'Buaya', '', 'A,C', '10', 'Sedang', ''],
+      ['', 'Geografi', 'BS', 'Indonesia terletak di antara dua benua, yaitu Asia dan Australia.', '', 'Benar', 'Salah', '', '', '', 'Benar', '5', 'Mudah', ''],
+      ['', 'Biologi', 'Essay', 'Jelaskan proses terjadinya fotosintesis pada tumbuhan.', '', '', '', '', '', '', 'fotosintesis, klorofil, karbon dioksida', '15', 'Sedang', ''],
+      ['', 'Geografi', 'Jodohkan', 'Jodohkan negara dengan ibu kotanya.', '', 'Indonesia = Jakarta', 'Jepang = Tokyo', 'Prancis = Paris', '', '', '', '10', 'Sedang', ''],
+      ['', '', '', '(tambahkan baris baru di bawah sini, ikuti pola di atas — boleh sebanyak yang dibutuhkan)', '', '', '', '', '', '', '', '', '', '']
     ];
     const items = [
       { text: 'TEMPLATE IMPORT SOAL — CBT Online', heading: true },
-      { text: 'Isi tabel di bawah, SATU BARIS = SATU SOAL. Kolom Tipe: PG (pilihan ganda), PGK (pilihan ganda kompleks/kunci boleh lebih dari 1), BS (benar/salah), Jodohkan, Essay. Kolom Kunci cukup diisi HURUF opsi yang benar (mis. "C"), untuk PGK pisah dgn koma (mis. "A,C"), untuk BS isi "Benar"/"Salah", untuk Essay isi kata kunci penilaian dipisah koma. Kolom Gambar: boleh dikosongkan, boleh diisi link gambar publik, ATAU cukup TEMPEL/SISIPKAN gambarnya langsung di dalam sel itu (Insert > Pictures di Word) -- saat diimpor gambar tersebut otomatis terdeteksi & terunggah sendiri, tanpa perlu file gambar terpisah. Gambar juga boleh ditempel langsung di tengah sel Pertanyaan/Opsi kalau perlu. Kolom yang tidak dipakai (mis. Opsi E utk soal 4 opsi) boleh dikosongkan. Tipe Jodohkan sebaiknya dibuat lewat "Tambah Soal Manual" karena pasangannya lebih mudah diatur lewat formulir.' },
+      { text: 'Isi tabel di bawah, SATU BARIS = SATU SOAL (kolom Pembahasan opsional: penjelasan jawaban yang bisa dilihat siswa bila guru mengaktifkannya di pengaturan ujian). Kolom Tipe: PG (pilihan ganda), PGK (pilihan ganda kompleks/kunci boleh lebih dari 1), BS (benar/salah), Jodohkan, Essay. Kolom Kunci cukup diisi HURUF opsi yang benar (mis. "C"), untuk PGK pisah dgn koma (mis. "A,C"), untuk BS isi "Benar"/"Salah", untuk Essay isi kata kunci penilaian dipisah koma. Kolom Gambar: boleh dikosongkan, boleh diisi link gambar publik, ATAU cukup TEMPEL/SISIPKAN gambarnya langsung di dalam sel itu (Insert > Pictures di Word) -- saat diimpor gambar tersebut otomatis terdeteksi & terunggah sendiri, tanpa perlu file gambar terpisah. Gambar juga boleh ditempel langsung di tengah sel Pertanyaan/Opsi kalau perlu. Kolom yang tidak dipakai (mis. Opsi E utk soal 4 opsi) boleh dikosongkan. Tipe Jodohkan sebaiknya dibuat lewat "Tambah Soal Manual" karena pasangannya lebih mudah diatur lewat formulir.' },
       { table: { headers, rows } }
     ];
     unduhDocx_('Template_Import_Soal_CBT.docx', items);
@@ -4182,6 +4191,7 @@ const Guru = {
         status: 'aktif'
       };
       ujian.tampil_detail = document.getElementById('ujian-tampil-detail').checked;
+      ujian.tampil_pembahasan = document.getElementById('ujian-tampil-pembahasan').checked;
       const hasilPesan = Guru.ambilPesanNilaiUntukSimpan();
       if (hasilPesan.error) { toast(hasilPesan.error, 'error'); return; }
       ujian.pesan_nilai = hasilPesan.json;
@@ -4945,20 +4955,28 @@ const Guru = {
     else toast('Gagal menghapus kelas: ' + res.error, 'error');
   },
 
+  // Pembahasan hanya bermakna bila detail jawaban aktif -> nonaktifkan kotaknya saat detail dimatikan.
+  sinkronDetailPembahasan() {
+    const d = document.getElementById('ujian-tampil-detail'), p = document.getElementById('ujian-tampil-pembahasan');
+    if (!d || !p) return;
+    p.disabled = !d.checked;
+    p.parentNode.style.opacity = d.checked ? '' : '.5';
+  },
+
   // ---------------- BANK SOAL: TEMPLATE ----------------
   // Kolom sama persis dgn template Word (lihat Guru.unduhTemplateSoalDocx &
   // barisTabelJadiSoal_) supaya guru cukup belajar 1 format saja utk kedua jenis
   // file. Baris pertama sheet = header (dibaca berdasarkan nama, bebas urutan).
   unduhTemplateSoal() {
     unduhXlsx('Template_Import_Soal_CBT.xlsx',
-      ['Kategori', 'Topik', 'Tipe', 'Pertanyaan', 'Gambar', 'Opsi A', 'Opsi B', 'Opsi C', 'Opsi D', 'Opsi E', 'Kunci', 'Bobot', 'Kesulitan'],
+      ['Kategori', 'Topik', 'Tipe', 'Pertanyaan', 'Gambar', 'Opsi A', 'Opsi B', 'Opsi C', 'Opsi D', 'Opsi E', 'Kunci', 'Bobot', 'Kesulitan', 'Pembahasan'],
       [
-        ['', 'Sejarah Indonesia', 'PG', 'Siapakah Presiden Indonesia pada tahun 1999?', '', 'Soekarno', 'Soeharto', 'B. J. Habibi', 'Abdurrahman Wahid', '', 'C', '10', 'Sedang'],
-        ['', 'Biologi', 'PGK', 'Manakah yang termasuk hewan mamalia? (kunci boleh lebih dari 1, pisah koma)', '', 'Paus', 'Ular', 'Kelelawar', 'Buaya', '', 'A,C', '10', 'Sedang'],
-        ['', 'Geografi', 'BS', 'Indonesia terletak di antara dua benua, yaitu Asia dan Australia.', '', 'Benar', 'Salah', '', '', '', 'Benar', '5', 'Mudah'],
-        ['', 'Biologi', 'Essay', 'Jelaskan proses terjadinya fotosintesis pada tumbuhan.', '', '', '', '', '', '', 'fotosintesis, klorofil, karbon dioksida', '15', 'Sedang'],
-        ['', 'Geografi', 'Jodohkan', 'Jodohkan negara dengan ibu kotanya.', '', 'Indonesia = Jakarta', 'Jepang = Tokyo', 'Prancis = Paris', '', '', '', '10', 'Sedang'],
-        ['', '', '', '(tambahkan baris baru di bawah sini, ikuti pola di atas)', '', '', '', '', '', '', '', '', '']
+        ['', 'Sejarah Indonesia', 'PG', 'Siapakah Presiden Indonesia pada tahun 1999?', '', 'Soekarno', 'Soeharto', 'B. J. Habibi', 'Abdurrahman Wahid', '', 'C', '10', 'Sedang', 'Contoh pembahasan: tulis alasan jawaban yang benar dan penjelasan singkatnya di sini.'],
+        ['', 'Biologi', 'PGK', 'Manakah yang termasuk hewan mamalia? (kunci boleh lebih dari 1, pisah koma)', '', 'Paus', 'Ular', 'Kelelawar', 'Buaya', '', 'A,C', '10', 'Sedang', ''],
+        ['', 'Geografi', 'BS', 'Indonesia terletak di antara dua benua, yaitu Asia dan Australia.', '', 'Benar', 'Salah', '', '', '', 'Benar', '5', 'Mudah', ''],
+        ['', 'Biologi', 'Essay', 'Jelaskan proses terjadinya fotosintesis pada tumbuhan.', '', '', '', '', '', '', 'fotosintesis, klorofil, karbon dioksida', '15', 'Sedang', ''],
+        ['', 'Geografi', 'Jodohkan', 'Jodohkan negara dengan ibu kotanya.', '', 'Indonesia = Jakarta', 'Jepang = Tokyo', 'Prancis = Paris', '', '', '', '10', 'Sedang', ''],
+        ['', '', '', '(tambahkan baris baru di bawah sini, ikuti pola di atas)', '', '', '', '', '', '', '', '', '', '']
       ]);
   },
 
@@ -5467,7 +5485,10 @@ const Siswa = {
   },
 
   soalSebelumnya() { if (state.idxSoal > 0) { state.idxSoal--; ExamEngine.renderSoal(); } },
-  soalBerikutnya() { if (state.idxSoal < state.soal.length - 1) { state.idxSoal++; ExamEngine.renderSoal(); } },
+  soalBerikutnya() {
+    if (state.idxSoal < state.soal.length - 1) { state.idxSoal++; ExamEngine.renderSoal(); }
+    else Siswa.konfirmasiSubmit(); // soal terakhir: tombol berubah jadi "Selesai"
+  },
   lompatKeSoal(i) { state.idxSoal = i; ExamEngine.renderSoal(); },
 
   toggleRagu() {
@@ -5486,6 +5507,38 @@ const Siswa = {
     AntiCheat.mintaFullscreen();
   }
 };
+
+// ============================================================================
+// UKURAN TAMPILAN SOAL (siswa): perbesar/perkecil teks soal, jawaban & gambar.
+// Tersimpan per perangkat (localStorage) supaya tidak perlu diatur ulang tiap soal.
+// ============================================================================
+const SkalaSoal = {
+  tingkat: [0.85, 1, 1.2, 1.4, 1.7],
+  idx: 1,
+  init() {
+    try { const v = parseInt(localStorage.getItem('cbt_skala_soal'), 10); if (v >= 0 && v < SkalaSoal.tingkat.length) SkalaSoal.idx = v; } catch (e) {}
+  },
+  ubah(arah) {
+    SkalaSoal.idx = Math.min(Math.max(SkalaSoal.idx + arah, 0), SkalaSoal.tingkat.length - 1);
+    SkalaSoal.simpan();
+  },
+  reset() { SkalaSoal.idx = 1; SkalaSoal.simpan(); },
+  simpan() {
+    try { localStorage.setItem('cbt_skala_soal', String(SkalaSoal.idx)); } catch (e) {}
+    SkalaSoal.terapkan();
+  },
+  terapkan() {
+    const s = SkalaSoal.tingkat[SkalaSoal.idx];
+    const card = document.getElementById('question-card');
+    if (card) card.style.setProperty('--skala', s);
+    const n = document.getElementById('skala-nilai');
+    if (n) n.textContent = Math.round(s * 100) + '%';
+    const k = document.getElementById('skala-kecil'), b = document.getElementById('skala-besar');
+    if (k) k.disabled = SkalaSoal.idx === 0;
+    if (b) b.disabled = SkalaSoal.idx === SkalaSoal.tingkat.length - 1;
+  }
+};
+SkalaSoal.init();
 
 // ============================================================================
 // KONFIRMASI KUMPULKAN UJIAN & LAYAR PENGIRIMAN (pengganti confirm() bawaan browser)
@@ -5604,7 +5657,12 @@ const ExamEngine = {
     renderMatika(card);
     document.getElementById('chk-ragu').checked = state.ragu.includes(soal.id);
     document.getElementById('btn-soal-prev').disabled = state.idxSoal === 0;
-    document.getElementById('btn-soal-next').disabled = state.idxSoal === state.soal.length - 1;
+    const btnNext = document.getElementById('btn-soal-next');
+    const terakhir = state.idxSoal === state.soal.length - 1;
+    btnNext.disabled = false;
+    btnNext.classList.toggle('selesai', terakhir);
+    btnNext.innerHTML = terakhir ? '<i class="fa-solid fa-flag-checkered"></i> Selesai' : 'Berikutnya &rarr;';
+    SkalaSoal.terapkan();
     ExamEngine.renderGridSoal();
   },
 
