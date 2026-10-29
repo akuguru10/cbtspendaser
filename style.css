@@ -1374,3 +1374,19 @@ details.tm-det > summary { cursor: pointer; font-weight: 700; font-size: .88rem;
   background: var(--c-warn-ink); color: #fff; font-size: .65rem; line-height: 16px; font-weight: 700; text-align: center;
 }
 .legend .dot-ragu { background: var(--c-accent); border: 2px solid var(--c-warn-ink); }
+
+
+/* ---------- Detail pelanggaran (guru) ---------- */
+.log-ringkas { display: flex; flex-wrap: wrap; gap: .4rem; margin: .6rem 0 .9rem; }
+.log-chip { font-size: .8rem; padding: .3rem .65rem; border-radius: 999px; background: var(--c-no-bg); color: var(--c-danger); }
+.log-timeline { list-style: none; margin: 0; padding: 0; max-height: 55vh; overflow-y: auto; }
+.log-timeline li { display: flex; gap: .7rem; align-items: flex-start; padding: .6rem .7rem; margin-bottom: .4rem; border-radius: 12px;
+  border: 1px solid var(--c-line); border-left: 4px solid var(--c-line); background: var(--c-surface); }
+.log-timeline li.log-hitung { border-left-color: var(--c-danger); background: var(--c-no-bg); }
+.log-timeline li.log-info { border-left-color: var(--c-secondary); }
+.log-waktu { flex: none; font-size: .74rem; color: var(--c-muted); min-width: 92px; font-variant-numeric: tabular-nums; }
+.log-ikon { flex: none; font-size: 1.1rem; }
+.log-detail { font-size: .82rem; color: var(--c-muted); }
+.log-tag { display: inline-block; margin-top: .15rem; font-size: .68rem; color: var(--c-muted); }
+.log-kosong { text-align: center; padding: 2rem 1rem; color: var(--c-muted); }
+@media (max-width: 520px) { .log-timeline li { flex-wrap: wrap; } .log-waktu { min-width: 100%; } }
