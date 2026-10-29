@@ -5549,6 +5549,8 @@ const Siswa = {
   konfirmasiSubmit() { KumpulUI.buka(); },
 
   kembaliKeUjian() {
+    AntiCheat._insiden = false; // kejadian sebelumnya selesai; kejadian berikutnya dihitung lagi
+    AntiCheat._hiddenSejak = 0;
     document.getElementById('anticheat-warning').classList.add('hidden');
     AntiCheat.mintaFullscreen();
   }
@@ -6003,6 +6005,7 @@ const AntiCheat = {
 
   aktifkan() {
     AntiCheat.aktif = true;
+    AntiCheat._insiden = false;
     AntiCheat.mintaFullscreen();
     document.addEventListener('fullscreenchange', AntiCheat.onFullscreenChange);
     document.addEventListener('visibilitychange', AntiCheat.onVisibilityChange);
@@ -6056,7 +6059,15 @@ const AntiCheat = {
   },
 
   onFullscreenChange() {
-    if (AntiCheat.aktif && !document.fullscreenElement) AntiCheat.laporPelanggaran('keluar_fullscreen', 'Anda keluar dari mode layar penuh.');
+    if (!AntiCheat.aktif || document.fullscreenElement) return;
+    // Layar mati / pindah aplikasi otomatis ikut mengeluarkan browser dari layar penuh.
+    // Tunggu sebentar: kalau ternyata halaman disembunyikan, itu SATU kejadian yang sama
+    // dan ditangani onVisibilityChange (bukan pelanggaran tambahan).
+    setTimeout(() => {
+      if (!AntiCheat.aktif || document.fullscreenElement || AntiCheat._insiden) return;
+      if (document.hidden || AntiCheat._hiddenSejak) return;
+      AntiCheat.laporPelanggaran('keluar_fullscreen', 'Anda keluar dari mode layar penuh.');
+    }, 700);
   },
 
   _hiddenSejak: 0,
@@ -6064,7 +6075,7 @@ const AntiCheat = {
     if (!AntiCheat.aktif) return;
     if (document.hidden) {
       AntiCheat._hiddenSejak = Date.now();
-      AntiCheat.laporPelanggaran('pindah_tab', 'Anda berpindah tab atau aplikasi lain.');
+      AntiCheat.laporPelanggaran('pindah_tab', 'Layar Anda mati atau Anda meninggalkan halaman ujian (pindah tab/aplikasi).');
     } else if (AntiCheat._hiddenSejak) {
       const detik = Math.round((Date.now() - AntiCheat._hiddenSejak) / 1000);
       AntiCheat._hiddenSejak = 0;
@@ -6076,22 +6087,28 @@ const AntiCheat = {
     if (AntiCheat.aktif && document.hidden) AntiCheat.laporPelanggaran('keluar_aplikasi', 'Anda keluar dari aplikasi ujian.');
   },
 
+  // Satu "kejadian" (mis. satu kali layar mati) cuma dihitung SATU pelanggaran, walau browser
+  // memicu beberapa event sekaligus (pindah tab + keluar layar penuh + blur). Kejadian dianggap
+  // selesai saat siswa menekan tombol "Kembali ke Ujian" (Siswa.kembaliKeUjian).
+  _insiden: false,
   async laporPelanggaran(jenis, pesan) {
-    if (!state.sesiId || state.submitting) return;
+    if (!state.sesiId || state.submitting || AntiCheat._insiden) return;
+    AntiCheat._insiden = true;
     document.getElementById('anticheat-pesan').textContent = pesan;
+    document.getElementById('anticheat-sisa').textContent = '';
     document.getElementById('anticheat-warning').classList.remove('hidden');
     const res = await api('lapor', { sesiId: state.sesiId, jenis, jawaban: JSON.stringify(state.jawaban) });
     if (res.ok) {
       state.pelanggaran = res.pelanggaran;
       document.getElementById('pelanggaran-indikator').textContent = `Pelanggaran: ${state.pelanggaran}/${state.maxPelanggaran}`;
-      document.getElementById('anticheat-sisa').textContent = `Sisa kesempatan sebelum ujian dikunci otomatis: ${Math.max(state.maxPelanggaran - state.pelanggaran, 0)}`;
+      document.getElementById('anticheat-sisa').textContent = state.maxPelanggaran >= 999 ? '' : `Sisa pelanggaran: ${Math.max(state.maxPelanggaran - state.pelanggaran, 0)}. Jika sisa habis, ujian diblokir dan jawaban dikirim otomatis.`;
       if (res.blokir) {
         state.submitting = true;
         clearInterval(state.timerHandle);
         clearInterval(state.autosaveHandle);
         AntiCheat.nonaktifkan();
         hapusCacheLokal(state.sesiId);
-        document.getElementById('anticheat-pesan').textContent = 'Ujian dikunci karena melebihi batas pelanggaran yang diizinkan. Jawaban Anda telah dikumpulkan otomatis.';
+        document.getElementById('anticheat-pesan').textContent = 'Anda melebihi batas pelanggaran ujian. Ujian diblokir dan jawaban Anda telah dikirim otomatis.';
         document.getElementById('anticheat-sisa').textContent = '';
         setTimeout(() => ExamEngine.tampilkanHasil(res.nilai, res.lulus, state.ujian.judul), 2500);
       }
