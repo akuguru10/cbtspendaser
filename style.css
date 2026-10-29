@@ -1328,3 +1328,23 @@ details.tm-det > summary { cursor: pointer; font-weight: 700; font-size: .88rem;
 .kirim-bar { height: 5px; border-radius: 99px; background: var(--c-line); overflow: hidden; margin-top: .4rem; }
 .kirim-bar i { display: block; height: 100%; width: 40%; border-radius: 99px; background: var(--c-secondary); animation: kumpul-geser 1.2s ease-in-out infinite; }
 @keyframes kumpul-geser { 0% { margin-left: -40%; } 100% { margin-left: 100%; } }
+
+
+/* ---------- Ukuran tampilan soal (siswa): teks, jawaban & gambar ---------- */
+#question-card { --skala: 1; }
+.skala-bar { display: flex; align-items: center; justify-content: flex-end; gap: .4rem; margin-bottom: .6rem; }
+.skala-label { margin-right: auto; font-size: .8rem; color: var(--c-muted); }
+.skala-bar button { padding: .4rem .75rem; min-width: 44px; border-radius: 12px; font-weight: 700; }
+.skala-bar .skala-nilai { min-width: 62px; font-weight: 600; font-variant-numeric: tabular-nums; font-size: .82rem; }
+.skala-bar button:disabled { opacity: .4; cursor: not-allowed; }
+#question-card .pertanyaan { font-size: calc(1.06rem * var(--skala)); }
+#question-card .opsi-item { font-size: calc(1rem * var(--skala)); }
+#question-card .opsi-huruf { flex: none; }
+#question-card .match-row .kiri, #question-card .match-row select { font-size: calc(1rem * var(--skala)); }
+#question-card textarea, #question-card input[type=text] { font-size: calc(1rem * var(--skala)); }
+#question-card .pertanyaan img, #question-card .opsi-konten img:not(.opsi-gambar-tampil) {
+  min-width: min(calc(360px * var(--skala)), 100%); max-width: min(100%, calc(100% * var(--skala))); }
+#question-card img.gambar-soal { min-width: min(calc(360px * var(--skala)), 100%); max-width: min(100%, calc(100% * var(--skala))); }
+#question-card .opsi-konten img.opsi-gambar-tampil { width: min(calc(260px * var(--skala)), 100%); min-width: min(calc(160px * var(--skala)), 100%);
+  max-height: calc(220px * var(--skala)); }
+#btn-soal-next.selesai { background: var(--c-accent); border-color: var(--c-accent); color: var(--c-on-accent); font-weight: 700; }
