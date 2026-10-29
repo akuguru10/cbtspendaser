@@ -84,6 +84,16 @@
   </div>
 </div>
 
+<!-- ======================= MODAL: DETAIL PELANGGARAN SISWA ======================= -->
+<div id="modal-log-pelanggaran" class="modal-backdrop hidden" onclick="if(event.target===this)UI.tutupModal('modal-log-pelanggaran')">
+  <div class="modal">
+    <h3 id="log-pelanggaran-judul">Detail Pelanggaran</h3>
+    <p class="subtitle" style="margin-top:-.4rem">Kronologi kejadian selama ujian, dari yang paling awal. Browser tidak bisa membedakan "pindah tab" dari "layar dimatikan", jadi keduanya tercatat sebagai satu jenis.</p>
+    <div id="log-pelanggaran-isi"></div>
+    <div class="modal-close-row"><button class="secondary" onclick="UI.tutupModal('modal-log-pelanggaran')">Tutup</button></div>
+  </div>
+</div>
+
 <!-- ======================= MODAL: PENGATURAN SERVER ======================= -->
 <div id="modal-server" class="modal-backdrop hidden">
   <div class="modal">
