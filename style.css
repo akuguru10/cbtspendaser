@@ -1348,3 +1348,29 @@ details.tm-det > summary { cursor: pointer; font-weight: 700; font-size: .88rem;
 #question-card .opsi-konten img.opsi-gambar-tampil { width: min(calc(260px * var(--skala)), 100%); min-width: min(calc(160px * var(--skala)), 100%);
   max-height: calc(220px * var(--skala)); }
 #btn-soal-next.selesai { background: var(--c-accent); border-color: var(--c-accent); color: var(--c-on-accent); font-weight: 700; }
+
+
+/* ---------- Detail jawaban: gambar rapi & proporsional, kartu lebih halus ---------- */
+.dj-card { border-radius: 16px; box-shadow: 0 2px 10px rgba(var(--c-shadow), .08); overflow: hidden; }
+.dj-card .pertanyaan { line-height: 1.6; overflow-wrap: anywhere; }
+.dj-card img, .dj-card img.gambar-soal, .dj-card .opsi-konten img {
+  display: block; width: auto; height: auto; max-width: 100%; max-height: min(300px, 45vh);
+  object-fit: contain; margin: .7rem auto; padding: .35rem; box-sizing: border-box;
+  background: #fff; border: 1px solid var(--c-line); border-radius: 12px; cursor: zoom-in;
+  box-shadow: 0 1px 4px rgba(var(--c-shadow), .1);
+}
+.dj-card .opsi-konten img { max-height: 160px; margin: .45rem 0 0; }
+.dj-card img:hover { outline: 2px solid var(--c-secondary); outline-offset: 1px; }
+.dj-card .pertanyaan img::after, .dj-card img.gambar-soal::after { content: none; }
+.dj-zoom-hint { font-size: .72rem; color: var(--c-muted); text-align: center; margin: -.3rem 0 .6rem; }
+
+/* ---------- Nomor soal ragu-ragu: warna isi sendiri, beda dari "sudah dijawab" ---------- */
+.soal-grid button { position: relative; }
+.soal-grid button.ragu, .soal-grid button.answered.ragu {
+  background: var(--c-accent); color: var(--c-on-accent); border: 2px solid var(--c-warn-ink); font-weight: 700;
+}
+.soal-grid button.ragu::after {
+  content: "?"; position: absolute; top: -6px; right: -6px; width: 16px; height: 16px; border-radius: 50%;
+  background: var(--c-warn-ink); color: #fff; font-size: .65rem; line-height: 16px; font-weight: 700; text-align: center;
+}
+.legend .dot-ragu { background: var(--c-accent); border: 2px solid var(--c-warn-ink); }
