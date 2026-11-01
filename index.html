@@ -28,7 +28,7 @@
      dimuat TANPA memblokir tampilan halaman login (dulu halaman kosong sampai keduanya selesai diunduh). -->
 <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
 <link rel="dns-prefetch" href="https://script.google.com">
-<link rel="stylesheet" href="style.css?v=28">
+<link rel="stylesheet" href="style.css?v=29">
 <!-- Font Awesome: ikon sidebar & tombol (gaya dashboard modern) -->
 <link rel="preload" as="style" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" onload="this.onload=null;this.rel='stylesheet'">
 <!-- KaTeX: render persamaan matematika (LaTeX) di dalam soal -->
@@ -1213,7 +1213,7 @@
     <h3 class="bukti-judul"><i class="fa-solid fa-camera"></i> Unggah Bukti Orak-Orik Jawaban</h3>
     <p class="bukti-sub" id="bukti-sub"></p>
     <div class="bukti-aksi" id="bukti-aksi">
-      <button type="button" class="accent" onclick="document.getElementById('bukti-input-kamera').click()"><i class="fa-solid fa-camera"></i> Ambil Foto</button>
+      <button type="button" class="accent" onclick="BuktiUI.pilihKamera()"><i class="fa-solid fa-camera"></i> Ambil Foto</button>
       <button type="button" class="secondary" onclick="document.getElementById('bukti-input-galeri').click()"><i class="fa-solid fa-images"></i> Pilih dari Galeri</button>
     </div>
     <input type="file" id="bukti-input-kamera" class="hidden" accept="image/*" capture="environment" onchange="BuktiUI.dariInput(this)">
@@ -1286,6 +1286,6 @@
 </div>
 
 <script src="config.js"></script>
-<script src="app.js?v=28"></script>
+<script src="app.js?v=29"></script>
 </body>
 </html>
