@@ -8,7 +8,7 @@
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap');
 
 :root {
-  --versi-css: "28"; /* harus sama dengan VERSI_APLIKASI di app.js (deteksi style.css usang di cache) */
+  --versi-css: "29"; /* harus sama dengan VERSI_APLIKASI di app.js (deteksi style.css usang di cache) */
   /* --- warna dasar (ditimpa JS: lihat Tampilan.terapkan di app.js) --- */
   --c-primary: #e58a72;
   --c-secondary: #6f9f94;
