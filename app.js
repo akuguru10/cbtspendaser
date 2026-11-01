@@ -1672,7 +1672,7 @@ function toast(msg, jenis) {
 // cache, sehingga dialog konfirmasi tampil TANPA gaya (jatuh ke bawah halaman, tombol di belakangnya masih bisa
 // diklik, dialog menumpuk). Dengan disuntik dari app.js, dialog dijamin tampil di tengah layar & menutupi halaman.
 // ----------------------------------------------------------------------------
-const VERSI_APLIKASI = '28';
+const VERSI_APLIKASI = '29';
 const CSS_SHEET = `
 /* Lembar pilihan sumber foto (tombol "+" di halaman unggah bukti orak-orik) */
 .bk-sheet-backdrop { position: fixed; inset: 0; z-index: 9000; display: flex; align-items: center; justify-content: center; padding: 1rem; background: rgba(14, 18, 40, .5); -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); animation: dlg-fade .15s ease-out; }
@@ -1691,6 +1691,31 @@ const CSS_SHEET = `
 .bk-sheet .bk-sheet-panah { font-size: .8rem; color: var(--c-muted); }
 .bk-sheet .bk-sheet-batal, .bk-sheet .bk-sheet-batal:hover, .bk-sheet .bk-sheet-batal:active { width: 100%; padding: .7rem; font-weight: 600; cursor: pointer; color: var(--c-muted); background: transparent; border: 0; box-shadow: none; transform: none; filter: none; }
 .bk-sheet .bk-sheet-batal:hover { color: var(--c-text); }
+`;
+const CSS_KAMERA = `
+/* Modal kamera web (laptop/PC): pratinjau langsung + tombol jepret */
+.kc-backdrop { position: fixed; inset: 0; z-index: 9100; display: flex; align-items: center; justify-content: center; padding: 1rem; background: rgba(10, 12, 28, .72); -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); animation: dlg-fade .15s ease-out; }
+.kc-panel { width: min(760px, 100%); max-height: calc(100vh - 2rem); box-sizing: border-box; display: flex; flex-direction: column; gap: .8rem; padding: 1rem 1.1rem 1.1rem; overflow-y: auto; background: var(--c-surface); color: var(--c-text); border-radius: 20px; box-shadow: 0 28px 70px rgba(0, 0, 0, .45); animation: dlg-pop .2s cubic-bezier(.2, .9, .3, 1.15); }
+.kc-panel .kc-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
+.kc-panel .kc-judul { font-weight: 700; font-size: 1.05rem; }
+.kc-panel .kc-sub { margin-top: .15rem; font-size: .78rem; color: var(--c-muted); }
+.kc-panel .kc-tutup, .kc-panel .kc-tutup:active { flex-shrink: 0; width: 36px; height: 36px; padding: 0; border-radius: 50%; cursor: pointer; color: var(--c-text); background: var(--c-bg); border: 1px solid var(--c-line); box-shadow: none; transform: none; filter: none; }
+.kc-panel .kc-tutup:hover { color: #fff; background: var(--c-danger); border-color: var(--c-danger); }
+.kc-stage { position: relative; aspect-ratio: 16 / 9; max-height: 60vh; width: 100%; overflow: hidden; display: flex; align-items: center; justify-content: center; background: #000; border-radius: 14px; }
+.kc-stage video, .kc-stage img { width: 100%; height: 100%; object-fit: contain; display: block; background: #000; }
+.kc-stage .kc-info { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .7rem; padding: 1.2rem; text-align: center; font-size: .9rem; line-height: 1.55; color: #fff; background: rgba(0, 0, 0, .6); }
+.kc-stage .kc-info i { font-size: 1.6rem; }
+.kc-stage .kc-info.galat i { color: #fca5a5; }
+.kc-aksi { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: .7rem; min-height: 56px; }
+.kc-panel .kc-btn, .kc-panel .kc-btn:active { display: inline-flex; align-items: center; gap: .45rem; padding: .65rem 1.1rem; font-size: .88rem; font-weight: 700; cursor: pointer; border-radius: 12px; color: var(--c-text); background: var(--c-surface); border: 1.5px solid var(--c-line); box-shadow: 0 3px 10px rgba(10, 15, 40, .1); transform: none; filter: none; }
+.kc-panel .kc-btn:hover { border-color: var(--c-primary); color: var(--c-primary); transform: translateY(-1px); }
+.kc-panel .kc-btn.utama, .kc-panel .kc-btn.utama:active { color: var(--c-on-primary); background: var(--c-primary); border-color: var(--c-primary); box-shadow: 0 6px 14px color-mix(in srgb, var(--c-primary) 40%, transparent); }
+.kc-panel .kc-btn.utama:hover { color: var(--c-on-primary); transform: translateY(-1px); }
+.kc-panel .kc-rana, .kc-panel .kc-rana:active { position: relative; width: 68px; height: 68px; padding: 0; cursor: pointer; border-radius: 50%; background: #fff; border: 5px solid var(--c-primary); box-shadow: 0 6px 18px rgba(0, 0, 0, .3); transform: none; filter: none; }
+.kc-panel .kc-rana::after { content: ""; position: absolute; inset: 6px; border-radius: 50%; background: var(--c-primary); transition: transform .1s ease; }
+.kc-panel .kc-rana:hover { transform: scale(1.05); background: #fff; border-color: var(--c-primary); }
+.kc-panel .kc-rana:active::after { transform: scale(.85); }
+.kc-panel .kc-rana:disabled { opacity: .45; cursor: not-allowed; }
 `;
 const CSS_DIALOG = `/* ============================================================================
    DIALOG PROFESIONAL v24 — pengganti confirm()/prompt()/alert() bawaan browser
@@ -1784,7 +1809,7 @@ function injectGayaDialog_() {
   if (document.getElementById('dlg-gaya')) return;
   const el = document.createElement('style');
   el.id = 'dlg-gaya';
-  el.textContent = CSS_DIALOG + CSS_SHEET;
+  el.textContent = CSS_DIALOG + CSS_SHEET + CSS_KAMERA;
   document.head.appendChild(el);
 }
 injectGayaDialog_();
@@ -6527,6 +6552,12 @@ SkalaSoal.init();
 // ----------------------------------------------------------------------------
 const BuktiFoto = {
   MAKS_FOTO: 10,
+  // HP/tablet: atribut capture membuka aplikasi kamera bawaan. Laptop/PC: capture DIABAIKAN browser (hanya membuka pemilih
+  // file), jadi di sana kamera dibuka lewat webcam langsung (BuktiKamera).
+  perangkatSeluler() {
+    const ua = (navigator.userAgent || '');
+    return /Android|iPhone|iPad|iPod|Mobile|CriOS|FxiOS/i.test(ua) || ((navigator.maxTouchPoints || 0) > 1 && /Macintosh/.test(ua));
+  },
   adalahHeic(file) { return /\.(heic|heif|hif)$/i.test(file.name || '') || /image\/(heic|heif)/i.test(file.type || ''); },
 
   async _dekode(blob) {
@@ -6653,13 +6684,21 @@ const BuktiUI = {
       if (b) {
         const sumber = b.dataset.sumber;
         tutup();
-        if (sumber === 'kamera') document.getElementById('bukti-input-kamera').click();
+        if (sumber === 'kamera') BuktiUI.pilihKamera();
         else if (sumber === 'galeri') document.getElementById('bukti-input-galeri').click();
         return;
       }
       if (e.target === wrap) tutup();
     });
     const pertama = wrap.querySelector('.bk-sheet-opsi'); if (pertama) pertama.focus();
+  },
+
+  // Satu pintu untuk semua tombol "Kamera": HP -> kamera bawaan (sinkron dari klik); laptop/PC -> webcam di browser.
+  pilihKamera() {
+    const s = BuktiUI._s;
+    if (!s || s.sibuk) return;
+    if (BuktiFoto.perangkatSeluler()) document.getElementById('bukti-input-kamera').click();
+    else BuktiKamera.buka();
   },
 
   dariInput(input) {
@@ -6823,7 +6862,7 @@ const BuktiUI = {
         <span class="bk-tambah-judul">Tambah foto</span>
         <span class="bk-tambah-sisa">Sisa ${BuktiFoto.MAKS_FOTO - total} foto</span>
         <div class="bk-tambah-aksi">
-          <button type="button" class="bk-btn-kamera" onclick="event.stopPropagation(); document.getElementById('bukti-input-kamera').click()"><i class="fa-solid fa-camera"></i> Kamera</button>
+          <button type="button" class="bk-btn-kamera" onclick="event.stopPropagation(); BuktiUI.pilihKamera()"><i class="fa-solid fa-camera"></i> Kamera</button>
           <button type="button" class="bk-btn-galeri" onclick="event.stopPropagation(); document.getElementById('bukti-input-galeri').click()"><i class="fa-solid fa-images"></i> Galeri</button>
         </div>
       </div>` : '';
@@ -6939,6 +6978,195 @@ const BuktiGaleri = {
     document.removeEventListener('keydown', s.onKey, true);
     s.wrap.remove();
     BuktiGaleri._s = null;
+  }
+};
+
+// Kamera web untuk laptop/PC: pratinjau langsung, tombol jepret, ulangi, ganti kamera, "tambah lagi".
+const BuktiKamera = {
+  _s: null,
+
+  _pesanGalat(e) {
+    const n = (e && e.name) || '';
+    if (/NotAllowed|PermissionDenied|Security/.test(n)) return 'Izin kamera ditolak. Klik ikon kamera/gembok di bilah alamat browser, pilih "Izinkan", lalu tekan Coba Lagi.';
+    if (/NotFound|DevicesNotFound/.test(n)) return 'Kamera tidak ditemukan di perangkat ini. Gunakan tombol Pilih dari Galeri.';
+    if (/NotReadable|TrackStart|Abort/.test(n)) return 'Kamera sedang dipakai aplikasi lain (mis. Zoom atau Meet). Tutup aplikasi itu lalu tekan Coba Lagi.';
+    return 'Kamera tidak bisa dibuka (' + ((e && (e.message || e.name)) || 'galat tidak dikenal') + ').';
+  },
+
+  async buka() {
+    if (BuktiKamera._s) return;
+    const us = BuktiUI._s;
+    if (!us) return;
+    if (us.items.length >= BuktiFoto.MAKS_FOTO) { toast('Maksimal ' + BuktiFoto.MAKS_FOTO + ' foto.', 'error'); return; }
+    if (!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)) {
+      toast('Kamera tidak bisa diakses di browser ini (butuh HTTPS). Silakan pilih foto dari Galeri.', 'error');
+      document.getElementById('bukti-input-galeri').click();
+      return;
+    }
+    const wrap = document.createElement('div');
+    wrap.className = 'kc-backdrop';
+    wrap.id = 'kc-modal';
+    wrap.innerHTML = `<div class="kc-panel" role="dialog" aria-modal="true" aria-label="Ambil foto dengan kamera">
+      <div class="kc-head">
+        <div><div class="kc-judul">Ambil Foto Bukti</div><div class="kc-sub" id="kc-sub">Arahkan kamera ke kertas coretan dan pastikan tulisannya terlihat jelas.</div></div>
+        <button type="button" class="kc-tutup" data-kc="tutup" aria-label="Tutup kamera"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="kc-stage">
+        <video id="kc-video" autoplay playsinline muted></video>
+        <img id="kc-hasil" class="hidden" alt="Hasil foto">
+        <div class="kc-info" id="kc-info"><i class="fa-solid fa-spinner fa-spin"></i><span>Membuka kamera...</span></div>
+      </div>
+      <div class="kc-aksi" id="kc-aksi"></div>
+    </div>`;
+    document.body.appendChild(wrap);
+    const st = BuktiKamera._s = { wrap, stream: null, devs: [], idx: 0, blob: null, urlHasil: '', ditambah: 0, mode: 'muat' };
+    st.onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); BuktiKamera.tutup(); } };
+    document.addEventListener('keydown', st.onKey, true);
+    let mulaiDiLatar = false;
+    wrap.addEventListener('mousedown', (e) => { mulaiDiLatar = e.target === wrap; });
+    wrap.addEventListener('click', (e) => {
+      if (e.target === wrap && mulaiDiLatar) { BuktiKamera.tutup(); return; }
+      const b = e.target.closest('[data-kc]');
+      if (!b || b.disabled) return;
+      const a = b.dataset.kc;
+      if (a === 'tutup') BuktiKamera.tutup();
+      else if (a === 'rana') BuktiKamera._ambil();
+      else if (a === 'ulang') BuktiKamera._kembaliLive();
+      else if (a === 'gunakan') BuktiKamera._gunakan(false);
+      else if (a === 'lagi') BuktiKamera._gunakan(true);
+      else if (a === 'ganti') BuktiKamera._ganti();
+      else if (a === 'coba') BuktiKamera._nyalakan();
+      else if (a === 'galeri') { BuktiKamera.tutup(); document.getElementById('bukti-input-galeri').click(); }
+    });
+    await BuktiKamera._nyalakan();
+  },
+
+  _el(id) { return document.getElementById(id); },
+
+  _aksi(mode) {
+    const st = BuktiKamera._s; if (!st) return;
+    st.mode = mode;
+    const el = BuktiKamera._el('kc-aksi');
+    if (mode === 'live') {
+      el.innerHTML = (st.devs.length > 1 ? '<button type="button" class="kc-btn" data-kc="ganti"><i class="fa-solid fa-camera-rotate"></i> Ganti Kamera</button>' : '') +
+        '<button type="button" class="kc-rana" data-kc="rana" aria-label="Ambil foto" title="Ambil foto"></button>';
+    } else if (mode === 'hasil') {
+      el.innerHTML = '<button type="button" class="kc-btn" data-kc="ulang"><i class="fa-solid fa-rotate-left"></i> Ulangi</button>' +
+        '<button type="button" class="kc-btn" data-kc="lagi"><i class="fa-solid fa-plus"></i> Simpan &amp; Ambil Lagi</button>' +
+        '<button type="button" class="kc-btn utama" data-kc="gunakan"><i class="fa-solid fa-check"></i> Gunakan Foto</button>';
+    } else if (mode === 'galat') {
+      el.innerHTML = '<button type="button" class="kc-btn utama" data-kc="coba"><i class="fa-solid fa-rotate-right"></i> Coba Lagi</button>' +
+        '<button type="button" class="kc-btn" data-kc="galeri"><i class="fa-solid fa-images"></i> Pilih dari Galeri</button>';
+    } else { el.innerHTML = ''; }
+  },
+
+  _info(html, galat) {
+    const el = BuktiKamera._el('kc-info'); if (!el) return;
+    el.className = 'kc-info' + (galat ? ' galat' : '');
+    el.innerHTML = html;
+    el.classList.toggle('hidden', !html);
+  },
+
+  _henti() {
+    const st = BuktiKamera._s;
+    if (st && st.stream) { try { st.stream.getTracks().forEach(t => t.stop()); } catch (e) { /* abaikan */ } st.stream = null; }
+  },
+
+  async _nyalakan(deviceId) {
+    const st = BuktiKamera._s; if (!st) return;
+    BuktiKamera._henti();
+    BuktiKamera._el('kc-video').classList.remove('hidden');
+    BuktiKamera._el('kc-hasil').classList.add('hidden');
+    BuktiKamera._info('<i class="fa-solid fa-spinner fa-spin"></i><span>Membuka kamera... Jika muncul permintaan izin, klik <b>Izinkan</b>.</span>');
+    BuktiKamera._aksi('muat');
+    const ukuran = { width: { ideal: 1920 }, height: { ideal: 1080 } };
+    const urutan = [
+      { audio: false, video: deviceId ? Object.assign({ deviceId: { exact: deviceId } }, ukuran) : Object.assign({ facingMode: { ideal: 'environment' } }, ukuran) },
+      { audio: false, video: true } // cadangan bila batasan di atas tidak didukung kamera
+    ];
+    let stream = null, galat = null;
+    for (const c of urutan) {
+      try { stream = await navigator.mediaDevices.getUserMedia(c); break; }
+      catch (e) { galat = e; if (/NotAllowed|PermissionDenied|Security|NotFound|DevicesNotFound/.test((e && e.name) || '')) break; }
+    }
+    if (BuktiKamera._s !== st) { if (stream) stream.getTracks().forEach(t => t.stop()); return; } // ditutup saat menunggu izin
+    if (!stream) {
+      BuktiKamera._info('<i class="fa-solid fa-video-slash"></i><span>' + escapeHtml_(BuktiKamera._pesanGalat(galat)) + '</span>', true);
+      BuktiKamera._aksi('galat');
+      return;
+    }
+    st.stream = stream;
+    const v = BuktiKamera._el('kc-video');
+    v.srcObject = stream;
+    try { await v.play(); } catch (e) { /* autoplay sudah cukup */ }
+    try {
+      const semua = await navigator.mediaDevices.enumerateDevices();
+      st.devs = semua.filter(d => d.kind === 'videoinput');
+      const vt = stream.getVideoTracks && stream.getVideoTracks()[0];
+      const idAktif = vt && vt.getSettings && vt.getSettings().deviceId;
+      st.idx = Math.max(0, st.devs.findIndex(d => d.deviceId === idAktif));
+    } catch (e) { /* daftar kamera opsional */ }
+    BuktiKamera._info('');
+    BuktiKamera._aksi('live');
+  },
+
+  _ganti() {
+    const st = BuktiKamera._s; if (!st || st.devs.length < 2) return;
+    st.idx = (st.idx + 1) % st.devs.length;
+    BuktiKamera._nyalakan(st.devs[st.idx].deviceId);
+  },
+
+  _ambil() {
+    const st = BuktiKamera._s; if (!st) return;
+    const v = BuktiKamera._el('kc-video');
+    if (!v.videoWidth || !v.videoHeight) { toast('Kamera belum siap, tunggu sebentar lalu coba lagi.', 'info'); return; }
+    const skala = Math.min(1, 2000 / Math.max(v.videoWidth, v.videoHeight));
+    const c = document.createElement('canvas');
+    c.width = Math.round(v.videoWidth * skala); c.height = Math.round(v.videoHeight * skala);
+    c.getContext('2d').drawImage(v, 0, 0, c.width, c.height); // tidak dibalik (mirror) supaya tulisan tetap terbaca benar
+    c.toBlob((blob) => {
+      if (!BuktiKamera._s) return;
+      if (!blob) { toast('Gagal mengambil foto. Coba lagi.', 'error'); return; }
+      if (st.urlHasil) URL.revokeObjectURL(st.urlHasil);
+      st.blob = blob; st.urlHasil = URL.createObjectURL(blob);
+      const img = BuktiKamera._el('kc-hasil'); img.src = st.urlHasil;
+      img.classList.remove('hidden'); v.classList.add('hidden');
+      try { v.pause(); } catch (e) { /* abaikan */ }
+      BuktiKamera._aksi('hasil');
+    }, 'image/jpeg', 0.92);
+  },
+
+  _kembaliLive() {
+    const st = BuktiKamera._s; if (!st) return;
+    BuktiKamera._el('kc-hasil').classList.add('hidden');
+    const v = BuktiKamera._el('kc-video'); v.classList.remove('hidden');
+    try { const p = v.play(); if (p && p.catch) p.catch(() => {}); } catch (e) { /* abaikan */ }
+    st.blob = null;
+    BuktiKamera._aksi('live');
+  },
+
+  _gunakan(lagi) {
+    const st = BuktiKamera._s; if (!st || !st.blob) return;
+    const file = new File([st.blob], 'kamera-' + Date.now() + '.jpg', { type: 'image/jpeg' });
+    st.ditambah++;
+    BuktiUI.tambah([file]); // diproses & diunggah otomatis di latar belakang
+    const us = BuktiUI._s;
+    if (lagi && us && us.items.length < BuktiFoto.MAKS_FOTO) {
+      BuktiKamera._el('kc-sub').textContent = st.ditambah + ' foto sudah ditambahkan. Ambil foto berikutnya, atau tutup bila sudah cukup.';
+      BuktiKamera._kembaliLive();
+    } else {
+      if (lagi) toast('Batas ' + BuktiFoto.MAKS_FOTO + ' foto tercapai.', 'info');
+      BuktiKamera.tutup();
+    }
+  },
+
+  tutup() {
+    const st = BuktiKamera._s; if (!st) return;
+    document.removeEventListener('keydown', st.onKey, true);
+    BuktiKamera._henti(); // matikan kamera (lampu indikator padam)
+    if (st.urlHasil) URL.revokeObjectURL(st.urlHasil);
+    st.wrap.remove();
+    BuktiKamera._s = null;
   }
 };
 
