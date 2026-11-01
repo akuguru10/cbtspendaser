@@ -1399,3 +1399,128 @@ details.tm-det > summary { cursor: pointer; font-weight: 700; font-size: .88rem;
 .dj-pembahasan .katex { font-size: 1.05em; }
 
 .rich-editable .katex { cursor: pointer; user-select: all; }
+
+/* ============================================================================
+   RUANG UJIAN v23 — tampilan profesional ala CBT berbayar
+   Semua warna memakai variabel tema (ikut 33 gaya & mode gelap). Dibatasi ke
+   #ujian-screen supaya Pratinjau Guru & Detail Jawaban tidak berubah.
+   ============================================================================ */
+#ujian-screen .exam-topbar {
+  background: var(--c-surface); color: var(--c-text);
+  border-bottom: 1px solid var(--c-line);
+  box-shadow: 0 2px 14px color-mix(in srgb, var(--c-text) 8%, transparent);
+  padding: .65rem 1.4rem; gap: 1rem; flex-wrap: nowrap;
+  position: sticky; top: 0; z-index: 50;
+}
+.exam-brand { display: flex; align-items: center; gap: .75rem; min-width: 0; }
+.exam-logo {
+  width: 42px; height: 42px; border-radius: 12px; flex-shrink: 0; overflow: hidden;
+  display: flex; align-items: center; justify-content: center; font-size: 1.2rem;
+  background: color-mix(in srgb, var(--c-primary) 12%, var(--c-surface)); color: var(--c-primary);
+}
+.exam-logo img { object-fit: contain; padding: 3px; }
+.exam-brand-teks { min-width: 0; }
+#ujian-screen .exam-topbar .judul {
+  font-size: 1rem; font-weight: 700; line-height: 1.25; color: var(--c-text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: min(44vw, 520px);
+}
+.exam-sub { font-size: .74rem; color: var(--c-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: min(44vw, 520px); }
+.exam-sub-sep { margin: 0 .4rem; opacity: .6; }
+#ujian-peserta { font-weight: 600; }
+
+.exam-topbar-kanan { display: flex; align-items: center; gap: .7rem; flex-shrink: 0; }
+#ujian-screen .pelanggaran-indikator {
+  color: var(--c-danger); font-size: .74rem; font-weight: 600; white-space: nowrap;
+  background: color-mix(in srgb, var(--c-danger) 10%, var(--c-surface));
+  padding: .28rem .65rem; border-radius: var(--radius-pill);
+}
+#ujian-screen .pelanggaran-indikator:empty { display: none; }
+.exam-btn-simpan { border-radius: var(--radius-pill); font-weight: 600; white-space: nowrap; }
+.timer-box {
+  display: flex; align-items: center; gap: .55rem; padding: .42rem 1rem;
+  background: var(--c-primary); color: var(--c-on-primary); border-radius: var(--radius-pill);
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--c-primary) 35%, transparent);
+}
+.timer-box .timer, .timer-box .timer.low { background: none; border: 0; padding: 0; font-size: 1.15rem; color: inherit; animation: none; letter-spacing: .05em; }
+.timer-box:has(.timer.low) { background: var(--c-danger); box-shadow: 0 4px 14px color-mix(in srgb, var(--c-danger) 40%, transparent); animation: pulse 1s infinite; }
+
+.exam-progress { position: absolute; left: 0; right: 0; bottom: -1px; height: 3px; overflow: hidden; }
+.exam-progress i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--c-secondary), var(--c-accent)); transition: width .35s ease; }
+
+#ujian-screen .exam-body { max-width: 1240px; padding: 1.5rem 1.4rem 3rem; gap: 1.5rem; align-items: flex-start; }
+#ujian-screen .exam-nav-col { width: 272px; position: sticky; top: 88px; }
+.nav-panel {
+  background: var(--c-surface); border: 1px solid var(--c-line); border-radius: 16px; padding: 1rem;
+  box-shadow: 0 4px 18px color-mix(in srgb, var(--c-text) 6%, transparent);
+}
+.nav-panel-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: .8rem; }
+.nav-panel-judul { font-weight: 700; font-size: .92rem; }
+.nav-panel-prog {
+  font-size: .74rem; font-weight: 700; color: var(--c-primary); font-variant-numeric: tabular-nums;
+  background: color-mix(in srgb, var(--c-primary) 10%, transparent); padding: .2rem .6rem; border-radius: 99px;
+}
+#ujian-screen .nav-panel .soal-grid { background: none; border: 0; box-shadow: none; padding: 0; gap: .45rem; backdrop-filter: none; }
+#ujian-screen .soal-grid button { border-radius: 10px; font-size: .82rem; transition: transform .1s ease, box-shadow .1s ease; }
+#ujian-screen .soal-grid button:hover { transform: translateY(-1px); }
+#ujian-screen .soal-grid button.current {
+  outline: none; border-color: var(--c-primary); background: var(--c-primary); color: var(--c-on-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--c-primary) 28%, transparent);
+}
+#ujian-screen .legend { margin-top: 1rem; padding-top: .8rem; border-top: 1px solid var(--c-line); gap: .45rem; }
+#ujian-screen .legend > div { display: flex; align-items: center; justify-content: space-between; }
+#ujian-screen .legend b { color: var(--c-text); font-variant-numeric: tabular-nums; }
+.nav-finish { width: 100%; margin-top: 1rem; padding: .8rem 1rem; font-weight: 700; border-radius: 12px; display: inline-flex; align-items: center; justify-content: center; gap: .5rem; }
+
+#ujian-screen .question-card {
+  border-radius: 18px; padding: 2rem 2.2rem; min-height: 340px;
+  box-shadow: 0 6px 24px color-mix(in srgb, var(--c-text) 7%, transparent);
+}
+#ujian-screen .question-card .no {
+  display: inline-flex; align-items: center; text-transform: none; letter-spacing: .02em;
+  font-size: .78rem; font-weight: 700; margin-bottom: 1rem; padding: .3rem .85rem; border-radius: 99px;
+  background: color-mix(in srgb, var(--c-primary) 11%, var(--c-surface)); color: var(--c-primary);
+}
+#ujian-screen .question-card .pertanyaan { font-size: 1.12rem; line-height: 1.75; margin-bottom: 1.3rem; }
+#ujian-screen .opsi-list { gap: .7rem; }
+#ujian-screen .opsi-item {
+  align-items: center; gap: .9rem; padding: .85rem 1rem; border: 1.5px solid var(--c-line); border-radius: 14px;
+  background: var(--c-surface); transition: border-color .12s ease, background .12s ease, box-shadow .12s ease;
+}
+#ujian-screen .opsi-item:hover { border-color: var(--c-secondary); background: color-mix(in srgb, var(--c-secondary) 6%, var(--c-surface)); }
+#ujian-screen .opsi-item.selected {
+  border-color: var(--c-primary); background: color-mix(in srgb, var(--c-primary) 8%, var(--c-surface));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--c-primary) 16%, transparent);
+}
+#ujian-screen .opsi-huruf { width: 32px; height: 32px; border-radius: 10px; font-size: .85rem; border: 1.5px solid var(--c-line); background: var(--c-bg); }
+#ujian-screen .opsi-item.selected .opsi-huruf { background: var(--c-primary); border-color: var(--c-primary); color: var(--c-on-primary); }
+
+#ujian-screen .nav-actions {
+  margin-top: 1.1rem; padding: .8rem 1rem; background: var(--c-surface);
+  border: 1px solid var(--c-line); border-radius: 16px;
+}
+
+/* Watermark nama guru: kecil, samar, tidak bisa diklik/diseleksi, tidak menutupi konten (ada ruang di bawah) */
+.exam-watermark {
+  position: fixed; right: .9rem; bottom: .5rem; z-index: 40; max-width: 92vw;
+  font-size: .68rem; letter-spacing: .03em; color: var(--c-muted); opacity: .7; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; pointer-events: none; user-select: none; -webkit-user-select: none;
+  text-shadow: 0 0 6px var(--c-bg), 0 0 2px var(--c-bg);
+}
+.exam-watermark:empty { display: none; }
+
+@media (max-width: 880px) {
+  #ujian-screen .exam-topbar { flex-wrap: wrap; padding: .6rem .9rem; gap: .5rem; }
+  .exam-brand { flex: 1 1 100%; }
+  .exam-logo { width: 36px; height: 36px; }
+  #ujian-screen .exam-topbar .judul, .exam-sub { max-width: 72vw; }
+  .exam-topbar-kanan { flex: 1 1 100%; justify-content: space-between; gap: .4rem; }
+  .exam-btn-simpan { margin-left: auto; }
+  .timer-box { padding: .35rem .85rem; }
+  #ujian-screen .exam-body { padding: 1rem .9rem 2.6rem; gap: 1rem; }
+  #ujian-screen .exam-nav-col { width: 100%; position: static; }
+  #ujian-screen .question-card { padding: 1.3rem 1.2rem; min-height: 0; border-radius: 16px; }
+  #ujian-screen .question-card .pertanyaan { font-size: 1.05rem; }
+  #ujian-screen .opsi-item { padding: .75rem .8rem; }
+  .exam-watermark { right: .6rem; bottom: .3rem; font-size: .62rem; }
+}
+@media print { .exam-watermark { display: none; } }
