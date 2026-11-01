@@ -8,6 +8,7 @@
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap');
 
 :root {
+  --versi-css: "26"; /* harus sama dengan VERSI_APLIKASI di app.js (deteksi style.css usang di cache) */
   /* --- warna dasar (ditimpa JS: lihat Tampilan.terapkan di app.js) --- */
   --c-primary: #e58a72;
   --c-secondary: #6f9f94;
@@ -1525,92 +1526,8 @@ details.tm-det > summary { cursor: pointer; font-weight: 700; font-size: .88rem;
 }
 @media print { .exam-watermark { display: none; } }
 
-/* ============================================================================
-   DIALOG PROFESIONAL v24 — pengganti confirm()/prompt()/alert() bawaan browser
-   Dipakai di seluruh Portal Guru. Warna ikut variabel tema (33 gaya & mode gelap).
-   ============================================================================ */
-.dlg-backdrop {
-  position: fixed; inset: 0; z-index: 10000; display: flex; align-items: center; justify-content: center; padding: 1rem;
-  background: rgba(14, 18, 40, .55); -webkit-backdrop-filter: blur(5px); backdrop-filter: blur(5px);
-  animation: dlg-fade .16s ease-out;
-}
-.dlg-backdrop.keluar { animation: dlg-fade-out .17s ease-in forwards; }
-.dlg-card {
-  --dlg-tone: var(--c-primary); --dlg-on: var(--c-on-primary);
-  width: min(450px, 100%); max-height: calc(100vh - 2rem); overflow-y: auto; box-sizing: border-box;
-  background: var(--c-surface); color: var(--c-text); text-align: center;
-  padding: 1.9rem 1.6rem 1.4rem; border-radius: 20px;
-  box-shadow: 0 28px 70px rgba(10, 15, 40, .38), 0 0 0 1px color-mix(in srgb, var(--c-text) 7%, transparent);
-  animation: dlg-pop .22s cubic-bezier(.2, .9, .3, 1.15);
-}
-.dlg-card.dlg-danger  { --dlg-tone: var(--c-danger);  --dlg-on: #fff; }
-.dlg-card.dlg-warning { --dlg-tone: #dd8f0b;          --dlg-on: #fff; }
-.dlg-card.dlg-success { --dlg-tone: var(--c-success); --dlg-on: #fff; }
-.dlg-ikon {
-  width: 64px; height: 64px; margin: 0 auto 1.1rem; border-radius: 50%; font-size: 1.7rem;
-  display: flex; align-items: center; justify-content: center; color: var(--dlg-tone);
-  background: color-mix(in srgb, var(--dlg-tone) 13%, var(--c-surface));
-  box-shadow: 0 0 0 8px color-mix(in srgb, var(--dlg-tone) 7%, transparent);
-}
-.dlg-judul { margin: 0 0 .55rem; font-size: 1.2rem; font-weight: 700; line-height: 1.3; color: var(--c-text); }
-.dlg-pesan { margin: 0; font-size: .93rem; line-height: 1.65; color: var(--c-muted); }
-.dlg-pesan strong, .dlg-rincian strong, .dlg-daftar strong { color: var(--c-text); font-weight: 700; }
-
-.dlg-rincian {
-  margin: 1.1rem 0 0; padding: .3rem .95rem; text-align: left; font-size: .85rem;
-  background: var(--c-bg); border: 1px solid var(--c-line); border-radius: 12px;
-}
-.dlg-rincian > div { display: flex; justify-content: space-between; gap: 1rem; padding: .5rem 0; }
-.dlg-rincian > div + div { border-top: 1px dashed var(--c-line); }
-.dlg-rincian dt { color: var(--c-muted); flex-shrink: 0; }
-.dlg-rincian dd { margin: 0; font-weight: 600; text-align: right; overflow-wrap: anywhere; }
-.dlg-daftar {
-  margin: 1rem 0 0; padding: .6rem .9rem .6rem 1.9rem; max-height: 220px; overflow-y: auto; text-align: left;
-  font-size: .82rem; line-height: 1.55; color: var(--c-text);
-  background: var(--c-bg); border: 1px solid var(--c-line); border-radius: 12px;
-}
-.dlg-daftar li { padding: .2rem 0; }
-
-.dlg-field { margin-top: 1.1rem; text-align: left; }
-.dlg-field label { display: block; margin-bottom: .4rem; font-size: .8rem; font-weight: 600; color: var(--c-text); }
-.dlg-input {
-  width: 100%; box-sizing: border-box; padding: .72rem .85rem; font: inherit; font-size: .92rem; resize: vertical;
-  color: var(--c-text); background: var(--c-surface); border: 1.5px solid var(--c-line); border-radius: 12px;
-  transition: border-color .12s ease, box-shadow .12s ease;
-}
-.dlg-input:focus { outline: none; border-color: var(--dlg-tone); box-shadow: 0 0 0 3px color-mix(in srgb, var(--dlg-tone) 20%, transparent); }
-.dlg-input.dlg-salah { border-color: var(--c-danger); }
-.dlg-ketik { text-align: center; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
-.dlg-error { margin-top: .4rem; font-size: .78rem; color: var(--c-danger); }
-.dlg-error:empty { display: none; }
-.dlg-chips { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .6rem; }
-.dlg-chip {
-  padding: .3rem .75rem; font-size: .76rem; font-weight: 500; cursor: pointer; border-radius: 99px; transform: none; box-shadow: none;
-  color: var(--c-text); background: var(--c-bg); border: 1px solid var(--c-line);
-}
-.dlg-chip:hover { color: var(--dlg-tone); border-color: var(--dlg-tone); background: color-mix(in srgb, var(--dlg-tone) 7%, var(--c-bg)); }
-
-.dlg-aksi { display: grid; grid-template-columns: 1fr 1fr; gap: .7rem; margin-top: 1.5rem; }
-.dlg-aksi.satu { grid-template-columns: 1fr; }
-.dlg-btn {
-  padding: .82rem 1rem; font-size: .92rem; font-weight: 700; cursor: pointer; border-radius: 12px;
-  border: 1.5px solid transparent; transform: none; transition: filter .12s ease, background .12s ease;
-}
-.dlg-batal { color: var(--c-text); background: var(--c-surface); border-color: var(--c-line); box-shadow: none; }
-.dlg-batal:hover { background: var(--c-bg); }
-.dlg-ya { color: var(--dlg-on); background: var(--dlg-tone); box-shadow: 0 6px 16px color-mix(in srgb, var(--dlg-tone) 34%, transparent); }
-.dlg-ya:hover:not(:disabled) { filter: brightness(1.07); }
-.dlg-ya:disabled { opacity: .45; cursor: not-allowed; box-shadow: none; }
-.dlg-btn:focus-visible { outline: 3px solid color-mix(in srgb, var(--dlg-tone) 45%, transparent); outline-offset: 2px; }
-
-@keyframes dlg-fade { from { opacity: 0; } to { opacity: 1; } }
-@keyframes dlg-fade-out { to { opacity: 0; } }
-@keyframes dlg-pop { from { opacity: 0; transform: translateY(12px) scale(.94); } to { opacity: 1; transform: none; } }
-@media (max-width: 480px) {
-  .dlg-card { padding: 1.5rem 1.15rem 1.15rem; }
-  .dlg-aksi { grid-template-columns: 1fr; }
-  .dlg-ya { order: -1; }
-}
+/* (Gaya DIALOG konfirmasi/isian/info kini disuntikkan langsung oleh app.js -- lihat CSS_DIALOG & injectGayaDialog_()
+   -- supaya dialog selalu tampil benar walau style.css di cache browser masih versi lama.) */
 
 /* ============================================================================
    BUKTI ORAK-ORIK JAWABAN v25 — halaman unggah siswa, kolom rekap & galeri guru
@@ -1703,3 +1620,24 @@ details.tm-det > summary { cursor: pointer; font-weight: 700; font-size: .88rem;
 .bg-th img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .bg-th.aktif { border-color: var(--c-primary); opacity: 1; }
 @media (max-width: 560px) { .bg-nav { width: 34px; height: 34px; } .bg-panel { padding: .8rem; } }
+
+/* Tile "+" tambah foto lain di halaman unggah bukti orak-orik */
+.bk-tambah {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .25rem; min-height: 170px; padding: .8rem .5rem; text-align: center;
+  border: 2px dashed color-mix(in srgb, var(--c-primary) 55%, var(--c-line)); border-radius: 14px;
+  background: color-mix(in srgb, var(--c-primary) 5%, var(--c-surface)); transition: background .15s ease, border-color .15s ease;
+}
+.bk-tambah:hover { background: color-mix(in srgb, var(--c-primary) 10%, var(--c-surface)); border-color: var(--c-primary); }
+.bk-tambah.nonaktif { opacity: .5; pointer-events: none; }
+.bk-plus {
+  width: 46px; height: 46px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.3rem;
+  color: var(--c-on-primary); background: var(--c-primary); box-shadow: 0 6px 16px color-mix(in srgb, var(--c-primary) 38%, transparent);
+}
+.bk-tambah-judul { font-weight: 700; font-size: .85rem; }
+.bk-tambah-sisa { font-size: .72rem; color: var(--c-muted); }
+.bk-tambah-aksi { display: flex; flex-wrap: wrap; gap: .4rem; justify-content: center; margin-top: .5rem; }
+.bk-tambah-aksi button {
+  padding: .38rem .7rem; font-size: .74rem; font-weight: 600; border-radius: 99px; cursor: pointer; transform: none; box-shadow: none;
+  color: var(--c-text); background: var(--c-surface); border: 1px solid var(--c-line);
+}
+.bk-tambah-aksi button:hover { color: var(--c-primary); border-color: var(--c-primary); }
