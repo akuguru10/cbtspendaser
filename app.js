@@ -1667,7 +1667,140 @@ function toast(msg, jenis) {
 // Di dalam pesan, **teks** ditebalkan; "\n" jadi baris baru; semua teks otomatis di-escape (aman dari HTML).
 // Papan ketik: Esc = batal, Enter = lanjut, Tab terkunci di dalam dialog.
 // ----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
+// GAYA DIALOG disuntikkan dari JS (bukan hanya style.css): browser/GitHub Pages sering menyimpan style.css lama di
+// cache, sehingga dialog konfirmasi tampil TANPA gaya (jatuh ke bawah halaman, tombol di belakangnya masih bisa
+// diklik, dialog menumpuk). Dengan disuntik dari app.js, dialog dijamin tampil di tengah layar & menutupi halaman.
+// ----------------------------------------------------------------------------
+const VERSI_APLIKASI = '26';
+const CSS_DIALOG = `/* ============================================================================
+   DIALOG PROFESIONAL v24 — pengganti confirm()/prompt()/alert() bawaan browser
+   Dipakai di seluruh Portal Guru. Warna ikut variabel tema (33 gaya & mode gelap).
+   ============================================================================ */
+.dlg-backdrop {
+  position: fixed; inset: 0; z-index: 10000; display: flex; align-items: center; justify-content: center; padding: 1rem;
+  background: rgba(14, 18, 40, .55); -webkit-backdrop-filter: blur(5px); backdrop-filter: blur(5px);
+  animation: dlg-fade .16s ease-out;
+}
+.dlg-backdrop.keluar { animation: dlg-fade-out .17s ease-in forwards; }
+.dlg-card {
+  --dlg-tone: var(--c-primary); --dlg-on: var(--c-on-primary);
+  width: min(450px, 100%); max-height: calc(100vh - 2rem); overflow-y: auto; box-sizing: border-box;
+  background: var(--c-surface); color: var(--c-text); text-align: center;
+  padding: 1.9rem 1.6rem 1.4rem; border-radius: 20px;
+  box-shadow: 0 28px 70px rgba(10, 15, 40, .38), 0 0 0 1px color-mix(in srgb, var(--c-text) 7%, transparent);
+  animation: dlg-pop .22s cubic-bezier(.2, .9, .3, 1.15);
+}
+.dlg-card.dlg-danger  { --dlg-tone: var(--c-danger);  --dlg-on: #fff; }
+.dlg-card.dlg-warning { --dlg-tone: #dd8f0b;          --dlg-on: #fff; }
+.dlg-card.dlg-success { --dlg-tone: var(--c-success); --dlg-on: #fff; }
+.dlg-ikon {
+  width: 64px; height: 64px; margin: 0 auto 1.1rem; border-radius: 50%; font-size: 1.7rem;
+  display: flex; align-items: center; justify-content: center; color: var(--dlg-tone);
+  background: color-mix(in srgb, var(--dlg-tone) 13%, var(--c-surface));
+  box-shadow: 0 0 0 8px color-mix(in srgb, var(--dlg-tone) 7%, transparent);
+}
+.dlg-judul { margin: 0 0 .55rem; font-size: 1.2rem; font-weight: 700; line-height: 1.3; color: var(--c-text); }
+.dlg-pesan { margin: 0; font-size: .93rem; line-height: 1.65; color: var(--c-muted); }
+.dlg-pesan strong, .dlg-rincian strong, .dlg-daftar strong { color: var(--c-text); font-weight: 700; }
+
+.dlg-rincian {
+  margin: 1.1rem 0 0; padding: .3rem .95rem; text-align: left; font-size: .85rem;
+  background: var(--c-bg); border: 1px solid var(--c-line); border-radius: 12px;
+}
+.dlg-rincian > div { display: flex; justify-content: space-between; gap: 1rem; padding: .5rem 0; }
+.dlg-rincian > div + div { border-top: 1px dashed var(--c-line); }
+.dlg-rincian dt { color: var(--c-muted); flex-shrink: 0; }
+.dlg-rincian dd { margin: 0; font-weight: 600; text-align: right; overflow-wrap: anywhere; }
+.dlg-daftar {
+  margin: 1rem 0 0; padding: .6rem .9rem .6rem 1.9rem; max-height: 220px; overflow-y: auto; text-align: left;
+  font-size: .82rem; line-height: 1.55; color: var(--c-text);
+  background: var(--c-bg); border: 1px solid var(--c-line); border-radius: 12px;
+}
+.dlg-daftar li { padding: .2rem 0; }
+
+.dlg-field { margin-top: 1.1rem; text-align: left; }
+.dlg-field label { display: block; margin-bottom: .4rem; font-size: .8rem; font-weight: 600; color: var(--c-text); }
+.dlg-input {
+  width: 100%; box-sizing: border-box; padding: .72rem .85rem; font: inherit; font-size: .92rem; resize: vertical;
+  color: var(--c-text); background: var(--c-surface); border: 1.5px solid var(--c-line); border-radius: 12px;
+  transition: border-color .12s ease, box-shadow .12s ease;
+}
+.dlg-input:focus { outline: none; border-color: var(--dlg-tone); box-shadow: 0 0 0 3px color-mix(in srgb, var(--dlg-tone) 20%, transparent); }
+.dlg-input.dlg-salah { border-color: var(--c-danger); }
+.dlg-ketik { text-align: center; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+.dlg-error { margin-top: .4rem; font-size: .78rem; color: var(--c-danger); }
+.dlg-error:empty { display: none; }
+.dlg-chips { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .6rem; }
+.dlg-chip {
+  padding: .3rem .75rem; font-size: .76rem; font-weight: 500; cursor: pointer; border-radius: 99px; transform: none; box-shadow: none;
+  color: var(--c-text); background: var(--c-bg); border: 1px solid var(--c-line);
+}
+.dlg-chip:hover { color: var(--dlg-tone); border-color: var(--dlg-tone); background: color-mix(in srgb, var(--dlg-tone) 7%, var(--c-bg)); }
+
+.dlg-aksi { display: grid; grid-template-columns: 1fr 1fr; gap: .7rem; margin-top: 1.5rem; }
+.dlg-aksi.satu { grid-template-columns: 1fr; }
+.dlg-btn {
+  padding: .82rem 1rem; font-size: .92rem; font-weight: 700; cursor: pointer; border-radius: 12px;
+  border: 1.5px solid transparent; transform: none; transition: filter .12s ease, background .12s ease;
+}
+.dlg-batal { color: var(--c-text); background: var(--c-surface); border-color: var(--c-line); box-shadow: none; }
+.dlg-batal:hover { background: var(--c-bg); }
+.dlg-ya { color: var(--dlg-on); background: var(--dlg-tone); box-shadow: 0 6px 16px color-mix(in srgb, var(--dlg-tone) 34%, transparent); }
+.dlg-ya:hover:not(:disabled) { filter: brightness(1.07); }
+.dlg-ya:disabled { opacity: .45; cursor: not-allowed; box-shadow: none; }
+.dlg-btn:focus-visible { outline: 3px solid color-mix(in srgb, var(--dlg-tone) 45%, transparent); outline-offset: 2px; }
+
+@keyframes dlg-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes dlg-fade-out { to { opacity: 0; } }
+@keyframes dlg-pop { from { opacity: 0; transform: translateY(12px) scale(.94); } to { opacity: 1; transform: none; } }
+@media (max-width: 480px) {
+  .dlg-card { padding: 1.5rem 1.15rem 1.15rem; }
+  .dlg-aksi { grid-template-columns: 1fr; }
+  .dlg-ya { order: -1; }
+}
+
+`;
+function injectGayaDialog_() {
+  if (document.getElementById('dlg-gaya')) return;
+  const el = document.createElement('style');
+  el.id = 'dlg-gaya';
+  el.textContent = CSS_DIALOG;
+  document.head.appendChild(el);
+}
+injectGayaDialog_();
+
+// Bila style.css yang dimuat browser bukan versi terbaru (cache usang), tampilkan peringatan + tombol perbarui.
+function periksaVersiTampilan_() {
+  try {
+    const v = getComputedStyle(document.documentElement).getPropertyValue('--versi-css').replace(/["'\s]/g, '');
+    if (v === VERSI_APLIKASI || document.getElementById('banner-versi')) return;
+    const b = document.createElement('div');
+    b.id = 'banner-versi';
+    b.setAttribute('role', 'alert');
+    b.setAttribute('style', 'position:fixed;left:0;right:0;top:0;z-index:20000;display:flex;gap:.8rem;align-items:center;justify-content:center;flex-wrap:wrap;padding:.65rem 1rem;background:#b45309;color:#fff;font:600 14px/1.4 system-ui,sans-serif;box-shadow:0 4px 14px rgba(0,0,0,.3)');
+    const t = document.createElement('span');
+    t.textContent = 'Tampilan aplikasi belum diperbarui (masih tersimpan di cache browser). Klik tombol di samping agar semua tampilan benar.';
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.textContent = 'Muat Ulang Tampilan';
+    btn.setAttribute('style', 'padding:.4rem .9rem;border:0;border-radius:99px;background:#fff;color:#92400e;font:700 13px system-ui,sans-serif;cursor:pointer');
+    btn.onclick = async () => {
+      btn.disabled = true; btn.textContent = 'Memperbarui...';
+      const alamat = [location.href.split('#')[0]];
+      const css = document.querySelector('link[rel="stylesheet"][href*="style.css"]'), js = document.querySelector('script[src*="app.js"]');
+      if (css) alamat.push(css.href); if (js) alamat.push(js.src);
+      try { await Promise.all(alamat.map(u => fetch(u, { cache: 'reload' }))); } catch (e) { /* tetap muat ulang */ }
+      location.reload();
+    };
+    b.appendChild(t); b.appendChild(btn);
+    document.body.appendChild(b);
+  } catch (e) { /* abaikan */ }
+}
+if (document.readyState === 'complete') periksaVersiTampilan_(); else window.addEventListener('load', periksaVersiTampilan_);
+
 const Dialog = {
+  _aktif: null, _antrean: [],
   _ikon: { danger: 'fa-triangle-exclamation', warning: 'fa-circle-exclamation', info: 'fa-circle-info', success: 'fa-circle-check' },
 
   _fmt(teks) {
@@ -1681,6 +1814,12 @@ const Dialog = {
   info(o) { return Dialog._tampil(Object.assign({ tanpaBatal: true, teksYa: 'Mengerti' }, o)); },
 
   _tampil(o) {
+    // Hanya SATU dialog pada satu waktu. Klik ganda / tombol yang ditekan lagi saat dialog terbuka diabaikan
+    // (dianggap batal), jadi dialog tidak menumpuk. Dialog "info" (hanya informasi) diantre, bukan dibuang.
+    if (Dialog._aktif) {
+      if (o.tanpaBatal) return new Promise(res => { Dialog._antrean.push(() => Dialog._tampil(o).then(res)); });
+      return Promise.resolve(o.input ? null : false);
+    }
     return new Promise(resolve => {
       const tipe = o.tipe || 'info';
       const ikon = o.ikon || Dialog._ikon[tipe] || Dialog._ikon.info;
@@ -1725,6 +1864,12 @@ const Dialog = {
           <button type="button" class="dlg-btn dlg-ya" data-aksi="ya">${escapeHtml_(o.teksYa || 'Ya, Lanjutkan')}</button>
         </div></div>`;
       document.body.appendChild(wrap);
+      Dialog._aktif = wrap;
+      // Kunci halaman di belakang dialog: tidak bisa diklik, difokus (Tab), atau dibaca pembaca layar.
+      const dikunci = [];
+      Array.from(document.body.children).forEach(el => {
+        if (el !== wrap && el.tagName !== 'SCRIPT' && !el.inert) { el.inert = true; dikunci.push(el); }
+      });
 
       const kartu = wrap.firstElementChild;
       const elIn = kartu.querySelector('.dlg-input:not(.dlg-ketik)');
@@ -1737,8 +1882,12 @@ const Dialog = {
         if (selesai) return;
         selesai = true;
         document.removeEventListener('keydown', onKey, true);
+        dikunci.forEach(el => { el.inert = false; });
+        Dialog._aktif = null;
         wrap.classList.add('keluar');
         setTimeout(() => wrap.remove(), 170);
+        const berikut = Dialog._antrean.shift();
+        if (berikut) setTimeout(berikut, 200);
         try { if (sebelumnya && sebelumnya.focus && document.contains(sebelumnya)) sebelumnya.focus({ preventScroll: true }); } catch (e) { /* abaikan */ }
         resolve(hasil);
       };
@@ -6601,7 +6750,18 @@ const BuktiUI = {
     const sibukN = s.items.filter(BuktiUI._berjalan).length;
     const ikon = { ok: 'fa-circle-check', unggah: 'fa-spinner fa-spin', proses: 'fa-spinner fa-spin', antre: 'fa-clock', gagal: 'fa-triangle-exclamation' };
     const label = { ok: 'Terkirim', unggah: 'Mengirim...', proses: 'Memproses...', antre: 'Menunggu giliran' };
-    BuktiUI._el('bukti-grid').innerHTML = s.items.map((it, n) => `
+    const tileTambah = total < BuktiFoto.MAKS_FOTO ? `
+      <div class="bk-tambah ${s.sibuk ? 'nonaktif' : ''}">
+        <div class="bk-plus"><i class="fa-solid fa-plus"></i></div>
+        <span class="bk-tambah-judul">Tambah foto</span>
+        <span class="bk-tambah-sisa">Sisa ${BuktiFoto.MAKS_FOTO - total} foto</span>
+        <div class="bk-tambah-aksi">
+          <button type="button" onclick="document.getElementById('bukti-input-kamera').click()"><i class="fa-solid fa-camera"></i> Kamera</button>
+          <button type="button" onclick="document.getElementById('bukti-input-galeri').click()"><i class="fa-solid fa-images"></i> Galeri</button>
+        </div>
+      </div>` : '';
+    BuktiUI._el('bukti-aksi').classList.toggle('hidden', total > 0); // tombol besar hanya saat belum ada foto; selanjutnya pakai tile "+"
+    BuktiUI._el('bukti-grid').innerHTML = (total === 0) ? '' : s.items.map((it, n) => `
       <div class="bk-item ${it.status}">
         <div class="bk-thumb">${it.previewUrl ? `<img src="${it.previewUrl}" alt="Foto ${n + 1}">` : '<i class="fa-solid fa-image bk-ph"></i>'}
           <span class="bk-badge"><i class="fa-solid ${ikon[it.status]}"></i></span>
@@ -6612,7 +6772,7 @@ const BuktiUI = {
         </div>
         ${it.status === 'gagal' && it.blob ? `<button type="button" class="bk-ulang" onclick="BuktiUI.ulang('${it.uid}')"><i class="fa-solid fa-rotate-right"></i> Coba lagi</button>` : ''}
         <button type="button" class="bk-hapus" aria-label="Hapus foto" ${(it.status === 'unggah' || it.status === 'proses') ? 'disabled' : ''} onclick="BuktiUI.hapus('${it.uid}')"><i class="fa-solid fa-xmark"></i></button>
-      </div>`).join('');
+      </div>`).join('') + tileTambah;
 
     const prog = BuktiUI._el('bukti-progres');
     prog.classList.toggle('hidden', total === 0);
