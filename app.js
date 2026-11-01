@@ -18,7 +18,11 @@ const CONFIG = {
   AUTOSAVE_INTERVAL_MS: 20000,   // sinkron jawaban ke server tiap 20 detik (throttle)
   PING_INTERVAL_MS: 60000,       // heartbeat device-lock tiap 60 detik
   REALTIME_POLL_MS: 8000,        // saat Mode Server aktif: tarik ulang data tiap 8 detik ("realtime")
-  TIMER_LOW_THRESHOLD_SEC: 120   // timer jadi merah & berdenyut saat sisa < 2 menit
+  TIMER_LOW_THRESHOLD_SEC: 120,  // timer jadi merah & berdenyut saat sisa < 2 menit
+  // Watermark kecil di layar ujian siswa (nama guru pengajar). Bisa diganti TANPA mengedit app.js:
+  // tambahkan di config.js  ->  window.CBT_WATERMARK = 'Nama Guru, S.Pd.';   (isi '' untuk menyembunyikan)
+  WATERMARK_GURU: (typeof window !== 'undefined' && typeof window.CBT_WATERMARK === 'string')
+    ? window.CBT_WATERMARK : 'Komang Edi Suastrawan, S.Pd., M.Pd.'
 };
 
 // URL Web App bisa diisi langsung di CONFIG.API_URL di atas (berlaku untuk semua
@@ -2097,6 +2101,14 @@ const LocalBackend = (function () {
     return hasil;
   }
 
+  // Status Blokir Akun Siswa (setara statusBlokirSiswa_ di Code.gs)
+  function infoBlokirLokal(s) {
+    return { aktif: !!s && String(s.blokir || '').toLowerCase() === 'ya', alasan: (s && s.blokir_alasan) || '', sejak: (s && s.blokir_sejak) || '' };
+  }
+  function pesanBlokirLokal(b) {
+    return 'Akun Anda sedang diblokir oleh guru, jadi belum bisa mengikuti ujian.' + (b.alasan ? ' Alasan: ' + b.alasan + '.' : '') + ' Hubungi guru untuk membuka blokir.';
+  }
+
   async function route(action, data) {
     const D = muat();
     switch (action) {
@@ -2121,7 +2133,7 @@ const LocalBackend = (function () {
           if (deviceLocked) return { ok: false, error: 'Akun ini sedang aktif di perangkat lain. Tutup sesi di perangkat tersebut atau tunggu beberapa menit, lalu coba lagi.' };
           siswa.device_id = deviceId; siswa.last_ping = now.toISOString();
           simpan();
-          return { ok: true, user: { id: siswa.id, nama: siswa.nama, kelas: siswa.kelas, role: 'siswa', deviceId } };
+          return { ok: true, user: { id: siswa.id, nama: siswa.nama, kelas: siswa.kelas, role: 'siswa', deviceId, blokir: infoBlokirLokal(siswa) } };
         }
         return { ok: false, error: 'Role tidak valid.' };
       }
@@ -2133,6 +2145,7 @@ const LocalBackend = (function () {
         return { ok: true };
       }
       case 'ping': {
+        let blokirPing = null;
         if (data.role === 'siswa' && data.siswaId) {
           const s = D.siswa.find(x => x.id === data.siswaId);
           if (s) {
@@ -2140,9 +2153,10 @@ const LocalBackend = (function () {
             if (lockAktif && s.device_id && data.deviceId && s.device_id !== data.deviceId) return { ok: false, error: 'Sesi diambil alih oleh perangkat lain.' };
             s.last_ping = new Date().toISOString();
             simpan();
+            blokirPing = infoBlokirLokal(s);
           }
         }
-        return { ok: true };
+        return { ok: true, blokir: blokirPing };
       }
       case 'getPengaturanLock': {
         return { ok: true, aktif: D.config.deviceLockAktif !== false };
@@ -2412,10 +2426,21 @@ const LocalBackend = (function () {
       case 'getDaftarSiswa': {
         let list = D.siswa.map(s => ({
           id: s.id, username: s.username, password: s.password, nama: s.nama, kelas: s.kelas,
-          online: !!s.device_id, deviceId: s.device_id || '', lastPing: s.last_ping || ''
+          online: !!s.device_id, deviceId: s.device_id || '', lastPing: s.last_ping || '',
+          blokir: infoBlokirLokal(s).aktif, blokirAlasan: s.blokir_alasan || '', blokirSejak: s.blokir_sejak || ''
         }));
         if (data.kelas) list = list.filter(s => s.kelas === data.kelas);
         return { ok: true, data: list };
+      }
+      case 'blokirSiswa': {
+        const s = D.siswa.find(x => x.id === data.siswaId);
+        if (!s) return { ok: false, error: 'Siswa tidak ditemukan.' };
+        const aktif = data.aktif === true || String(data.aktif).toLowerCase() === 'true';
+        s.blokir = aktif ? 'ya' : '';
+        s.blokir_alasan = aktif ? String(data.alasan || '').trim().slice(0, 200) : '';
+        s.blokir_sejak = aktif ? new Date().toISOString() : '';
+        simpan();
+        return { ok: true, aktif };
       }
       case 'updateSiswa': {
         const siswa = JSON.parse(data.siswa);
@@ -2477,6 +2502,8 @@ const LocalBackend = (function () {
         return { ok: true, branding: { namaAplikasi: c.namaAplikasi || '', logoUrl: c.logoUrl || '' } };
       }
       case 'cekToken': {
+        const sBlokirCek = data.siswaId ? D.siswa.find(x => x.id === data.siswaId) : null;
+        if (sBlokirCek && infoBlokirLokal(sBlokirCek).aktif) return { ok: false, error: pesanBlokirLokal(infoBlokirLokal(sBlokirCek)) };
         const ujian = D.ujian.find(u => u.token === String(data.token || '').toUpperCase());
         if (!ujian) return { ok: false, error: 'Token ujian tidak ditemukan.' };
         const now = new Date();
@@ -2487,6 +2514,8 @@ const LocalBackend = (function () {
         return { ok: true, ujian: { id: ujian.id, judul: ujian.judul, durasiMenit: ujian.durasi_menit, kategori: ujian.kategori } };
       }
       case 'mulaiUjian': {
+        const sBlokirMulai = D.siswa.find(x => x.id === data.siswaId);
+        if (sBlokirMulai && infoBlokirLokal(sBlokirMulai).aktif) return { ok: false, error: pesanBlokirLokal(infoBlokirLokal(sBlokirMulai)) };
         const ujian = D.ujian.find(u => u.id === data.ujianId);
         if (!ujian) return { ok: false, error: 'Ujian tidak ditemukan.' };
         let existing = D.sesi.find(s => s.ujian_id === data.ujianId && s.siswa_id === data.siswaId);
@@ -2701,6 +2730,7 @@ const Auth = {
       } else {
         UI.tampilkan('siswa-portal');
         document.getElementById('siswa-nama-label').textContent = res.user.nama;
+        Siswa.terapkanStatusBlokir(res.user.blokir);
         Siswa.mulaiPing();
       }
     } finally {
@@ -2733,6 +2763,7 @@ const Auth = {
       } else {
         UI.tampilkan('siswa-portal');
         document.getElementById('siswa-nama-label').textContent = user.nama;
+        Siswa.terapkanStatusBlokir(user.blokir);
         Siswa.mulaiPing();
       }
     } catch (e) { /* abaikan */ }
@@ -4992,11 +5023,17 @@ const Guru = {
     tampilkanInfoFilter_('cari-siswa-info', data.length, semua.length);
     if (semua.length === 0) { cont.innerHTML = '<p class="subtitle">Belum ada data siswa.</p>'; return; }
     if (data.length === 0) { cont.innerHTML = `<p class="subtitle">Tidak ada siswa yang cocok${filterKelas ? ` di kelas "${escapeHtml_(filterKelas)}"` : ''} dengan pencarian ini.</p>`; return; }
-    cont.innerHTML = `<table class="ledger"><thead><tr><th>Username</th><th>Password</th><th>Nama</th><th>Kelas</th><th>Status</th><th></th></tr></thead><tbody>` +
+    const jmlBlokir = semua.filter(s => s.blokir).length;
+    cont.innerHTML = (jmlBlokir ? `<p class="subtitle" style="margin-bottom:.6rem">🚫 <strong>${jmlBlokir}</strong> akun siswa sedang diblokir (tidak bisa mengikuti kuis).</p>` : '') +
+      `<table class="ledger"><thead><tr><th>Username</th><th>Password</th><th>Nama</th><th>Kelas</th><th>Status</th><th></th></tr></thead><tbody>` +
       data.map(s => `<tr>
         <td>${escapeHtml_(s.username)}</td><td>${escapeHtml_(s.password)}</td><td>${escapeHtml_(s.nama)}</td><td>${escapeHtml_(s.kelas)}</td>
-        <td><span class="badge ${s.online ? 'ok' : 'no'}">${s.online ? 'Ada sesi aktif' : 'Tidak ada sesi'}</span></td>
+        <td><span class="badge ${s.online ? 'ok' : 'no'}">${s.online ? 'Ada sesi aktif' : 'Tidak ada sesi'}</span>
+          ${s.blokir ? `<br><span class="badge no" title="${escapeHtml_(s.blokirAlasan || 'Tanpa alasan')}">🚫 Diblokir</span>${s.blokirAlasan ? `<div style="font-size:.78rem;color:var(--c-muted);margin-top:.2rem">${escapeHtml_(s.blokirAlasan)}</div>` : ''}` : ''}</td>
         <td class="aksi">
+          ${s.blokir
+            ? `<button class="accent small" onclick="Guru.bukaBlokirSiswa('${s.id}')">✅ Buka Blokir</button>`
+            : `<button class="secondary small" onclick="Guru.blokirSiswa('${s.id}')">🚫 Blokir</button>`}
           ${s.online ? `<button class="secondary small" onclick="Guru.resetDevice('${s.id}')">Lepas Kunci</button>` : ''}
           <button class="secondary small" onclick="Guru.bukaEditSiswa('${s.id}')">Ubah</button>
           <button class="danger small" onclick="Guru.hapusSiswa('${s.id}')">Hapus</button>
@@ -5062,6 +5099,28 @@ const Guru = {
     const res = await api('hapusSiswa', { id });
     if (res.ok) { toast('Siswa dihapus.', 'success'); Guru.muatDaftarSiswa(); }
     else toast('Gagal menghapus: ' + res.error, 'error');
+  },
+
+  // ---------------- BLOKIR AKUN SISWA ----------------
+  // Hukuman bagi siswa yang tidak serius/asal mengerjakan kuis: selama diblokir, siswa itu tidak
+  // bisa mengikuti ujian apa pun (teman sekelasnya tetap bisa). Buka blokir = bisa mengerjakan lagi.
+  async blokirSiswa(siswaId) {
+    const s = (state.guru.daftarSiswa || []).find(x => x.id === siswaId);
+    if (!s) return;
+    const alasan = prompt(`Blokir akun "${s.nama}"?\n\nSelama diblokir, siswa ini tidak bisa mengikuti kuis (teman sekelasnya tetap bisa).\nTulis alasan singkat (opsional, akan terlihat oleh siswa):`, 'Tidak serius mengerjakan soal kuis');
+    if (alasan === null) return; // dibatalkan
+    const res = await api('blokirSiswa', { siswaId, aktif: true, alasan: alasan.trim() });
+    if (res.ok) { toast(`Akun ${s.nama} diblokir.`, 'success'); Guru.muatDaftarSiswa(); }
+    else toast('Gagal memblokir: ' + res.error, 'error');
+  },
+
+  async bukaBlokirSiswa(siswaId) {
+    const s = (state.guru.daftarSiswa || []).find(x => x.id === siswaId);
+    if (!s) return;
+    if (!confirm(`Buka blokir akun "${s.nama}"? Siswa ini bisa mengikuti kuis lagi.`)) return;
+    const res = await api('blokirSiswa', { siswaId, aktif: false });
+    if (res.ok) { toast(`Blokir akun ${s.nama} dibuka.`, 'success'); Guru.muatDaftarSiswa(); }
+    else toast('Gagal membuka blokir: ' + res.error, 'error');
   },
 
   async resetDevice(siswaId) {
@@ -5781,9 +5840,35 @@ function unduhTeksSebagaiFile_(teks, namaFile) {
 const Siswa = {
   mulaiPing() {
     clearInterval(state.pingHandle);
-    state.pingHandle = setInterval(() => {
-      api('ping', { role: 'siswa', siswaId: state.user.id, deviceId: state.deviceId });
-    }, CONFIG.PING_INTERVAL_MS);
+    const kirimPing = async () => {
+      if (!state.user) return;
+      const res = await api('ping', { role: 'siswa', siswaId: state.user.id, deviceId: state.deviceId });
+      // Status Blokir Akun ikut dibawa tiap ping, jadi portal berubah otomatis saat guru memblokir/membuka blokir.
+      if (res && res.ok && res.blokir) Siswa.terapkanStatusBlokir(res.blokir);
+    };
+    kirimPing(); // langsung sekali supaya status blokir terbaru tampil tanpa menunggu interval pertama
+    state.pingHandle = setInterval(kirimPing, CONFIG.PING_INTERVAL_MS);
+  },
+
+  // Tampilkan/sembunyikan banner "akun diblokir" & kunci kolom token. Server tetap
+  // menolak cekToken/mulaiUjian untuk akun diblokir -- ini hanya agar siswa langsung paham.
+  terapkanStatusBlokir(b) {
+    const aktif = !!(b && b.aktif);
+    const banner = document.getElementById('siswa-blokir-banner');
+    const input = document.getElementById('input-token-ujian');
+    const tombol = document.getElementById('btn-cari-ujian');
+    if (banner) {
+      banner.classList.toggle('hidden', !aktif);
+      const teks = document.getElementById('siswa-blokir-alasan');
+      if (teks) teks.textContent = aktif ? (b.alasan ? 'Alasan: ' + b.alasan : 'Hubungi guru untuk membuka blokir.') : '';
+    }
+    if (input) input.disabled = aktif;
+    if (tombol) tombol.disabled = aktif;
+    if (aktif) document.getElementById('konfirmasi-ujian')?.classList.add('hidden');
+    if (state.user) {
+      state.user.blokir = { aktif, alasan: (b && b.alasan) || '', sejak: (b && b.sejak) || '' };
+      try { sessionStorage.setItem('cbt_user', JSON.stringify(state.user)); } catch (e) { /* abaikan */ }
+    }
   },
 
   async cekToken() {
@@ -5791,7 +5876,7 @@ const Siswa = {
     const errEl = document.getElementById('token-error');
     errEl.textContent = '';
     if (!token) return;
-    const res = await api('cekToken', { token });
+    const res = await api('cekToken', { token, siswaId: state.user && state.user.id });
     if (!res.ok) { errEl.textContent = res.error; document.getElementById('konfirmasi-ujian').classList.add('hidden'); return; }
     state.ujian = res.ujian;
     document.getElementById('konf-judul-ujian').textContent = res.ujian.judul;
@@ -5818,6 +5903,12 @@ const Siswa = {
 
     UI.tampilkan('ujian-screen');
     document.getElementById('ujian-judul-aktif').textContent = state.ujian.judul;
+    const peserta = [state.user.nama, state.user.kelas].filter(Boolean).join(' • ');
+    document.getElementById('ujian-peserta').textContent = peserta || '-';
+    const wm = document.getElementById('exam-watermark');
+    if (wm) {
+      wm.textContent = CONFIG.WATERMARK_GURU ? 'Guru Pengajar · ' + CONFIG.WATERMARK_GURU : '';
+    }
     ExamEngine.renderGridSoal();
     ExamEngine.renderSoal();
     ExamEngine.mulaiTimer();
@@ -5991,6 +6082,16 @@ const ExamEngine = {
       if (i === state.idxSoal) cls += ' current';
       return `<button class="${cls}" onclick="Siswa.lompatKeSoal(${i})">${i + 1}</button>`;
     }).join('');
+
+    // Ringkasan progres (bar tipis di top bar + hitungan di panel navigasi)
+    const total = state.soal.length;
+    const nJawab = state.soal.filter(s => state.jawaban[s.id] !== undefined).length;
+    const nRagu = state.soal.filter(s => state.ragu.includes(s.id)).length;
+    const isi = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+    isi('nav-progress-teks', `${nJawab} / ${total}`);
+    isi('lg-jawab', nJawab); isi('lg-ragu', nRagu); isi('lg-kosong', total - nJawab);
+    const fill = document.getElementById('exam-progress-fill');
+    if (fill) fill.style.width = (total ? Math.round(nJawab / total * 100) : 0) + '%';
   },
 
   renderSoal() {
