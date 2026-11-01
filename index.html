@@ -1019,6 +1019,15 @@
       <label><input type="checkbox" id="ujian-tampil-pembahasan" checked style="width:auto"> Tampilkan pembahasan soal pada detail jawaban <span class="subtitle" style="display:inline">— cocok untuk latihan; matikan untuk ulangan. Hanya berlaku bila detail jawaban diaktifkan.</span></label>
     </div>
     <div class="field">
+      <label for="ujian-bukti-orek">Bukti Orak-Orik Jawaban (foto kertas coretan siswa)</label>
+      <select id="ujian-bukti-orek">
+        <option value="">Nonaktif — cocok untuk latihan</option>
+        <option value="wajib">Aktif — siswa WAJIB mengunggah minimal 1 foto (disarankan untuk ujian)</option>
+        <option value="opsional">Aktif — siswa boleh melewati (tidak wajib)</option>
+      </select>
+      <p style="font-size:.8rem;color:var(--c-muted);margin:.35rem 0 0">Setelah siswa menekan Selesai, nilai dikirim ke server lebih dulu, lalu siswa mengunggah foto coretan (JPG/PNG/HEIC, boleh lebih dari 1). Nilai Lulus/Remedial baru tampil setelah foto terkirim. Foto muncul di sebelah nilai pada <strong>Rekap Nilai</strong>.</p>
+    </div>
+    <div class="field">
       <label>Pesan untuk Siswa Berdasarkan Nilai (0 – 100)</label>
       <p style="font-size:.8rem;color:var(--c-muted);margin:0 0 .5rem">Setiap nilai (0, 1, 2, … 100) bisa punya pesan sendiri. Tidak perlu mengisi satu per satu: <strong>unduh template Word</strong>, ubah pesannya, lalu <strong>import</strong> — semua nilai terisi sekaligus. Pesan yang dikosongkan otomatis memakai default.</p>
       <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.6rem">
@@ -1192,6 +1201,29 @@
     <h3 id="kirim-judul">Mengirim jawaban...</h3>
     <p class="kumpul-sub" id="kirim-sub">Mohon tunggu dan jangan menutup halaman ini.</p>
     <div class="kirim-bar"><i></i></div>
+  </div>
+</div>
+
+<!-- ======================= UNGGAH BUKTI ORAK-ORIK (setelah nilai terkirim, sebelum nilai tampil) ======================= -->
+<div id="bukti-screen" class="hidden">
+  <div class="bukti-card">
+    <div class="bukti-terkirim"><i class="fa-solid fa-circle-check"></i><div><b>Jawaban Anda sudah terkirim</b><span id="bukti-terkirim-sub">Nilai Anda sudah tersimpan aman di server.</span></div></div>
+    <p class="hasil-eyebrow">Langkah Terakhir</p>
+    <h2 class="hasil-judul" id="bukti-judul-ujian">-</h2>
+    <h3 class="bukti-judul"><i class="fa-solid fa-camera"></i> Unggah Bukti Orak-Orik Jawaban</h3>
+    <p class="bukti-sub" id="bukti-sub"></p>
+    <div class="bukti-aksi">
+      <button type="button" class="accent" onclick="document.getElementById('bukti-input-kamera').click()"><i class="fa-solid fa-camera"></i> Ambil Foto</button>
+      <button type="button" class="secondary" onclick="document.getElementById('bukti-input-galeri').click()"><i class="fa-solid fa-images"></i> Pilih dari Galeri</button>
+    </div>
+    <input type="file" id="bukti-input-kamera" class="hidden" accept="image/*" capture="environment" onchange="BuktiUI.dariInput(this)">
+    <input type="file" id="bukti-input-galeri" class="hidden" accept="image/*,.heic,.heif,.hif" multiple onchange="BuktiUI.dariInput(this)">
+    <p class="bukti-catatan">Mendukung JPG, PNG, WEBP, dan HEIC (iPhone — otomatis dikonversi). Boleh lebih dari satu foto, maksimal 10.</p>
+    <div class="bukti-grid" id="bukti-grid"></div>
+    <div class="bukti-progres hidden" id="bukti-progres"><div class="bukti-progres-bar"><i id="bukti-progres-isi"></i></div><span id="bukti-progres-teks"></span></div>
+    <p class="bukti-hint" id="bukti-hint"></p>
+    <button type="button" class="accent bukti-btn-lanjut" id="bukti-btn-lanjut" onclick="BuktiUI.lanjut()" disabled><i class="fa-solid fa-flag-checkered"></i> Selesai &amp; Lihat Nilai</button>
+    <button type="button" class="bukti-btn-lewati hidden" id="bukti-btn-lewati" onclick="BuktiUI.lewati()">Lewati, saya tidak punya coretan</button>
   </div>
 </div>
 
