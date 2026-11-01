@@ -8,7 +8,7 @@
 <!-- ======================= LOGO / IKON APLIKASI (PWA) =======================
      Supaya saat halaman ini "Ditambahkan ke Layar Utama" (Add to Home Screen)
      di HP, ikon aplikasi otomatis muncul -- bukan cuma screenshot polos.
-     Berkas ikon ada di folder icons/ (logo SEMENTARA berlabel "TEST", lihat
+     Berkas ikon ada di folder icons/ (logo bawaan: ikon ungu-pink + lambang sekolah, lihat
      README bagian "Ganti Logo Aplikasi"). Kalau guru sudah menyimpan logo
      asli lewat Portal Guru > Pengaturan > Identitas Aplikasi, id="app-favicon"
      dan id="app-apple-icon" di bawah ini otomatis diganti ke logo itu juga
@@ -1076,12 +1076,17 @@
   <main class="main">
     <h2>Masuk Ujian</h2>
     <p class="subtitle">Masukkan token ujian yang diberikan oleh guru.</p>
+    <div id="siswa-blokir-banner" class="panel hidden" role="alert" style="border:2px solid var(--c-danger);background:color-mix(in srgb, var(--c-danger) 10%, transparent)">
+      <h3 style="margin:0 0 .3rem;color:var(--c-danger)">🚫 Akun Anda sedang diblokir</h3>
+      <p style="margin:0">Anda belum bisa mengikuti ujian selama blokir ini aktif. Teman sekelas Anda tetap bisa mengerjakan.</p>
+      <p id="siswa-blokir-alasan" style="margin:.4rem 0 0;font-weight:600"></p>
+    </div>
     <div class="panel token-box">
       <div class="field">
         <label>Token Ujian</label>
         <input type="text" id="input-token-ujian" style="text-transform:uppercase" placeholder="Contoh: 8K2P9Q">
       </div>
-      <button class="accent" style="width:100%" onclick="Siswa.cekToken()">Cari Ujian</button>
+      <button id="btn-cari-ujian" class="accent" style="width:100%" onclick="Siswa.cekToken()">Cari Ujian</button>
       <div id="token-error" style="color:var(--c-danger);font-size:.85rem;margin-top:.6rem"></div>
     </div>
 
@@ -1100,10 +1105,19 @@
 <!-- ======================= LAYAR UJIAN ======================= -->
 <div id="ujian-screen" class="hidden">
   <div class="exam-topbar">
-    <div class="judul" id="ujian-judul-aktif">-</div>
-    <div class="pelanggaran-indikator" id="pelanggaran-indikator"></div>
-    <button type="button" class="secondary small" title="Kirim jawaban ke server sekarang juga, tanpa menunggu penyimpanan otomatis" onclick="ExamEngine.simpanSekarang()">💾 Simpan Sekarang</button>
-    <div class="timer" id="timer-display">--:--:--</div>
+    <div class="exam-brand">
+      <span class="app-logo-slot exam-logo"><i class="fa-solid fa-graduation-cap"></i></span>
+      <div class="exam-brand-teks">
+        <div class="judul" id="ujian-judul-aktif">-</div>
+        <div class="exam-sub"><span class="app-brand-nama">CBT Sekolah</span><span class="exam-sub-sep">•</span><span id="ujian-peserta">-</span></div>
+      </div>
+    </div>
+    <div class="exam-topbar-kanan">
+      <div class="pelanggaran-indikator" id="pelanggaran-indikator"></div>
+      <button type="button" class="secondary small exam-btn-simpan" title="Kirim jawaban ke server sekarang juga, tanpa menunggu penyimpanan otomatis" onclick="ExamEngine.simpanSekarang()"><i class="fa-regular fa-floppy-disk"></i> Simpan</button>
+      <div class="timer-box" title="Sisa waktu"><i class="fa-regular fa-clock"></i><div class="timer" id="timer-display">--:--:--</div></div>
+    </div>
+    <div class="exam-progress" aria-hidden="true"><i id="exam-progress-fill"></i></div>
   </div>
   <div class="exam-body">
     <div class="exam-question-col">
@@ -1121,15 +1135,20 @@
       </div>
     </div>
     <div class="exam-nav-col">
-      <div class="soal-grid" id="soal-grid"></div>
-      <div class="legend">
-        <div><span class="dot" style="background:var(--c-secondary)"></span>Sudah dijawab</div>
-        <div><span class="dot dot-ragu"></span>Ditandai ragu-ragu</div>
-        <div><span class="dot" style="background:var(--c-surface);border:1px solid var(--c-line)"></span>Belum dijawab</div>
+      <div class="nav-panel">
+        <div class="nav-panel-head"><span class="nav-panel-judul">Navigasi Soal</span><span class="nav-panel-prog" id="nav-progress-teks">0 / 0</span></div>
+        <div class="soal-grid" id="soal-grid"></div>
+        <div class="legend">
+          <div><span class="lg-l"><span class="dot" style="background:var(--c-secondary)"></span>Sudah dijawab</span><b id="lg-jawab">0</b></div>
+          <div><span class="lg-l"><span class="dot dot-ragu"></span>Ditandai ragu-ragu</span><b id="lg-ragu">0</b></div>
+          <div><span class="lg-l"><span class="dot" style="background:var(--c-surface);border:1px solid var(--c-line)"></span>Belum dijawab</span><b id="lg-kosong">0</b></div>
+        </div>
+        <button class="accent nav-finish" onclick="Siswa.konfirmasiSubmit()"><i class="fa-solid fa-flag-checkered"></i> Selesai &amp; Kumpulkan</button>
       </div>
-      <button class="accent" style="width:100%;margin-top:1rem" onclick="Siswa.konfirmasiSubmit()">Selesai &amp; Kumpulkan</button>
     </div>
   </div>
+  <!-- Watermark kecil nama guru pengajar: tidak menutupi soal, tidak bisa diklik/diseleksi. Isi diatur di app.js (CONFIG.WATERMARK_GURU). -->
+  <div class="exam-watermark" id="exam-watermark" aria-hidden="true"></div>
 </div>
 
 <div id="anticheat-warning" class="anticheat-warning hidden">
