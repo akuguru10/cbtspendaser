@@ -8,7 +8,7 @@
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap');
 
 :root {
-  --versi-css: "26"; /* harus sama dengan VERSI_APLIKASI di app.js (deteksi style.css usang di cache) */
+  --versi-css: "28"; /* harus sama dengan VERSI_APLIKASI di app.js (deteksi style.css usang di cache) */
   /* --- warna dasar (ditimpa JS: lihat Tampilan.terapkan di app.js) --- */
   --c-primary: #e58a72;
   --c-secondary: #6f9f94;
@@ -1641,3 +1641,56 @@ details.tm-det > summary { cursor: pointer; font-weight: 700; font-size: .88rem;
   color: var(--c-text); background: var(--c-surface); border: 1px solid var(--c-line);
 }
 .bk-tambah-aksi button:hover { color: var(--c-primary); border-color: var(--c-primary); }
+
+/* ============================================================================
+   TATA LETAK SOAL BERGAMBAR v27 — presisi seperti CBT profesional
+   - Gambar soal dibatasi tingginya (tidak lagi memanjang ke bawah sampai harus menggulir).
+   - Layar lebar (>=1100px) + soal bergambar: DUA KOLOM -> soal & gambar di kiri, pilihan jawaban di kanan
+     (menempel saat digulir), sehingga soal, gambar, dan semua jawaban terlihat sekaligus.
+   - Bar Sebelumnya / Ragu-ragu / Berikutnya menempel di bawah layar: selalu terlihat.
+   - Tetap menghormati tombol "Ukuran soal" (A- / A+) lewat --skala. Klik gambar = perbesar (lightbox).
+   ============================================================================ */
+#question-card .pertanyaan img, #question-card img.gambar-soal {
+  max-height: calc(min(44vh, 420px) * var(--skala, 1)); object-fit: contain; background: var(--c-bg);
+}
+#question-card .soal-kiri, #question-card .soal-kanan { min-width: 0; }
+#question-card img.gambar-soal { margin-bottom: .6rem; }
+@media (min-width: 1100px) {
+  #question-card.ada-gambar { display: grid; grid-template-columns: minmax(0, 1.22fr) minmax(0, 1fr); column-gap: 2rem; align-items: start; }
+  #question-card.ada-gambar > .no { grid-column: 1 / -1; justify-self: start; }
+  #question-card.ada-gambar .pertanyaan img, #question-card.ada-gambar img.gambar-soal { max-height: calc(min(60vh, 560px) * var(--skala, 1)); }
+  #question-card.ada-gambar .soal-kanan { position: sticky; top: 92px; align-self: start; }
+  #question-card.ada-gambar .soal-kanan .opsi-list { margin-top: 0; }
+}
+#ujian-screen .nav-actions {
+  position: sticky; bottom: .9rem; z-index: 30;
+  box-shadow: 0 10px 28px color-mix(in srgb, var(--c-text) 14%, transparent), 0 0 0 1px color-mix(in srgb, var(--c-text) 6%, transparent);
+}
+@media (max-width: 880px) {
+  #question-card .pertanyaan img, #question-card img.gambar-soal { max-height: calc(min(40vh, 340px) * var(--skala, 1)); }
+  #ujian-screen .nav-actions { bottom: 1.7rem; }
+}
+
+/* ---- v28: tile "+" bisa diklik penuh; tombol Kamera/Galeri lebih timbul ---- */
+.bk-tambah { cursor: pointer; }
+.bk-tambah:focus-visible { outline: 3px solid color-mix(in srgb, var(--c-primary) 45%, transparent); outline-offset: 2px; }
+.bk-tambah .bk-plus { width: 58px; height: 58px; font-size: 1.6rem; transition: transform .15s ease, box-shadow .15s ease; }
+.bk-tambah:hover .bk-plus { transform: scale(1.08); box-shadow: 0 10px 22px color-mix(in srgb, var(--c-primary) 45%, transparent); }
+.bk-tambah:active .bk-plus { transform: scale(.96); }
+.bk-tambah .bk-tambah-aksi { flex-direction: column; flex-wrap: nowrap; width: 100%; max-width: 138px; gap: .55rem; margin-top: .6rem; }
+.bk-tambah .bk-btn-kamera, .bk-tambah .bk-btn-galeri {
+  width: 100%; padding: .6rem .8rem; font-size: .82rem; font-weight: 700; border-radius: 12px; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center; gap: .45rem; filter: none; transform: none;
+  transition: transform .12s ease, box-shadow .12s ease;
+}
+.bk-tambah .bk-btn-kamera, .bk-tambah .bk-btn-kamera:active {
+  color: var(--c-on-primary); background: var(--c-primary); border: 1.5px solid var(--c-primary);
+  box-shadow: 0 6px 14px color-mix(in srgb, var(--c-primary) 40%, transparent), inset 0 1px 0 rgba(255, 255, 255, .28);
+}
+.bk-tambah .bk-btn-galeri, .bk-tambah .bk-btn-galeri:active {
+  color: var(--c-primary); background: var(--c-surface); border: 1.5px solid var(--c-primary);
+  box-shadow: 0 5px 12px color-mix(in srgb, var(--c-text) 15%, transparent), inset 0 1px 0 rgba(255, 255, 255, .6);
+}
+.bk-tambah .bk-btn-kamera:hover { background: var(--c-primary); color: var(--c-on-primary); transform: translateY(-2px); box-shadow: 0 10px 20px color-mix(in srgb, var(--c-primary) 48%, transparent), inset 0 1px 0 rgba(255, 255, 255, .28); }
+.bk-tambah .bk-btn-galeri:hover { background: color-mix(in srgb, var(--c-primary) 8%, var(--c-surface)); color: var(--c-primary); transform: translateY(-2px); box-shadow: 0 9px 18px color-mix(in srgb, var(--c-text) 20%, transparent); }
+.bk-tambah .bk-btn-kamera:active, .bk-tambah .bk-btn-galeri:active { transform: translateY(0); }
