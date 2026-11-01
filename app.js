@@ -68,7 +68,10 @@ const PUSTAKA_EKSTERNAL = {
   xlsx: { url: 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js', siap: () => typeof XLSX !== 'undefined' },
   mammoth: { url: 'https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js', siap: () => typeof mammoth !== 'undefined' },
   // JSZip: dipakai untuk membuka .docx & mengubah rumus Word (OMML) -> LaTeX sebelum dibaca mammoth
-  jszip: { url: 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js', siap: () => typeof JSZip !== 'undefined' }
+  jszip: { url: 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js', siap: () => typeof JSZip !== 'undefined' },
+  // heic2any: mengonversi foto HEIC/HEIF (iPhone) -> JPEG di browser yang belum bisa membacanya (Chrome/Firefox/Android).
+  // Hanya dimuat bila siswa benar-benar memilih foto HEIC. 'cadangan' dipakai bila CDN utama gagal.
+  heic2any: { url: 'https://cdnjs.cloudflare.com/ajax/libs/heic2any/0.0.4/heic2any.min.js', cadangan: 'https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js', siap: () => typeof heic2any !== 'undefined' }
 };
 const _janjiPustaka = {};
 function muatPustaka_(nama) {
@@ -77,16 +80,20 @@ function muatPustaka_(nama) {
   if (info.siap()) return Promise.resolve();
   if (_janjiPustaka[nama]) return _janjiPustaka[nama];
   _janjiPustaka[nama] = new Promise((resolve, reject) => {
-    const el = document.createElement('script');
-    el.src = info.url;
-    el.async = true;
-    el.onload = () => resolve();
-    el.onerror = () => {
-      delete _janjiPustaka[nama]; // boleh dicoba lagi nanti
-      el.remove();
-      reject(new Error('Gagal memuat pustaka ' + nama + '. Periksa koneksi internet lalu coba lagi.'));
+    const coba = (url, cadangan) => {
+      const el = document.createElement('script');
+      el.src = url;
+      el.async = true;
+      el.onload = () => resolve();
+      el.onerror = () => {
+        el.remove();
+        if (cadangan) { coba(cadangan, null); return; } // CDN utama gagal -> coba CDN cadangan
+        delete _janjiPustaka[nama]; // boleh dicoba lagi nanti
+        reject(new Error('Gagal memuat pustaka ' + nama + '. Periksa koneksi internet lalu coba lagi.'));
+      };
+      document.head.appendChild(el);
     };
-    document.head.appendChild(el);
+    coba(info.url, info.cadangan || null);
   });
   return _janjiPustaka[nama];
 }
@@ -1652,6 +1659,162 @@ function toast(msg, jenis) {
 }
 
 // ----------------------------------------------------------------------------
+// DIALOG PROFESIONAL (pengganti confirm() / prompt() / alert() bawaan browser)
+//   await Dialog.konfirmasi({ judul, pesan, tipe, ikon, rincian, ketik, teksYa, teksBatal }) -> true / false
+//   await Dialog.input({ judul, pesan, label, nilai, chips, validasi, ... })                 -> teks / null (batal)
+//   await Dialog.info({ judul, pesan, daftar, tipe })                                        -> true
+// tipe: 'danger' (merah) | 'warning' (kuning) | 'info' (biru/tema) | 'success' (hijau)
+// Di dalam pesan, **teks** ditebalkan; "\n" jadi baris baru; semua teks otomatis di-escape (aman dari HTML).
+// Papan ketik: Esc = batal, Enter = lanjut, Tab terkunci di dalam dialog.
+// ----------------------------------------------------------------------------
+const Dialog = {
+  _ikon: { danger: 'fa-triangle-exclamation', warning: 'fa-circle-exclamation', info: 'fa-circle-info', success: 'fa-circle-check' },
+
+  _fmt(teks) {
+    return escapeHtml_(String(teks == null ? '' : teks))
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\n/g, '<br>');
+  },
+
+  konfirmasi(o) { return Dialog._tampil(o || {}); },
+  input(o) { return Dialog._tampil(Object.assign({}, o, { input: o })); },
+  info(o) { return Dialog._tampil(Object.assign({ tanpaBatal: true, teksYa: 'Mengerti' }, o)); },
+
+  _tampil(o) {
+    return new Promise(resolve => {
+      const tipe = o.tipe || 'info';
+      const ikon = o.ikon || Dialog._ikon[tipe] || Dialog._ikon.info;
+      const uid = 'dlg' + Date.now().toString(36) + Math.floor(Math.random() * 1e4);
+      const sebelumnya = document.activeElement;
+
+      const rincianHtml = (o.rincian && o.rincian.length)
+        ? '<dl class="dlg-rincian">' + o.rincian.filter(r => r && r[1] !== '' && r[1] != null)
+            .map(r => `<div><dt>${escapeHtml_(r[0])}</dt><dd>${Dialog._fmt(r[1])}</dd></div>`).join('') + '</dl>'
+        : '';
+      const daftarHtml = (o.daftar && o.daftar.length)
+        ? '<ul class="dlg-daftar">' + o.daftar.map(t => `<li>${Dialog._fmt(t)}</li>`).join('') + '</ul>'
+        : '';
+
+      let fieldHtml = '';
+      const i = o.input;
+      if (i) {
+        const attr = `id="${uid}-in" class="dlg-input" placeholder="${escapeHtml_(i.placeholder || '')}" autocomplete="off" spellcheck="false"` +
+          (i.maksimal ? ` maxlength="${i.maksimal}"` : '');
+        const kontrol = i.multiline
+          ? `<textarea ${attr} rows="3">${escapeHtml_(i.nilai || '')}</textarea>`
+          : `<input ${attr} type="${i.jenisInput || 'text'}" value="${escapeHtml_(i.nilai || '')}"${i.jenisInput === 'number' ? ' step="any"' : ''}>`;
+        const chips = (i.chips || []).map((c, n) =>
+          `<button type="button" class="dlg-chip" data-chip="${n}">${escapeHtml_(typeof c === 'object' ? c.label : c)}</button>`).join('');
+        fieldHtml = `<div class="dlg-field"><label for="${uid}-in">${escapeHtml_(i.label || '')}</label>${kontrol}` +
+          (chips ? `<div class="dlg-chips">${chips}</div>` : '') + `<div class="dlg-error" role="alert"></div></div>`;
+      }
+      if (o.ketik) {
+        fieldHtml += `<div class="dlg-field"><label for="${uid}-kt">Ketik <strong>${escapeHtml_(o.ketik)}</strong> untuk melanjutkan</label>` +
+          `<input id="${uid}-kt" class="dlg-input dlg-ketik" autocomplete="off" spellcheck="false" placeholder="${escapeHtml_(o.ketik)}"></div>`;
+      }
+
+      const wrap = document.createElement('div');
+      wrap.className = 'dlg-backdrop';
+      wrap.innerHTML = `<div class="dlg-card dlg-${tipe}" role="alertdialog" aria-modal="true" aria-labelledby="${uid}-j"${o.pesan ? ` aria-describedby="${uid}-p"` : ''}>
+        <div class="dlg-ikon"><i class="fa-solid ${ikon}"></i></div>
+        <h3 class="dlg-judul" id="${uid}-j">${escapeHtml_(o.judul || '')}</h3>
+        ${o.pesan ? `<p class="dlg-pesan" id="${uid}-p">${Dialog._fmt(o.pesan)}</p>` : ''}
+        ${rincianHtml}${daftarHtml}${fieldHtml}
+        <div class="dlg-aksi${o.tanpaBatal ? ' satu' : ''}">
+          ${o.tanpaBatal ? '' : `<button type="button" class="dlg-btn dlg-batal" data-aksi="batal">${escapeHtml_(o.teksBatal || 'Batal')}</button>`}
+          <button type="button" class="dlg-btn dlg-ya" data-aksi="ya">${escapeHtml_(o.teksYa || 'Ya, Lanjutkan')}</button>
+        </div></div>`;
+      document.body.appendChild(wrap);
+
+      const kartu = wrap.firstElementChild;
+      const elIn = kartu.querySelector('.dlg-input:not(.dlg-ketik)');
+      const elKetik = kartu.querySelector('.dlg-ketik');
+      const btnYa = kartu.querySelector('.dlg-ya');
+      const elErr = kartu.querySelector('.dlg-error');
+      let selesai = false;
+
+      const tutup = (hasil) => {
+        if (selesai) return;
+        selesai = true;
+        document.removeEventListener('keydown', onKey, true);
+        wrap.classList.add('keluar');
+        setTimeout(() => wrap.remove(), 170);
+        try { if (sebelumnya && sebelumnya.focus && document.contains(sebelumnya)) sebelumnya.focus({ preventScroll: true }); } catch (e) { /* abaikan */ }
+        resolve(hasil);
+      };
+      const batal = () => tutup(i ? null : false);
+      const lanjut = () => {
+        if (btnYa.disabled) return;
+        if (elIn) {
+          const v = elIn.value;
+          let err = '';
+          if (i.wajib && !v.trim()) err = i.pesanWajib || 'Kolom ini wajib diisi.';
+          else if (i.validasi) err = i.validasi(v) || '';
+          if (err) { elErr.textContent = err; elIn.classList.add('dlg-salah'); elIn.focus(); return; }
+          tutup(v);
+        } else {
+          tutup(true);
+        }
+      };
+
+      const perbaruiKetik = () => { if (elKetik) btnYa.disabled = elKetik.value.trim().toUpperCase() !== String(o.ketik).toUpperCase(); };
+      perbaruiKetik();
+      if (elKetik) elKetik.addEventListener('input', perbaruiKetik);
+      if (elIn) elIn.addEventListener('input', () => { elErr.textContent = ''; elIn.classList.remove('dlg-salah'); });
+
+      const onKey = (e) => {
+        if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); o.tanpaBatal ? lanjut() : batal(); return; }
+        if (e.key === 'Enter' && !e.shiftKey) {
+          const t = e.target;
+          if (t && t.tagName === 'TEXTAREA' && !(e.ctrlKey || e.metaKey)) return;
+          if (t && t.closest && t.closest('.dlg-batal, .dlg-chip')) return; // biarkan tombolnya bekerja sendiri
+          e.preventDefault(); e.stopPropagation(); lanjut(); return;
+        }
+        if (e.key === 'Tab') {
+          const fok = Array.from(kartu.querySelectorAll('input, textarea, button')).filter(el => !el.disabled && el.offsetParent !== null);
+          if (!fok.length) return;
+          const awal = fok[0], akhir = fok[fok.length - 1];
+          if (!kartu.contains(document.activeElement)) { e.preventDefault(); awal.focus(); }
+          else if (e.shiftKey && document.activeElement === awal) { e.preventDefault(); akhir.focus(); }
+          else if (!e.shiftKey && document.activeElement === akhir) { e.preventDefault(); awal.focus(); }
+        }
+      };
+      document.addEventListener('keydown', onKey, true);
+
+      let mulaiDiLatar = false;
+      wrap.addEventListener('mousedown', (e) => { mulaiDiLatar = e.target === wrap; });
+      wrap.addEventListener('click', (e) => {
+        if (e.target === wrap && mulaiDiLatar) { o.tanpaBatal ? lanjut() : batal(); return; }
+        const chip = e.target.closest('[data-chip]');
+        if (chip && elIn) {
+          const c = i.chips[Number(chip.dataset.chip)];
+          const nilai = typeof c === 'object' ? (c.nilai != null ? c.nilai : c.label) : c;
+          if (typeof c === 'object' && c.sisip) {
+            const a = elIn.selectionStart != null ? elIn.selectionStart : elIn.value.length;
+            const b = elIn.selectionEnd != null ? elIn.selectionEnd : a;
+            elIn.value = elIn.value.slice(0, a) + nilai + elIn.value.slice(b);
+            try { elIn.setSelectionRange(a + nilai.length, a + nilai.length); } catch (err) { /* tipe number */ }
+          } else {
+            elIn.value = nilai;
+          }
+          elErr.textContent = ''; elIn.classList.remove('dlg-salah'); elIn.focus();
+          return;
+        }
+        const aksi = e.target.closest('[data-aksi]');
+        if (!aksi) return;
+        aksi.dataset.aksi === 'ya' ? lanjut() : batal();
+      });
+
+      requestAnimationFrame(() => {
+        const fokus = elIn || elKetik || (tipe === 'danger' && kartu.querySelector('.dlg-batal')) || btnYa;
+        fokus.focus();
+        if (elIn && elIn.select) elIn.select();
+      });
+    });
+  }
+};
+
+// ----------------------------------------------------------------------------
 // PESAN HASIL BERDASARKAN RENTANG NILAI
 // Guru bisa mengisi pesan berbeda untuk tiap nilai (0, 1, 2, ..., 100) — manual atau lewat import Word.
 // Default di bawah masih berupa rentang (diperluas otomatis ke tiap nilai di editor).
@@ -1921,6 +2084,7 @@ const LocalBackend = (function () {
     db.ujian = db.ujian || [];
     db.sesi = db.sesi || [];
     db.log = db.log || [];
+    db.buktiOrek = db.buktiOrek || [];
     db.config = db.config || {};
     if (db.guru.length === 0) {
       db.guru.push({ id: 'G001', username: 'admin', password: 'admin123', nama: 'Administrator', tema_json: JSON.stringify(defaultTemaLocal()) });
@@ -2102,6 +2266,12 @@ const LocalBackend = (function () {
   }
 
   // Status Blokir Akun Siswa (setara statusBlokirSiswa_ di Code.gs)
+  // Mode bukti orak-orik per ujian: '' | 'wajib' | 'opsional'
+  function modeBuktiLokal(u) {
+    const m = u ? String(u.bukti_orek || '').toLowerCase() : '';
+    return (m === 'wajib' || m === 'opsional') ? m : '';
+  }
+  function fotoBuktiLokal(b) { return { id: b.id, nama: b.nama, bytes: b.bytes, waktu: b.waktu, url: b.url, urlAsli: b.url }; }
   function infoBlokirLokal(s) {
     return { aktif: !!s && String(s.blokir || '').toLowerCase() === 'ya', alasan: (s && s.blokir_alasan) || '', sejak: (s && s.blokir_sejak) || '' };
   }
@@ -2250,7 +2420,8 @@ const LocalBackend = (function () {
           const siswa = siswaMap[s.siswa_id] || {};
           return { sesiId: s.id, siswaId: s.siswa_id, nama: siswa.nama || '(tidak dikenal)', kelas: siswa.kelas || '-', nilai: s.nilai, lulus: s.lulus, pelanggaran: s.pelanggaran, mulai: s.mulai, selesai: s.selesai, status: s.status };
         });
-        return { ok: true, data: rekap };
+        rekap.forEach(r => { r.bukti = (D.buktiOrek || []).filter(b => b.sesi_id === r.sesiId).map(fotoBuktiLokal); });
+        return { ok: true, data: rekap, buktiMode: modeBuktiLokal(D.ujian.find(u => u.id === data.ujianId)) };
       }
       // Menghitung ULANG nilai SEMUA sesi yang sudah selesai/diblokir di satu
       // ujian, memakai jawaban yang SUDAH TERSIMPAN (tidak diubah) tapi lewat
@@ -2407,6 +2578,7 @@ const LocalBackend = (function () {
       case 'hapusNilaiSiswa': {
         const ids = new Set(JSON.parse(data.sesiIds || '[]').map(String));
         D.sesi = D.sesi.filter(x => !ids.has(String(x.id)));
+        D.buktiOrek = (D.buktiOrek || []).filter(b => !ids.has(String(b.sesi_id))); // foto bukti ikut dibersihkan
         if (Array.isArray(D.log)) D.log = D.log.filter(l => !ids.has(String(l.sesi_id)));
         simpan();
         return { ok: true, count: ids.size };
@@ -2491,6 +2663,42 @@ const LocalBackend = (function () {
       case 'uploadGambar': {
         return { ok: true, url: `data:${data.mimeType};base64,${data.base64}` };
       }
+      // ---- Bukti orak-orik jawaban (Mode Lokal: foto disimpan di perangkat ini) ----
+      case 'uploadBuktiOrek': {
+        const sesi = D.sesi.find(x => x.id === data.sesiId);
+        if (!sesi) return { ok: false, error: 'Sesi tidak ditemukan.' };
+        if (String(sesi.siswa_id) !== String(data.siswaId)) return { ok: false, error: 'Sesi ini bukan milik Anda.' };
+        if (sesi.status === 'berlangsung') return { ok: false, error: 'Selesaikan ujian dulu sebelum mengunggah bukti.' };
+        if (!modeBuktiLokal(D.ujian.find(u => u.id === sesi.ujian_id))) return { ok: false, error: 'Unggah bukti orak-orik tidak diaktifkan untuk ujian ini.' };
+        if (!/^image\/(jpeg|png|webp|gif)$/i.test(String(data.mimeType || ''))) return { ok: false, error: 'Format gambar tidak didukung.' };
+        const b64 = String(data.base64 || '');
+        if (!b64) return { ok: false, error: 'Data foto kosong.' };
+        D.buktiOrek = D.buktiOrek || [];
+        const ada = D.buktiOrek.filter(b => b.sesi_id === sesi.id);
+        const dup = data.kunci ? ada.find(b => b.kunci === data.kunci) : null;
+        if (dup) return Object.assign({ ok: true, jumlah: ada.length, ulang: true }, fotoBuktiLokal(dup));
+        if (ada.length >= 10) return { ok: false, error: 'Maksimal 10 foto per ujian.' };
+        const bytes = Math.floor(b64.length * 3 / 4) - ((b64.match(/=+$/) || [''])[0].length);
+        const baris = { id: genId('BO'), sesi_id: sesi.id, siswa_id: sesi.siswa_id, ujian_id: sesi.ujian_id, kunci: data.kunci || '',
+          nama: String(data.filename || 'bukti.jpg').slice(0, 120), bytes, waktu: new Date().toISOString(), url: `data:${data.mimeType};base64,${b64}` };
+        D.buktiOrek.push(baris);
+        if (!tulisSekarang()) { D.buktiOrek.pop(); return { ok: false, error: 'Penyimpanan perangkat penuh, foto tidak tersimpan. Hapus foto lain atau gunakan mode Server.' }; }
+        return Object.assign({ ok: true, jumlah: ada.length + 1 }, fotoBuktiLokal(baris));
+      }
+      case 'getBuktiOrek': {
+        const sesi = D.sesi.find(x => x.id === data.sesiId);
+        if (!sesi) return { ok: false, error: 'Sesi tidak ditemukan.' };
+        if (data.siswaId && String(sesi.siswa_id) !== String(data.siswaId)) return { ok: false, error: 'Sesi ini bukan milik Anda.' };
+        return { ok: true, data: (D.buktiOrek || []).filter(b => b.sesi_id === sesi.id).map(fotoBuktiLokal), mode: modeBuktiLokal(D.ujian.find(u => u.id === sesi.ujian_id)) };
+      }
+      case 'hapusBuktiOrek': {
+        const sesi = D.sesi.find(x => x.id === data.sesiId);
+        if (!sesi) return { ok: false, error: 'Sesi tidak ditemukan.' };
+        if (data.siswaId && String(sesi.siswa_id) !== String(data.siswaId)) return { ok: false, error: 'Sesi ini bukan milik Anda.' };
+        D.buktiOrek = (D.buktiOrek || []).filter(b => !(b.id === data.id && b.sesi_id === sesi.id));
+        simpan();
+        return { ok: true, jumlah: D.buktiOrek.filter(b => b.sesi_id === sesi.id).length };
+      }
       case 'simpanBranding': {
         D.config.namaAplikasi = String(data.namaAplikasi || '').trim();
         D.config.logoUrl = String(data.logoUrl || '');
@@ -2519,7 +2727,13 @@ const LocalBackend = (function () {
         const ujian = D.ujian.find(u => u.id === data.ujianId);
         if (!ujian) return { ok: false, error: 'Ujian tidak ditemukan.' };
         let existing = D.sesi.find(s => s.ujian_id === data.ujianId && s.siswa_id === data.siswaId);
-        if (existing && existing.status === 'selesai') return { ok: false, error: 'Anda sudah menyelesaikan ujian ini.' };
+        if (existing && existing.status === 'selesai') {
+          // Pemulihan: bukti WAJIB tapi belum ada foto sama sekali -> arahkan ke halaman unggah
+          if (modeBuktiLokal(ujian) === 'wajib' && !(D.buktiOrek || []).some(b => b.sesi_id === existing.id)) {
+            return { ok: true, perluBukti: true, sesiId: existing.id, nilai: existing.nilai, lulus: existing.lulus, buktiOrek: 'wajib', judul: ujian.judul };
+          }
+          return { ok: false, error: 'Anda sudah menyelesaikan ujian ini.' };
+        }
         if (existing && existing.status === 'diblokir') return { ok: false, error: 'Sesi ujian Anda telah diblokir karena pelanggaran. Hubungi guru.' };
 
         const soalIds = String(ujian.soal_ids || '').split(',').filter(Boolean);
@@ -2617,10 +2831,11 @@ const LocalBackend = (function () {
       case 'submitUjian': {
         const sesi = D.sesi.find(s => s.id === data.sesiId);
         if (!sesi) return { ok: false, error: 'Sesi tidak ditemukan.' };
-        if (sesi.status === 'selesai') return { ok: true, nilai: sesi.nilai, lulus: sesi.lulus, sudahSelesai: true };
+        const modeBuktiSub = modeBuktiLokal(D.ujian.find(u => u.id === sesi.ujian_id));
+        if (sesi.status === 'selesai') return { ok: true, nilai: sesi.nilai, lulus: sesi.lulus, sudahSelesai: true, buktiOrek: modeBuktiSub };
         const jawaban = JSON.parse(data.jawaban || '{}');
         const hasil = hitungDanSelesaikanSesi(D, sesi, jawaban, 'selesai');
-        return { ok: true, nilai: hasil.nilai, lulus: hasil.lulus, detail: hasil.detail };
+        return { ok: true, nilai: hasil.nilai, lulus: hasil.lulus, detail: hasil.detail, buktiOrek: modeBuktiSub };
       }
       case 'getDetailJawaban': {
         const sesi = D.sesi.find(s => s.id === data.sesiId);
@@ -2847,9 +3062,19 @@ const UI = {
   rtWarnaSorot(input) { UI.rtExec('hiliteColor', input.value); },
   rtFont(select) { UI.rtExec('fontName', select.value); },
   rtUkuran(select) { UI.rtExec('fontSize', select.value); },
-  rtRumus() {
+  async rtRumus() {
     if (!UI.rtPulihkanSeleksi()) { toast('Klik dulu ke kotak Pertanyaan/Opsi yang ingin disisipi rumus.', 'error'); return; }
-    const formula = prompt('Tulis rumus dalam format LaTeX (tanpa tanda $), contoh: x^2+1=0');
+    const rentang = UI._rtRange, sasaran = UI._rtEditable;
+    const formula = await Dialog.input({
+      judul: 'Sisipkan Rumus', ikon: 'fa-square-root-variable',
+      pesan: 'Tulis rumus dalam format **LaTeX** (tanpa tanda $). Rumus akan tampil rapi di soal.',
+      label: 'Rumus (LaTeX)', placeholder: 'x^2 + 1 = 0', teksYa: 'Sisipkan', wajib: true, pesanWajib: 'Tulis rumusnya dulu.',
+      chips: [
+        { label: 'pecahan', nilai: '\\frac{a}{b}', sisip: true }, { label: 'pangkat', nilai: 'x^{2}', sisip: true },
+        { label: 'akar', nilai: '\\sqrt{x}', sisip: true }, { label: 'π', nilai: '\\pi', sisip: true }
+      ]
+    });
+    UI._rtRange = rentang; UI._rtEditable = sasaran; UI.rtPulihkanSeleksi(); // fokus berpindah ke dialog -> pulihkan posisi kursor
     if (!formula) return;
     try { document.execCommand('insertText', false, `$${formula}$`); } catch (e) {}
     if (UI._rtEditable) rtRenderUlang_(UI._rtEditable);
@@ -2942,7 +3167,7 @@ const UI = {
   },
 
   tampilkan(idLayar) {
-    ['login-screen', 'guru-portal', 'siswa-portal', 'ujian-screen', 'hasil-screen', 'detail-screen'].forEach(id => {
+    ['login-screen', 'guru-portal', 'siswa-portal', 'ujian-screen', 'bukti-screen', 'hasil-screen', 'detail-screen'].forEach(id => {
       document.getElementById(id).classList.toggle('hidden', id !== idLayar);
     });
   },
@@ -3062,10 +3287,15 @@ const UI = {
       .catch(() => toast('Gagal menyalin otomatis — silakan salin manual dari kotak teksnya.', 'error'));
   },
 
-  simpanPengaturanServer() {
+  async simpanPengaturanServer() {
     const url = document.getElementById('server-url-input').value.trim();
     if (url && !/^https:\/\/script\.google(usercontent)?\.com\//.test(url)) {
-      if (!confirm('URL ini terlihat tidak seperti URL Web App Google Apps Script (harus diawali https://script.google.com/... dan berakhiran /exec). Tetap simpan?')) return;
+      const tetap = await Dialog.konfirmasi({
+        judul: 'URL Server Tidak Dikenali', tipe: 'warning', ikon: 'fa-link-slash',
+        pesan: 'URL ini tidak terlihat seperti URL Web App Google Apps Script (harus diawali **https://script.google.com/** dan berakhiran **/exec**).\n\nTetap simpan URL ini?',
+        teksYa: 'Tetap Simpan', teksBatal: 'Periksa Lagi'
+      });
+      if (!tetap) return;
     }
     setUrlServerTersimpan(url);
     toast(url ? 'Pengaturan server disimpan untuk PERANGKAT INI SAJA. Untuk mengaktifkannya bagi semua siswa, salin cuplikan kode di atas ke app.js.' : 'Pengaturan server dikosongkan. Aplikasi kembali ke mode lokal.', 'success');
@@ -3303,6 +3533,7 @@ const UI = {
     document.getElementById('ujian-instruksi-remedial').value = ujian && ujian.instruksi_remedial ? ujian.instruksi_remedial : '';
     document.getElementById('ujian-tampil-detail').checked = ujian ? (String(ujian.tampil_detail) !== 'false') : true;
     document.getElementById('ujian-tampil-pembahasan').checked = ujian ? (String(ujian.tampil_pembahasan).toLowerCase() !== 'false') : true;
+    document.getElementById('ujian-bukti-orek').value = ujian && ujian.bukti_orek ? ujian.bukti_orek : '';
     Guru.sinkronDetailPembahasan();
     Guru.muatEditorPesanNilai(ujian && ujian.pesan_nilai);
     // null (bukan array kosong) khusus menandai "ujian baru, belum ada
@@ -3396,8 +3627,12 @@ const Guru = {
     toast(`Pesan diterapkan ke nilai ${dari}–${sampai}. Jangan lupa klik Simpan Ujian.`, 'success');
   },
 
-  resetPesanNilai() {
-    if (!confirm('Kembalikan semua pesan (nilai 0–100) ke pengaturan default?')) return;
+  async resetPesanNilai() {
+    if (!(await Dialog.konfirmasi({
+      judul: 'Kembalikan Pesan ke Default?', tipe: 'warning', ikon: 'fa-rotate-left',
+      pesan: 'Semua pesan nilai (0–100) di editor akan dikembalikan ke pengaturan default.\n\nPerubahan baru tersimpan setelah Anda klik **Simpan Ujian**.',
+      teksYa: 'Ya, Kembalikan'
+    }))) return;
     Guru.muatEditorPesanNilai('');
   },
 
@@ -3492,7 +3727,11 @@ const Guru = {
         });
         Guru.renderEditorPesanNilai();
         toast(`${dihitung.size} nilai terisi dari Word${kosong ? ` (${kosong} baris kosong dilewati)` : ''}. Klik "Simpan Ujian" untuk menyimpan.`, 'success');
-        if (peringatan.length) alert('Selesai diimpor, TAPI ada baris yang dilewati:\n\n' + peringatan.slice(0, 15).join('\n') + (peringatan.length > 15 ? '\n...dan ' + (peringatan.length - 15) + ' lainnya.' : ''));
+        if (peringatan.length) Dialog.info({
+          judul: 'Impor Selesai, Ada Baris Dilewati', tipe: 'warning', ikon: 'fa-file-circle-exclamation',
+          pesan: 'Data berhasil diimpor, **tetapi** beberapa baris dilewati:',
+          daftar: peringatan.slice(0, 15).concat(peringatan.length > 15 ? ['...dan ' + (peringatan.length - 15) + ' lainnya.'] : [])
+        });
       } catch (err) {
         toast('Gagal membaca file .docx: ' + err.message, 'error');
       } finally {
@@ -3699,8 +3938,13 @@ const Guru = {
       </div>`;
   },
 
-  tambahMapelBaru() {
-    const nama = prompt('Nama Mapel / kategori soal baru (mis. "Matematika", "Simulasi", "Tryout"):');
+  async tambahMapelBaru() {
+    const nama = await Dialog.input({
+      judul: 'Tambah Mapel Baru', ikon: 'fa-folder-plus',
+      pesan: 'Buat mapel / kategori baru untuk mengelompokkan soal.',
+      label: 'Nama Mapel / Kategori', placeholder: 'Contoh: Matematika', maksimal: 60, wajib: true, pesanWajib: 'Nama mapel tidak boleh kosong.',
+      chips: ['Matematika', 'Simulasi', 'Tryout'], teksYa: 'Buat Mapel'
+    });
     if (!nama || !nama.trim()) return;
     const bersih = nama.trim();
     // Pakai ejaan yang sudah ada kalau mapel ini sebenarnya sudah ada (beda huruf besar/kecil saja).
@@ -3837,7 +4081,11 @@ const Guru = {
     kategori = kategori || state.guru.kategoriArsipKelola;
     const cocok = (state.guru.bankSoal || []).filter(s => (s.status || 'aktif') === 'arsip' && samaTeks_(s.kategori, kategori));
     if (cocok.length === 0) return;
-    if (!confirm(`Kembalikan SEMUA ${cocok.length} soal arsip di kategori "${labelKategori(kategori)}" ke Bank Soal?`)) return;
+    if (!(await Dialog.konfirmasi({
+      judul: 'Kembalikan Semua Soal Arsip?', tipe: 'info', ikon: 'fa-box-open',
+      pesan: `**${cocok.length} soal** arsip di mapel **${labelKategori(kategori)}** akan dikembalikan ke Bank Soal dan bisa dipakai lagi di ujian.`,
+      teksYa: 'Ya, Kembalikan'
+    }))) return;
     toast(`Mengembalikan ${cocok.length} soal...`);
     const idList = cocok.map(s => s.id);
     const res = await api('ubahStatusSoalBanyak', { ids: JSON.stringify(idList), status: 'aktif' });
@@ -3853,7 +4101,11 @@ const Guru = {
     kategori = kategori || state.guru.kategoriArsipKelola;
     const cocok = (state.guru.bankSoal || []).filter(s => (s.status || 'aktif') === 'arsip' && samaTeks_(s.kategori, kategori));
     if (cocok.length === 0) return;
-    if (!confirm(`Hapus PERMANEN seluruh ${cocok.length} soal arsip di kategori "${labelKategori(kategori)}"? Tindakan ini TIDAK BISA DIBATALKAN.`)) return;
+    if (!(await Dialog.konfirmasi({
+      judul: 'Hapus Permanen Semua Soal Arsip?', tipe: 'danger', ikon: 'fa-trash-can',
+      pesan: `**${cocok.length} soal** arsip di mapel **${labelKategori(kategori)}** akan dihapus selamanya.\n\nTindakan ini **tidak bisa dibatalkan**.`,
+      ketik: 'HAPUS', teksYa: 'Hapus Permanen'
+    }))) return;
     toast(`Menghapus ${cocok.length} soal...`);
     const idList = cocok.map(s => s.id);
     const res = await api('hapusSoalBanyak', { ids: JSON.stringify(idList) });
@@ -4090,7 +4342,11 @@ const Guru = {
     }
     const cocok = (state.guru.bankSoal || []).filter(s => (s.status || 'aktif') !== 'arsip' && samaTeks_(s.kategori, kategori));
     if (cocok.length === 0) { toast('Kategori ini sudah tidak memiliki soal aktif.', 'error'); Guru.renderKelolaKategori(); return; }
-    if (!confirm(`Hapus kategori "${labelKategori(kategori)}"? ${cocok.length} soal di dalamnya akan dipindahkan ke Arsip (TIDAK dihapus permanen — bisa diedit & dikembalikan lagi lewat filter status "Arsip" di Bank Soal).`)) return;
+    if (!(await Dialog.konfirmasi({
+      judul: 'Hapus Kategori?', tipe: 'warning', ikon: 'fa-box-archive',
+      pesan: `Kategori **${labelKategori(kategori)}** akan dihapus. **${cocok.length} soal** di dalamnya dipindahkan ke **Arsip** (tidak dihapus permanen).\n\nSoal masih bisa diedit dan dikembalikan lewat filter status "Arsip" di Bank Soal.`,
+      teksYa: 'Ya, Hapus Kategori'
+    }))) return;
     toast(`Memindahkan ${cocok.length} soal ke Arsip...`);
     const idList = cocok.map(s => s.id);
     const res = await api('ubahStatusSoalBanyak', { ids: JSON.stringify(idList), status: 'arsip' });
@@ -4208,7 +4464,11 @@ const Guru = {
   // ditulis eksplisit "PERMANEN" & "tidak bisa dibatalkan". Kalau hanya ingin
   // menyembunyikan sementara, pakai tombol "🗄 Arsipkan" (Guru.arsipkanSoal).
   async hapusSoal(id) {
-    if (!confirm('Hapus PERMANEN soal ini? Tindakan ini TIDAK BISA DIBATALKAN (beda dengan "Arsipkan" yang masih bisa dikembalikan).')) return;
+    if (!(await Dialog.konfirmasi({
+      judul: 'Hapus Soal Permanen?', tipe: 'danger', ikon: 'fa-trash-can',
+      pesan: 'Soal ini akan dihapus **selamanya**. Berbeda dengan **Arsipkan**, soal yang dihapus tidak bisa dikembalikan.',
+      teksYa: 'Hapus Permanen'
+    }))) return;
     const res = await api('hapusSoal', { id });
     if (res.ok) { Guru.hapusDariStateLokal_([id]); Guru.renderUlangBankSoal_(); toast('Soal dihapus permanen.', 'success'); }
     else toast('Gagal menghapus soal: ' + res.error, 'error');
@@ -4218,7 +4478,11 @@ const Guru = {
   // dgn teks konfirmasi yang menegaskan soal sudah diarsipkan & akan hilang
   // selamanya kalau tetap dihapus.
   async hapusSoalPermanen(id) {
-    if (!confirm('Yakin ingin menghapus soal ini secara PERMANEN dari Arsip? Soal tidak bisa dikembalikan lagi setelah ini.')) return;
+    if (!(await Dialog.konfirmasi({
+      judul: 'Hapus Permanen dari Arsip?', tipe: 'danger', ikon: 'fa-trash-can',
+      pesan: 'Soal ini akan dihapus **selamanya** dari Arsip dan tidak bisa dikembalikan lagi.',
+      teksYa: 'Hapus Permanen'
+    }))) return;
     const res = await api('hapusSoal', { id });
     if (res.ok) { Guru.hapusDariStateLokal_([id]); Guru.renderUlangBankSoal_(); toast('Soal dihapus permanen.', 'success'); }
     else toast('Gagal menghapus soal: ' + res.error, 'error');
@@ -4269,7 +4533,11 @@ const Guru = {
       if (res.ok) {
         toast(res.count + ' soal berhasil diimpor.', 'success');
         Guru.muatBankSoal();
-        if (peringatan.length) alert('Berhasil diimpor, TAPI ada ' + peringatan.length + ' soal dengan kunci jawaban yang tidak dikenali (mohon periksa & perbaiki manual di Bank Soal):\n\n' + peringatan.join('\n\n'));
+        if (peringatan.length) Dialog.info({
+          judul: 'Impor Berhasil, Perlu Diperiksa', tipe: 'warning', ikon: 'fa-file-circle-exclamation',
+          pesan: 'Soal berhasil diimpor, **tetapi** ' + peringatan.length + ' soal memiliki kunci jawaban yang tidak dikenali. Mohon periksa dan perbaiki manual di Bank Soal:',
+          daftar: peringatan
+        });
       }
       else toast('Gagal impor: ' + res.error, 'error');
       ev.target.value = '';
@@ -4405,7 +4673,11 @@ const Guru = {
           if (jumlahTempel > 0) ket = ` (${jumlahTempel - gagalTempel} gambar tempelan di Word ikut otomatis terunggah${gagalTempel ? `, ${gagalTempel} gagal` : ''})`;
           toast(res.count + ' soal berhasil diimpor dari Word' + ket + '.', 'success');
           Guru.muatBankSoal();
-          if (peringatan.length) alert('Berhasil diimpor, TAPI ada ' + peringatan.length + ' soal dengan kunci jawaban yang tidak dikenali (mohon periksa & perbaiki manual di Bank Soal):\n\n' + peringatan.join('\n\n'));
+          if (peringatan.length) Dialog.info({
+            judul: 'Impor Berhasil, Perlu Diperiksa', tipe: 'warning', ikon: 'fa-file-circle-exclamation',
+            pesan: 'Soal berhasil diimpor, **tetapi** ' + peringatan.length + ' soal memiliki kunci jawaban yang tidak dikenali. Mohon periksa dan perbaiki manual di Bank Soal:',
+            daftar: peringatan
+          });
         }
         else toast('Gagal impor: ' + res.error, 'error');
       } catch (err) {
@@ -4473,7 +4745,12 @@ const Guru = {
   },
 
   async hapusUjian(id) {
-    if (!confirm('Hapus ujian ini? Rekap nilai yang sudah ada tidak akan terhapus.')) return;
+    const ujianHapus = (state.guru.ujianList || []).find(x => x.id === id);
+    if (!(await Dialog.konfirmasi({
+      judul: 'Hapus Ujian?', tipe: 'danger', ikon: 'fa-trash-can',
+      pesan: `Ujian **${ujianHapus ? ujianHapus.judul : 'ini'}** akan dihapus.\n\nRekap nilai yang sudah ada **tidak** ikut terhapus.`,
+      teksYa: 'Ya, Hapus Ujian'
+    }))) return;
     const res = await api('hapusUjian', { id });
     if (res.ok) { toast('Ujian dihapus.', 'success'); Guru.muatDaftarUjian(); }
   },
@@ -4530,6 +4807,7 @@ const Guru = {
       };
       ujian.tampil_detail = document.getElementById('ujian-tampil-detail').checked;
       ujian.tampil_pembahasan = document.getElementById('ujian-tampil-pembahasan').checked;
+      ujian.bukti_orek = document.getElementById('ujian-bukti-orek').value; // '' | 'wajib' | 'opsional'
       const hasilPesan = Guru.ambilPesanNilaiUntukSimpan();
       if (hasilPesan.error) { toast(hasilPesan.error, 'error'); return; }
       ujian.pesan_nilai = hasilPesan.json;
@@ -4557,6 +4835,7 @@ const Guru = {
     const res = await api('getRekapNilai', { ujianId });
     if (!res.ok) { cont.textContent = 'Gagal memuat.'; return; }
     state.guru._rekapAktif = res.data;
+    state.guru._rekapBuktiMode = res.buktiMode || '';
     isiOpsiKelas_('kelas-rekap', kelasUnikDari_(res.data));
     Guru.renderTabelRekap_();
   },
@@ -4564,6 +4843,17 @@ const Guru = {
   // Data rekap setelah Filter Kelas + kotak cari.
   rekapTersaring_() {
     return (state.guru._rekapAktif || []).filter(r => cocokFilterSiswa_(r, 'kelas-rekap', 'cari-rekap'));
+  },
+
+  // Sel "Bukti Orak-Orik" di sebelah nilai: miniatur + jumlah foto (klik = galeri) atau status belum unggah.
+  selBuktiRekap_(r) {
+    const b = Array.isArray(r.bukti) ? r.bukti : [];
+    if (b.length) {
+      const thumbs = b.slice(0, 3).map(f => `<img src="${escapeHtml_(f.url)}" alt="" loading="lazy">`).join('');
+      return `<button type="button" class="bukti-chip" title="Lihat foto bukti orak-orik" onclick="BuktiGaleri.buka('${escapeHtml_(r.sesiId)}')"><span class="bukti-thumbs">${thumbs}</span><span><i class="fa-solid fa-camera"></i> ${b.length} foto</span></button>`;
+    }
+    if (state.guru._rekapBuktiMode === 'wajib') return '<span class="badge warn" title="Siswa belum mengunggah foto bukti orak-orik">Belum unggah</span>';
+    return '<span style="color:var(--c-muted)">—</span>';
   },
 
   renderTabelRekap_() {
@@ -4575,10 +4865,12 @@ const Guru = {
     const rata = angka.length ? (angka.reduce((a, b) => a + b, 0) / angka.length) : null;
     tampilkanInfoFilter_('kelas-rekap-info', data.length, semua.length, rata === null ? '' : 'rata-rata nilai ' + (Math.round(rata * 10) / 10));
     if (data.length === 0) { cont.innerHTML = '<p class="subtitle">Tidak ada siswa yang cocok dengan kelas/pencarian ini.</p>'; return; }
-    cont.innerHTML = `<table class="ledger"><thead><tr><th style="width:2rem"><input type="checkbox" id="rekap-pilih-semua" title="Pilih semua yang tampil" onchange="Guru.pilihSemuaRekap(this.checked)"></th><th>Nama</th><th>Kelas</th><th>Nilai</th><th>Status</th><th>Pelanggaran</th><th>Selesai</th><th>Durasi</th><th></th></tr></thead><tbody>` +
+    const adaKolomBukti = !!state.guru._rekapBuktiMode || semua.some(r => Array.isArray(r.bukti) && r.bukti.length);
+    cont.innerHTML = `<table class="ledger"><thead><tr><th style="width:2rem"><input type="checkbox" id="rekap-pilih-semua" title="Pilih semua yang tampil" onchange="Guru.pilihSemuaRekap(this.checked)"></th><th>Nama</th><th>Kelas</th><th>Nilai</th>${adaKolomBukti ? '<th>Bukti Orak-Orik</th>' : ''}<th>Status</th><th>Pelanggaran</th><th>Selesai</th><th>Durasi</th><th></th></tr></thead><tbody>` +
       data.map(r => `<tr>
         <td><input type="checkbox" class="rekap-cek" value="${escapeHtml_(r.sesiId || '')}" ${r.sesiId ? '' : 'disabled'}></td>
         <td>${escapeHtml_(r.nama)}</td><td>${escapeHtml_(r.kelas)}</td><td><strong>${r.nilai}</strong></td>
+        ${adaKolomBukti ? `<td>${Guru.selBuktiRekap_(r)}</td>` : ''}
         <td><span class="badge ${String(r.lulus) === 'true' ? 'ok' : 'no'}">${String(r.lulus) === 'true' ? 'Lulus' : 'Remedial'}</span></td>
         <td>${r.pelanggaran || 0} ${r.status === 'diblokir' ? '<span class="badge warn">Diblokir</span>' : ''}</td>
         <td style="font-size:.8rem">${formatTanggal(r.selesai)}</td>
@@ -4593,9 +4885,9 @@ const Guru = {
 
   // Inti penghapusan nilai: kirim 1 permintaan utk banyak sesi, lalu perbarui
   // tampilan dari data lokal (tanpa unduh ulang).
-  async hapusNilaiIds_(idList, pesanKonfirmasi) {
+  async hapusNilaiIds_(idList, opsiDialog) {
     if (!idList.length) { toast('Pilih dulu nilai siswa yang ingin dihapus (centang kotak di kiri nama).', 'error'); return; }
-    if (!confirm(pesanKonfirmasi)) return;
+    if (!(await Dialog.konfirmasi(opsiDialog))) return;
     toast(`Menghapus ${idList.length} nilai...`);
     const res = await api('hapusNilaiSiswa', { sesiIds: JSON.stringify(idList) });
     if (!res.ok) { toast('Gagal menghapus nilai: ' + res.error, 'error'); return; }
@@ -4608,12 +4900,20 @@ const Guru = {
   hapusNilaiSatu(sesiId) {
     const r = (state.guru._rekapAktif || []).find(x => String(x.sesiId) === String(sesiId));
     const nama = r ? r.nama : 'siswa ini';
-    return Guru.hapusNilaiIds_([sesiId], `Hapus nilai "${nama}" pada ujian ini? Jawaban & nilainya dihapus PERMANEN dan siswa bisa mengerjakan ujian ini lagi dari awal. Tidak bisa dibatalkan.`);
+    return Guru.hapusNilaiIds_([sesiId], {
+      judul: 'Hapus Nilai Siswa?', tipe: 'danger', ikon: 'fa-trash-can',
+      pesan: `Nilai **${nama}** pada ujian ini akan dihapus **permanen**. Siswa bisa mengerjakan ujian ini lagi dari awal.\n\nTindakan ini tidak bisa dibatalkan.`,
+      teksYa: 'Hapus Nilai'
+    });
   },
 
   hapusNilaiTerpilih() {
     const ids = Array.from(document.querySelectorAll('#tabel-rekap .rekap-cek:checked')).map(cb => cb.value).filter(Boolean);
-    return Guru.hapusNilaiIds_(ids, `Hapus ${ids.length} nilai siswa yang dicentang? Jawaban & nilai dihapus PERMANEN dan siswa-siswa tsb bisa mengerjakan ujian ini lagi. Tidak bisa dibatalkan.`);
+    return Guru.hapusNilaiIds_(ids, {
+      judul: 'Hapus Nilai Terpilih?', tipe: 'danger', ikon: 'fa-trash-can',
+      pesan: `**${ids.length} nilai** siswa yang dicentang akan dihapus **permanen**. Siswa-siswa tersebut bisa mengerjakan ujian ini lagi.\n\nTindakan ini tidak bisa dibatalkan.`,
+      teksYa: `Hapus ${ids.length} Nilai`
+    });
   },
 
   hapusSemuaNilaiUjian() {
@@ -4622,7 +4922,11 @@ const Guru = {
     if (!ids.length) { toast('Belum ada nilai untuk dihapus.', 'error'); return; }
     const kelasDipilih = document.getElementById('kelas-rekap')?.value || '';
     const ruang = disaring ? `yang sedang tampil${kelasDipilih ? ' (kelas ' + kelasDipilih + ')' : ''}` : 'pada ujian ini';
-    return Guru.hapusNilaiIds_(ids, `Hapus ${disaring ? '' : 'SEMUA '}${ids.length} nilai ${ruang}? Jawaban & nilai dihapus PERMANEN dan siswa-siswa tsb bisa mengerjakan ujian ini lagi. Tidak bisa dibatalkan.`);
+    return Guru.hapusNilaiIds_(ids, {
+      judul: disaring ? 'Hapus Nilai yang Tampil?' : 'Hapus Semua Nilai Ujian?', tipe: 'danger', ikon: 'fa-trash-can',
+      pesan: `**${ids.length} nilai** ${ruang} akan dihapus **permanen**. Siswa-siswa tersebut bisa mengerjakan ujian ini lagi.\n\nTindakan ini tidak bisa dibatalkan.`,
+      ketik: disaring ? undefined : 'HAPUS', teksYa: `Hapus ${ids.length} Nilai`
+    });
   },
 
   // Unduh rekap nilai sebagai file Excel (.xlsx) sungguhan: kolom langsung rapi
@@ -4653,7 +4957,7 @@ const Guru = {
       return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
     };
     const buatSheet = (arr, denganUjian) => {
-      const headers = ['No'].concat(denganUjian ? ['Ujian'] : [], ['Nama', 'Kelas', 'Nilai', 'Keterangan', 'Pelanggaran', 'Mulai', 'Selesai', 'Durasi Pengerjaan', 'Durasi (menit)']);
+      const headers = ['No'].concat(denganUjian ? ['Ujian'] : [], ['Nama', 'Kelas', 'Nilai', 'Keterangan', 'Pelanggaran', 'Mulai', 'Selesai', 'Durasi Pengerjaan', 'Durasi (menit)', 'Foto Bukti Orak-Orik']);
       const rows = urut(arr, denganUjian).map((r, i) => {
         const lulus = r.lulus === true || String(r.lulus).toLowerCase() === 'true';
         const lulusSalah = r.lulus === false || String(r.lulus).toLowerCase() === 'false';
@@ -4666,11 +4970,12 @@ const Guru = {
           Number(r.pelanggaran) || 0,
           fmtWaktu(r.mulai), fmtWaktu(r.selesai),
           detik === null ? '-' : formatDurasi_(detik),
-          detik === null ? '' : Math.round(detik / 6) / 10
+          detik === null ? '' : Math.round(detik / 6) / 10,
+          Array.isArray(r.bukti) ? r.bukti.length : 0
         ]);
       });
       const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
-      ws['!cols'] = (denganUjian ? [5, 28] : [5]).concat([30, 10, 8, 12, 12, 18, 18, 20, 14]).map(w => ({ wch: w }));
+      ws['!cols'] = (denganUjian ? [5, 28] : [5]).concat([30, 10, 8, 12, 12, 18, 18, 20, 14, 14]).map(w => ({ wch: w }));
       ws['!freeze'] = { xSplit: 0, ySplit: 1 };
       ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: Math.max(rows.length, 1), c: headers.length - 1 } }) };
       return ws;
@@ -4733,7 +5038,11 @@ const Guru = {
   async hitungUlangNilai() {
     const ujianId = document.getElementById('pilih-ujian-rekap').value;
     if (!ujianId) { toast('Pilih ujian terlebih dahulu.', 'error'); return; }
-    if (!confirm('Hitung ulang nilai SEMUA siswa yang sudah selesai di ujian ini? Jawaban siswa tidak akan diubah/dihapus, hanya nilai & status lulusnya yang mungkin diperbarui kalau ada yang sebelumnya salah dihitung.')) return;
+    if (!(await Dialog.konfirmasi({
+      judul: 'Hitung Ulang Nilai?', tipe: 'info', ikon: 'fa-calculator',
+      pesan: 'Nilai dan status lulus **semua siswa** yang sudah selesai di ujian ini akan dihitung ulang.\n\nJawaban siswa **tidak diubah atau dihapus**; hanya nilai dan status lulus yang mungkin diperbarui bila sebelumnya salah dihitung.',
+      teksYa: 'Ya, Hitung Ulang'
+    }))) return;
     toast('Menghitung ulang nilai...');
     const res = await api('hitungUlangNilaiUjian', { ujianId });
     if (res.ok) {
@@ -4962,7 +5271,14 @@ const Guru = {
   },
 
   async pemantauanTambahWaktu(sesiId, nama) {
-    const menitStr = prompt(`Tambah berapa menit untuk "${nama}"? (isi angka negatif untuk mengurangi)`, '10');
+    const menitStr = await Dialog.input({
+      judul: 'Atur Waktu Pengerjaan', tipe: 'info', ikon: 'fa-clock',
+      pesan: `Tambah atau kurangi sisa waktu untuk **${nama}**. Isi angka negatif untuk mengurangi.`,
+      label: 'Jumlah menit', nilai: '10', jenisInput: 'number', placeholder: 'mis. 10 atau -5', wajib: true,
+      chips: [{ label: '+5 menit', nilai: '5' }, { label: '+10 menit', nilai: '10' }, { label: '+15 menit', nilai: '15' }, { label: '+30 menit', nilai: '30' }, { label: '−5 menit', nilai: '-5' }],
+      validasi: v => (!Number(v) || isNaN(Number(v))) ? 'Masukkan jumlah menit yang valid, mis. 10 atau -5.' : '',
+      teksYa: 'Terapkan'
+    });
     if (menitStr === null) return;
     const menit = Number(menitStr);
     if (!menit || isNaN(menit)) { toast('Masukkan jumlah menit yang valid.', 'error'); return; }
@@ -4972,21 +5288,33 @@ const Guru = {
   },
 
   async pemantauanForceFinish(sesiId, nama) {
-    if (!confirm(`Selesaikan ujian "${nama}" sekarang juga memakai jawaban terakhir yang tersimpan? Siswa tidak bisa melanjutkan lagi setelah ini.`)) return;
+    if (!(await Dialog.konfirmasi({
+      judul: 'Selesaikan Ujian Sekarang?', tipe: 'warning', ikon: 'fa-flag-checkered',
+      pesan: `Ujian **${nama}** akan diselesaikan sekarang memakai jawaban terakhir yang tersimpan.\n\nSiswa tidak bisa melanjutkan lagi setelah ini.`,
+      teksYa: 'Ya, Selesaikan'
+    }))) return;
     const res = await api('pemantauanForceFinish', { sesiId });
     if (res.ok) { toast(`Ujian "${nama}" diselesaikan paksa. Nilai: ${res.nilai}.`, 'success'); Guru.muatPemantauan(); }
     else toast('Gagal: ' + res.error, 'error');
   },
 
   async pemantauanHapusPelanggaran(sesiId, nama) {
-    if (!confirm(`Hapus semua pelanggaran "${nama}" (jadi 0)? Kalau sesinya sedang diblokir, siswa bisa langsung melanjutkan dari soal terakhir tanpa mengulang dari awal.`)) return;
+    if (!(await Dialog.konfirmasi({
+      judul: 'Hapus Catatan Pelanggaran?', tipe: 'warning', ikon: 'fa-shield-halved',
+      pesan: `Pelanggaran **${nama}** akan diatur kembali menjadi **0**.\n\nBila sesinya sedang diblokir, siswa bisa langsung melanjutkan dari soal terakhir tanpa mengulang dari awal.`,
+      teksYa: 'Ya, Hapus Pelanggaran'
+    }))) return;
     const res = await api('pemantauanHapusPelanggaran', { sesiId });
     if (res.ok) { toast(`Pelanggaran "${nama}" direset ke 0.`, 'success'); Guru.muatPemantauan(); }
     else toast('Gagal: ' + res.error, 'error');
   },
 
   async pemantauanReset(sesiId, nama) {
-    if (!confirm(`Reset TOTAL sesi ujian "${nama}"? Soal akan diacak ulang, jawaban & waktu dihapus -- siswa mengerjakan dari awal lagi. Tindakan ini tidak bisa dibatalkan.`)) return;
+    if (!(await Dialog.konfirmasi({
+      judul: 'Reset Total Sesi Ujian?', tipe: 'danger', ikon: 'fa-arrow-rotate-left',
+      pesan: `Sesi ujian **${nama}** akan direset total: soal diacak ulang, jawaban dan waktu dihapus, siswa mengerjakan dari awal lagi.\n\nTindakan ini tidak bisa dibatalkan.`,
+      ketik: 'RESET', teksYa: 'Reset Sesi'
+    }))) return;
     const res = await api('pemantauanReset', { sesiId });
     if (res.ok) { toast(`Sesi "${nama}" berhasil direset.`, 'success'); Guru.muatPemantauan(); }
     else toast('Gagal: ' + res.error, 'error');
@@ -5095,7 +5423,13 @@ const Guru = {
   },
 
   async hapusSiswa(id) {
-    if (!confirm('Hapus siswa ini? Akun tidak akan bisa login lagi.')) return;
+    const siswaHapus = (state.guru.daftarSiswa || []).find(x => x.id === id);
+    if (!(await Dialog.konfirmasi({
+      judul: 'Hapus Siswa?', tipe: 'danger', ikon: 'fa-user-xmark',
+      pesan: siswaHapus ? `Akun **${siswaHapus.nama}** akan dihapus dan tidak bisa login lagi.` : 'Akun siswa ini akan dihapus dan tidak bisa login lagi.',
+      rincian: siswaHapus ? [['Username', siswaHapus.username], ['Kelas', siswaHapus.kelas]] : [],
+      teksYa: 'Ya, Hapus Siswa'
+    }))) return;
     const res = await api('hapusSiswa', { id });
     if (res.ok) { toast('Siswa dihapus.', 'success'); Guru.muatDaftarSiswa(); }
     else toast('Gagal menghapus: ' + res.error, 'error');
@@ -5107,7 +5441,14 @@ const Guru = {
   async blokirSiswa(siswaId) {
     const s = (state.guru.daftarSiswa || []).find(x => x.id === siswaId);
     if (!s) return;
-    const alasan = prompt(`Blokir akun "${s.nama}"?\n\nSelama diblokir, siswa ini tidak bisa mengikuti kuis (teman sekelasnya tetap bisa).\nTulis alasan singkat (opsional, akan terlihat oleh siswa):`, 'Tidak serius mengerjakan soal kuis');
+    const alasan = await Dialog.input({
+      judul: 'Blokir Akun Siswa', tipe: 'danger', ikon: 'fa-user-lock',
+      pesan: `Akun **${s.nama}** tidak akan bisa mengikuti kuis selama diblokir. Teman sekelasnya tetap bisa mengerjakan.`,
+      rincian: [['Siswa', s.nama], ['Kelas', s.kelas]],
+      label: 'Alasan (opsional, terlihat oleh siswa)', nilai: 'Tidak serius mengerjakan soal kuis', multiline: true, maksimal: 200,
+      chips: ['Tidak serius mengerjakan soal kuis', 'Menjawab asal-asalan', 'Melanggar tata tertib ujian'],
+      teksYa: 'Blokir Akun'
+    });
     if (alasan === null) return; // dibatalkan
     const res = await api('blokirSiswa', { siswaId, aktif: true, alasan: alasan.trim() });
     if (res.ok) { toast(`Akun ${s.nama} diblokir.`, 'success'); Guru.muatDaftarSiswa(); }
@@ -5117,7 +5458,12 @@ const Guru = {
   async bukaBlokirSiswa(siswaId) {
     const s = (state.guru.daftarSiswa || []).find(x => x.id === siswaId);
     if (!s) return;
-    if (!confirm(`Buka blokir akun "${s.nama}"? Siswa ini bisa mengikuti kuis lagi.`)) return;
+    if (!(await Dialog.konfirmasi({
+      judul: 'Buka Blokir Akun?', tipe: 'success', ikon: 'fa-lock-open',
+      pesan: `Blokir akun **${s.nama}** akan dibuka. Siswa ini bisa mengikuti kuis lagi.`,
+      rincian: [['Siswa', s.nama], ['Kelas', s.kelas], ['Alasan blokir', s.blokirAlasan || ''], ['Diblokir', s.blokirSejak ? formatSudahBerapaLama(s.blokirSejak) : '']],
+      teksYa: 'Ya, Buka Blokir'
+    }))) return;
     const res = await api('blokirSiswa', { siswaId, aktif: false });
     if (res.ok) { toast(`Blokir akun ${s.nama} dibuka.`, 'success'); Guru.muatDaftarSiswa(); }
     else toast('Gagal membuka blokir: ' + res.error, 'error');
@@ -5138,7 +5484,11 @@ const Guru = {
     if (target.length === 0) { toast('Tidak ada siswa untuk dilepas.', 'error'); return; }
     if (terkunci === 0) { toast(kelas ? `Tidak ada perangkat yang terkunci di kelas ${kelas}.` : 'Tidak ada perangkat yang terkunci.', 'info'); return; }
     const label = kelas ? `kelas "${kelas}"` : 'SEMUA KELAS';
-    if (!confirm(`Lepas perangkat ${terkunci} siswa yang sedang terkunci di ${label}?\n\nSiswa bisa login lagi dari perangkat mana pun.`)) return;
+    if (!(await Dialog.konfirmasi({
+      judul: 'Lepas Kunci Perangkat?', tipe: 'warning', ikon: 'fa-unlock-keyhole',
+      pesan: `Perangkat **${terkunci} siswa** yang sedang terkunci di ${kelas ? 'kelas **' + kelas + '**' : '**semua kelas**'} akan dilepas.\n\nSiswa bisa login lagi dari perangkat mana pun.`,
+      teksYa: 'Ya, Lepas Kunci'
+    }))) return;
     const res = await api('resetDeviceKelas', { kelas });
     if (res.ok) {
       toast(`Perangkat ${res.count} siswa di ${label} berhasil dilepas.`, 'success');
@@ -5349,7 +5699,11 @@ const Guru = {
     const kelas = select.value;
     if (!kelas) { toast('Pilih dulu kelas yang mau dihapus lewat dropdown Filter Kelas.', 'error'); return; }
     const jumlah = (state.guru.daftarSiswa || []).filter(s => s.kelas === kelas).length;
-    if (!confirm(`Hapus SEMUA ${jumlah} siswa di kelas "${kelas}"? Akun-akun ini tidak akan bisa login lagi. Tindakan ini tidak bisa dibatalkan.`)) return;
+    if (!(await Dialog.konfirmasi({
+      judul: 'Hapus Seluruh Kelas?', tipe: 'danger', ikon: 'fa-users-slash',
+      pesan: `**${jumlah} siswa** di kelas **${kelas}** akan dihapus dan tidak bisa login lagi.\n\nTindakan ini tidak bisa dibatalkan.`,
+      ketik: 'HAPUS', teksYa: 'Hapus Kelas'
+    }))) return;
     const res = await api('hapusKelas', { kelas });
     if (res.ok) { toast(`Kelas "${kelas}" dihapus (${res.count} siswa).`, 'success'); Guru.muatDaftarSiswa(); }
     else toast('Gagal menghapus kelas: ' + res.error, 'error');
@@ -5691,7 +6045,12 @@ const Guru = {
     const jumlahSiswa = (db.siswa || []).length;
     const jumlahUjian = (db.ujian || []).length;
     if (jumlahSoal + jumlahSiswa + jumlahUjian === 0) { toast('Tidak ada data Mode Lokal di perangkat ini untuk dikirim.', 'error'); return; }
-    if (!confirm(`Ini akan MENAMBAHKAN salinan data lokal di perangkat ini (${jumlahSoal} soal, ${jumlahSiswa} siswa, ${jumlahUjian} ujian) ke Google Sheets yang sedang terhubung.\n\nPakai sekali saat pertama kali pindah dari Mode Lokal ke Mode Server — mengulang tindakan ini pada data yang sama akan membuat data ganda. Lanjutkan?`)) return;
+    if (!(await Dialog.konfirmasi({
+      judul: 'Kirim Data Lokal ke Google Sheets?', tipe: 'warning', ikon: 'fa-cloud-arrow-up',
+      pesan: 'Salinan data lokal di perangkat ini akan **ditambahkan** ke Google Sheets yang sedang terhubung.\n\nPakai **sekali** saat pertama kali pindah dari Mode Lokal ke Mode Server. Mengulang pada data yang sama akan membuat data ganda.',
+      rincian: [['Soal', String(jumlahSoal)], ['Siswa', String(jumlahSiswa)], ['Ujian', String(jumlahUjian)]],
+      teksYa: 'Ya, Kirim Data'
+    }))) return;
 
     toast('Mengirim data lokal ke Google Sheets...');
     let berhasilSoal = 0, berhasilSiswa = 0, berhasilUjian = 0;
@@ -5888,6 +6247,16 @@ const Siswa = {
     const res = await api('mulaiUjian', { ujianId: state.ujian.id, siswaId: state.user.id, deviceId: state.deviceId });
     if (!res.ok) { toast(res.error, 'error'); return; }
 
+    // Pemulihan: siswa sudah selesai tapi bukti orak-orik WAJIB belum terunggah (halaman sempat tertutup).
+    if (res.perluBukti) {
+      state.sesiId = res.sesiId;
+      state.submitting = true;
+      await BuktiUI.buka({ mode: res.buktiOrek, sesiId: res.sesiId, judul: res.judul || state.ujian.judul, pemulihan: true });
+      state.submitting = false;
+      ExamEngine.tampilkanHasil(res.nilai, res.lulus, res.judul || state.ujian.judul);
+      return;
+    }
+
     state.submitting = false; // reset sisa ujian sebelumnya
     state.sesiId = res.sesiId;
     state.soal = res.soal;
@@ -5977,6 +6346,375 @@ SkalaSoal.init();
 // ============================================================================
 // KONFIRMASI KUMPULKAN UJIAN & LAYAR PENGIRIMAN (pengganti confirm() bawaan browser)
 // ============================================================================
+// ----------------------------------------------------------------------------
+// BUKTI ORAK-ORIK JAWABAN (siswa mengunggah foto kertas coretan setelah klik Selesai)
+// Urutan: nilai tersimpan di server -> halaman ini -> nilai akhir (lulus/remedial) tampil.
+// Jaminan terkirim: tiap foto diverifikasi ukurannya oleh server, otomatis dicoba ulang (4x),
+// kirim ulang tidak membuat duplikat, dan sebelum lanjut daftar foto diperiksa ulang ke server.
+// ----------------------------------------------------------------------------
+const BuktiFoto = {
+  MAKS_FOTO: 10,
+  adalahHeic(file) { return /\.(heic|heif|hif)$/i.test(file.name || '') || /image\/(heic|heif)/i.test(file.type || ''); },
+
+  async _dekode(blob) {
+    if (window.createImageBitmap) {
+      try {
+        const bmp = await createImageBitmap(blob, { imageOrientation: 'from-image' });
+        return { sumber: bmp, w: bmp.width, h: bmp.height, tutup: () => { try { bmp.close(); } catch (e) { /* abaikan */ } } };
+      } catch (e) { /* lanjut ke cara klasik */ }
+    }
+    const url = URL.createObjectURL(blob);
+    try {
+      const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('decode')); i.src = url; });
+      return { sumber: img, w: img.naturalWidth, h: img.naturalHeight, tutup: () => {} };
+    } finally { URL.revokeObjectURL(url); }
+  },
+
+  // Foto apa pun (JPG/PNG/WEBP/GIF/BMP/AVIF/HEIC/HEIF, resolusi tinggi) -> JPEG terkompresi yang aman dikirim.
+  async proses(file) {
+    const lokal = !modeServerAktif(); // Mode Lokal: penyimpanan browser terbatas -> foto dibuat lebih kecil
+    const maksSisi = lokal ? 1200 : 2000, targetByte = lokal ? 250000 : 2200000;
+    let blob = file, dekode = null;
+    if (BuktiFoto.adalahHeic(file)) {
+      try { dekode = await BuktiFoto._dekode(file); } // Safari/iPhone bisa membaca HEIC langsung
+      catch (e) {
+        await muatPustaka_('heic2any'); // Chrome/Firefox/Android: konversi dgn pustaka
+        try {
+          const hasil = await window.heic2any({ blob: file, toType: 'image/jpeg', quality: 0.92 });
+          blob = Array.isArray(hasil) ? hasil[0] : hasil;
+        } catch (err) { throw new Error('Foto HEIC ini tidak bisa dibaca. Coba foto ulang atau ubah ke JPG.'); }
+      }
+    }
+    if (!dekode) {
+      try { dekode = await BuktiFoto._dekode(blob); }
+      catch (e) { throw new Error('Format gambar tidak didukung di perangkat ini. Pilih foto JPG/PNG/HEIC atau foto ulang.'); }
+    }
+    let skala = Math.min(1, maksSisi / Math.max(dekode.w, dekode.h, 1)), kualitas = lokal ? 0.7 : 0.86, hasilBlob = null;
+    for (let coba = 0; coba < 6; coba++) {
+      const c = document.createElement('canvas');
+      c.width = Math.max(1, Math.round(dekode.w * skala));
+      c.height = Math.max(1, Math.round(dekode.h * skala));
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height); // PNG transparan -> latar putih (bukan hitam)
+      ctx.drawImage(dekode.sumber, 0, 0, c.width, c.height);
+      hasilBlob = await new Promise(r => c.toBlob(r, 'image/jpeg', kualitas));
+      if (!hasilBlob) throw new Error('Gagal memproses foto. Coba lagi.');
+      if (hasilBlob.size <= targetByte) break;
+      kualitas = Math.max(0.55, kualitas - 0.08);
+      skala *= 0.85;
+    }
+    dekode.tutup();
+    return { blob: hasilBlob };
+  },
+
+  blobKeBase64(blob) {
+    return new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(String(r.result).split(',')[1] || '');
+      r.onerror = () => reject(new Error('Gagal membaca foto.'));
+      r.readAsDataURL(blob);
+    });
+  }
+};
+
+const BuktiUI = {
+  _s: null,
+  _el(id) { return document.getElementById(id); },
+  _tunggu(ms) { return new Promise(r => setTimeout(r, ms)); },
+  _berjalan(i) { return i.status === 'proses' || i.status === 'antre' || i.status === 'unggah'; },
+
+  // Menampilkan halaman unggah; Promise selesai saat siswa boleh melihat nilai (semua foto terverifikasi / dilewati).
+  buka({ mode, sesiId, judul, pemulihan }) {
+    return new Promise(resolve => {
+      BuktiUI._s = { mode, sesiId, items: [], mengunggah: false, sibuk: false, selesai: false, resolve };
+      KumpulUI.sembunyikanSemua();
+      UI.tampilkan('bukti-screen');
+      window.scrollTo(0, 0);
+      BuktiUI._el('bukti-judul-ujian').textContent = judul || '-';
+      BuktiUI._el('bukti-terkirim-sub').textContent = pemulihan
+        ? 'Nilai Anda sudah tersimpan, tetapi bukti orak-orik belum diunggah.'
+        : 'Nilai Anda sudah tersimpan aman di server.';
+      BuktiUI._el('bukti-sub').textContent = mode === 'wajib'
+        ? 'Foto kertas coretan (orak-orik) yang Anda pakai saat mengerjakan, lalu unggah di sini. Wajib minimal 1 foto. Setelah semua foto terkirim, nilai akhir Anda akan ditampilkan.'
+        : 'Foto kertas coretan (orak-orik) Anda lalu unggah di sini. Langkah ini opsional. Setelah selesai, nilai akhir Anda akan ditampilkan.';
+      BuktiUI.render();
+      window.addEventListener('beforeunload', BuktiUI._peringatan);
+    });
+  },
+
+  _peringatan(e) {
+    const s = BuktiUI._s;
+    if (s && !s.selesai && s.items.some(BuktiUI._berjalan)) { e.preventDefault(); e.returnValue = ''; }
+  },
+
+  dariInput(input) {
+    const files = Array.from(input.files || []);
+    input.value = ''; // supaya foto yang sama bisa dipilih lagi
+    BuktiUI.tambah(files);
+  },
+
+  async tambah(files) {
+    const s = BuktiUI._s;
+    if (!s || !files.length) return;
+    const sisa = BuktiFoto.MAKS_FOTO - s.items.length;
+    if (sisa <= 0) { toast('Maksimal ' + BuktiFoto.MAKS_FOTO + ' foto.', 'error'); return; }
+    if (files.length > sisa) toast('Maksimal ' + BuktiFoto.MAKS_FOTO + ' foto. ' + (files.length - sisa) + ' foto diabaikan.', 'error');
+    const baru = files.slice(0, sisa).map((f, n) => ({
+      uid: 'f' + Date.now().toString(36) + n + Math.random().toString(36).slice(2, 6),
+      kunci: 'k' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10),
+      nama: f.name || 'foto.jpg', status: 'proses', galat: '', blob: null, previewUrl: '', serverId: '', _file: f
+    }));
+    s.items.push(...baru);
+    BuktiUI.render();
+    for (const it of baru) { // berurutan: hemat memori untuk foto HEIC/resolusi tinggi
+      if (!s.items.includes(it)) continue;
+      try {
+        const hasil = await BuktiFoto.proses(it._file);
+        it.blob = hasil.blob;
+        it.previewUrl = URL.createObjectURL(hasil.blob);
+        it.status = 'antre';
+      } catch (e) {
+        it.status = 'gagal'; it.galat = e.message || 'Foto tidak bisa diproses.';
+      }
+      it._file = null;
+      BuktiUI.render();
+      BuktiUI._jalankanAntrean();
+    }
+  },
+
+  async _jalankanAntrean() {
+    const s = BuktiUI._s;
+    if (!s || s.mengunggah) return;
+    s.mengunggah = true;
+    try {
+      let it;
+      while (BuktiUI._s === s && (it = s.items.find(x => x.status === 'antre'))) {
+        it.status = 'unggah'; BuktiUI.render();
+        await BuktiUI._unggah(it);
+        BuktiUI.render();
+      }
+    } finally { s.mengunggah = false; BuktiUI.render(); }
+  },
+
+  async _unggah(it) {
+    const s = BuktiUI._s;
+    let base64;
+    try { base64 = await BuktiFoto.blobKeBase64(it.blob); } catch (e) { it.status = 'gagal'; it.galat = e.message; return; }
+    const fatal = /bukan milik|tidak ditemukan|tidak diaktifkan|Maksimal|Format gambar|Selesaikan ujian|penuh/i;
+    for (let k = 1; k <= 4; k++) {
+      const res = await api('uploadBuktiOrek', {
+        sesiId: s.sesiId, siswaId: state.user.id, base64, mimeType: 'image/jpeg', kunci: it.kunci,
+        filename: it.nama.replace(/\.[^.]+$/, '') + '.jpg'
+      });
+      if (res && res.ok && Number(res.bytes) === it.blob.size) {
+        it.status = 'ok'; it.serverId = res.id; it.galat = '';
+        return;
+      }
+      if (res && res.ok) { // server menyimpan, tapi ukurannya beda -> hapus lalu kirim ulang dgn kunci baru
+        it.galat = 'Ukuran berkas di server tidak cocok';
+        try { await api('hapusBuktiOrek', { id: res.id, sesiId: s.sesiId, siswaId: state.user.id }); } catch (e) { /* abaikan */ }
+        it.kunci = 'k' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+      } else {
+        it.galat = (res && res.error) || 'Gagal mengirim foto';
+        if (fatal.test(it.galat)) break;
+      }
+      if (k < 4) await BuktiUI._tunggu(900 * k);
+    }
+    it.status = 'gagal';
+  },
+
+  ulang(uid) {
+    const s = BuktiUI._s; const it = s && s.items.find(x => x.uid === uid);
+    if (!it || !it.blob || it.status !== 'gagal') return;
+    it.status = 'antre'; it.galat = '';
+    BuktiUI.render();
+    BuktiUI._jalankanAntrean();
+  },
+
+  async hapus(uid) {
+    const s = BuktiUI._s; const it = s && s.items.find(x => x.uid === uid);
+    if (!it || it.status === 'unggah' || it.status === 'proses') return;
+    if (it.status === 'ok' && it.serverId) {
+      const res = await api('hapusBuktiOrek', { id: it.serverId, sesiId: s.sesiId, siswaId: state.user.id });
+      if (!res || !res.ok) { toast('Gagal menghapus foto dari server. Coba lagi.', 'error'); return; }
+    }
+    if (it.previewUrl) URL.revokeObjectURL(it.previewUrl);
+    s.items = s.items.filter(x => x.uid !== uid);
+    BuktiUI.render();
+  },
+
+  async lewati() {
+    const s = BuktiUI._s;
+    if (!s || s.mode !== 'opsional' || s.items.length) return;
+    const ya = await Dialog.konfirmasi({
+      judul: 'Lewati Unggah Bukti?', tipe: 'warning', ikon: 'fa-forward',
+      pesan: 'Anda tidak akan mengunggah foto coretan untuk ujian ini. Nilai akhir akan langsung ditampilkan.',
+      teksYa: 'Ya, Lewati', teksBatal: 'Kembali'
+    });
+    if (ya) BuktiUI._selesai();
+  },
+
+  // Verifikasi akhir: daftar foto di SERVER harus memuat semua foto yang ditandai terkirim.
+  async lanjut() {
+    const s = BuktiUI._s;
+    if (!s || s.sibuk || s.selesai) return;
+    if (s.items.some(BuktiUI._berjalan)) { toast('Tunggu sampai semua foto selesai dikirim.', 'info'); return; }
+    if (s.items.some(i => i.status === 'gagal')) { toast('Ada foto yang gagal terkirim. Ketuk "Coba lagi" atau hapus foto tersebut.', 'error'); return; }
+    const terkirim = s.items.filter(i => i.status === 'ok');
+    if (s.mode === 'wajib' && terkirim.length === 0) { toast('Unggah minimal 1 foto bukti orak-orik.', 'error'); return; }
+    s.sibuk = true; BuktiUI.render();
+    try {
+      if (terkirim.length) {
+        const cek = await api('getBuktiOrek', { sesiId: s.sesiId, siswaId: state.user.id });
+        if (!cek || !cek.ok) { toast('Gagal memeriksa kiriman: ' + ((cek && cek.error) || 'koneksi bermasalah') + '. Coba lagi.', 'error'); return; }
+        const idServer = new Set((cek.data || []).map(x => x.id));
+        const hilang = terkirim.filter(i => !idServer.has(i.serverId));
+        if (hilang.length) {
+          hilang.forEach(i => { i.status = 'gagal'; i.galat = 'Belum tercatat di server'; });
+          toast(hilang.length + ' foto belum tercatat di server. Ketuk "Coba lagi" pada foto tersebut.', 'error');
+          return;
+        }
+      }
+      toast(terkirim.length ? 'Semua foto bukti sudah diterima server ✓' : 'Dilanjutkan tanpa foto.', 'success');
+      BuktiUI._selesai();
+    } finally {
+      if (BuktiUI._s === s) { s.sibuk = false; BuktiUI.render(); }
+    }
+  },
+
+  _selesai() {
+    const s = BuktiUI._s;
+    if (!s || s.selesai) return;
+    s.selesai = true;
+    window.removeEventListener('beforeunload', BuktiUI._peringatan);
+    s.items.forEach(i => { if (i.previewUrl) URL.revokeObjectURL(i.previewUrl); });
+    BuktiUI._s = null;
+    s.resolve();
+  },
+
+  render() {
+    const s = BuktiUI._s;
+    if (!s) return;
+    const total = s.items.length;
+    const ok = s.items.filter(i => i.status === 'ok').length;
+    const gagal = s.items.filter(i => i.status === 'gagal').length;
+    const sibukN = s.items.filter(BuktiUI._berjalan).length;
+    const ikon = { ok: 'fa-circle-check', unggah: 'fa-spinner fa-spin', proses: 'fa-spinner fa-spin', antre: 'fa-clock', gagal: 'fa-triangle-exclamation' };
+    const label = { ok: 'Terkirim', unggah: 'Mengirim...', proses: 'Memproses...', antre: 'Menunggu giliran' };
+    BuktiUI._el('bukti-grid').innerHTML = s.items.map((it, n) => `
+      <div class="bk-item ${it.status}">
+        <div class="bk-thumb">${it.previewUrl ? `<img src="${it.previewUrl}" alt="Foto ${n + 1}">` : '<i class="fa-solid fa-image bk-ph"></i>'}
+          <span class="bk-badge"><i class="fa-solid ${ikon[it.status]}"></i></span>
+        </div>
+        <div class="bk-info">
+          <span class="bk-nama" title="${escapeHtml_(it.nama)}">${escapeHtml_(it.nama)}</span>
+          <span class="bk-status">${it.status === 'gagal' ? escapeHtml_(it.galat || 'Gagal') : label[it.status]}</span>
+        </div>
+        ${it.status === 'gagal' && it.blob ? `<button type="button" class="bk-ulang" onclick="BuktiUI.ulang('${it.uid}')"><i class="fa-solid fa-rotate-right"></i> Coba lagi</button>` : ''}
+        <button type="button" class="bk-hapus" aria-label="Hapus foto" ${(it.status === 'unggah' || it.status === 'proses') ? 'disabled' : ''} onclick="BuktiUI.hapus('${it.uid}')"><i class="fa-solid fa-xmark"></i></button>
+      </div>`).join('');
+
+    const prog = BuktiUI._el('bukti-progres');
+    prog.classList.toggle('hidden', total === 0);
+    BuktiUI._el('bukti-progres-isi').style.width = (total ? Math.round(ok / total * 100) : 0) + '%';
+    BuktiUI._el('bukti-progres-teks').textContent = `${ok} dari ${total} foto terkirim` + (gagal ? ` • ${gagal} gagal` : '');
+
+    let boleh = true, hint;
+    if (s.sibuk) { boleh = false; hint = 'Memeriksa kiriman ke server...'; }
+    else if (sibukN) { boleh = false; hint = 'Mohon tunggu, foto sedang diproses dan dikirim. Jangan tutup halaman ini.'; }
+    else if (gagal) { boleh = false; hint = 'Ada foto yang gagal. Ketuk "Coba lagi" atau hapus foto tersebut.'; }
+    else if (ok === 0) { boleh = false; hint = s.mode === 'wajib' ? 'Unggah minimal 1 foto bukti orak-orik untuk melihat nilai.' : 'Belum ada foto. Tambahkan foto, atau lewati langkah ini.'; }
+    else hint = 'Semua foto sudah terkirim. Ketuk tombol di bawah untuk melihat nilai.';
+    BuktiUI._el('bukti-hint').textContent = hint;
+    const btn = BuktiUI._el('bukti-btn-lanjut');
+    btn.disabled = !boleh;
+    btn.innerHTML = s.sibuk ? '<i class="fa-solid fa-spinner fa-spin"></i> Memeriksa kiriman...' : '<i class="fa-solid fa-flag-checkered"></i> Selesai &amp; Lihat Nilai';
+    BuktiUI._el('bukti-btn-lewati').classList.toggle('hidden', !(s.mode === 'opsional' && total === 0));
+  }
+};
+
+// Galeri foto bukti orak-orik untuk GURU (dibuka dari kolom "Bukti" di Rekap Nilai)
+const BuktiGaleri = {
+  _s: null,
+  _besar(url) { return String(url || '').replace(/sz=w\d+/, 'sz=w2000'); },
+
+  buka(sesiId) {
+    const r = (state.guru._rekapAktif || []).find(x => String(x.sesiId) === String(sesiId));
+    const foto = r && Array.isArray(r.bukti) ? r.bukti : [];
+    if (!foto.length) return;
+    BuktiGaleri.tutup();
+    const wrap = document.createElement('div');
+    wrap.className = 'bg-backdrop';
+    wrap.innerHTML = `<div class="bg-panel" role="dialog" aria-modal="true" aria-label="Bukti orak-orik">
+      <div class="bg-head">
+        <div><div class="bg-judul">Bukti Orak-Orik — ${escapeHtml_(r.nama)}</div>
+        <div class="bg-sub">${escapeHtml_(r.kelas)} • Nilai ${escapeHtml_(r.nilai)} • ${foto.length} foto</div></div>
+        <button type="button" class="bg-tutup" data-aksi="tutup" aria-label="Tutup"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="bg-viewer">
+        <button type="button" class="bg-nav" data-aksi="prev" aria-label="Sebelumnya"><i class="fa-solid fa-chevron-left"></i></button>
+        <div class="bg-gambar-wrap"><img id="bg-img" alt="Foto bukti"><div class="bg-galat hidden" id="bg-galat">Gambar gagal dimuat. Coba tombol di bawah.</div></div>
+        <button type="button" class="bg-nav" data-aksi="next" aria-label="Berikutnya"><i class="fa-solid fa-chevron-right"></i></button>
+      </div>
+      <div class="bg-bar"><span id="bg-hitung"></span><a id="bg-asli" class="bg-link" rel="noopener"></a></div>
+      <div class="bg-strip">${foto.map((f, i) => `<button type="button" class="bg-th" data-idx="${i}"><img src="${escapeHtml_(f.url)}" alt="Foto ${i + 1}" loading="lazy"></button>`).join('')}</div>
+    </div>`;
+    document.body.appendChild(wrap);
+    const s = BuktiGaleri._s = { wrap, foto, idx: 0, nama: r.nama };
+    s.onKey = (e) => {
+      if (e.key === 'Escape') { e.stopPropagation(); BuktiGaleri.tutup(); }
+      else if (e.key === 'ArrowLeft') BuktiGaleri.geser(-1);
+      else if (e.key === 'ArrowRight') BuktiGaleri.geser(1);
+    };
+    document.addEventListener('keydown', s.onKey, true);
+    let mulaiDiLatar = false;
+    wrap.addEventListener('mousedown', (e) => { mulaiDiLatar = e.target === wrap; });
+    wrap.addEventListener('click', (e) => {
+      if (e.target === wrap && mulaiDiLatar) { BuktiGaleri.tutup(); return; }
+      const th = e.target.closest('[data-idx]');
+      if (th) { BuktiGaleri.tampil(Number(th.dataset.idx)); return; }
+      const aksi = e.target.closest('[data-aksi]');
+      if (!aksi) return;
+      if (aksi.dataset.aksi === 'tutup') BuktiGaleri.tutup();
+      else BuktiGaleri.geser(aksi.dataset.aksi === 'next' ? 1 : -1);
+    });
+    BuktiGaleri.tampil(0);
+  },
+
+  geser(d) {
+    const s = BuktiGaleri._s; if (!s) return;
+    BuktiGaleri.tampil((s.idx + d + s.foto.length) % s.foto.length);
+  },
+
+  tampil(i) {
+    const s = BuktiGaleri._s; if (!s) return;
+    s.idx = i;
+    const f = s.foto[i];
+    const img = s.wrap.querySelector('#bg-img'), galat = s.wrap.querySelector('#bg-galat');
+    galat.classList.add('hidden'); img.classList.remove('hidden');
+    img.onerror = () => { img.classList.add('hidden'); galat.classList.remove('hidden'); };
+    img.src = BuktiGaleri._besar(f.url);
+    s.wrap.querySelector('#bg-hitung').textContent = `Foto ${i + 1} dari ${s.foto.length}`;
+    const a = s.wrap.querySelector('#bg-asli');
+    if (String(f.url).startsWith('data:')) { // Mode Lokal: foto tersimpan di perangkat ini -> tawarkan unduh
+      a.removeAttribute('target'); a.href = f.url; a.download = 'bukti-orak-orik-' + String(s.nama).replace(/\W+/g, '-') + '-' + (i + 1) + '.jpg';
+      a.innerHTML = '<i class="fa-solid fa-download"></i> Unduh foto';
+    } else {
+      a.removeAttribute('download'); a.href = f.urlAsli || f.url; a.target = '_blank';
+      a.innerHTML = '<i class="fa-solid fa-up-right-from-square"></i> Buka ukuran asli';
+    }
+    s.wrap.querySelectorAll('.bg-th').forEach((b, n) => b.classList.toggle('aktif', n === i));
+    const aktif = s.wrap.querySelector('.bg-th.aktif'); if (aktif && aktif.scrollIntoView) aktif.scrollIntoView({ block: 'nearest', inline: 'center' });
+  },
+
+  tutup() {
+    const s = BuktiGaleri._s; if (!s) return;
+    document.removeEventListener('keydown', s.onKey, true);
+    s.wrap.remove();
+    BuktiGaleri._s = null;
+  }
+};
+
 const KumpulUI = {
   _percobaan: 0,
   _el(id) { return document.getElementById(id); },
@@ -6053,12 +6791,12 @@ const KumpulUI = {
     e('kirim-sub').textContent = 'Jawaban Anda aman di perangkat ini. Mencoba mengirim ulang otomatis (percobaan ke-' + (KumpulUI._percobaan + 1) + ')...';
     setTimeout(() => { if (state.submitting) e('kirim-spinner').className = 'kumpul-spinner'; }, 2500);
   },
-  sukses() {
+  sukses(subTeks) {
     const e = KumpulUI._el.bind(KumpulUI);
     e('kirim-spinner').className = 'kumpul-spinner ok';
     e('kirim-spinner').innerHTML = '<i class="fa-solid fa-check" style="font-size:1.6rem;line-height:44px;color:var(--c-success)"></i>';
     e('kirim-judul').textContent = 'Jawaban Terkirim';
-    e('kirim-sub').textContent = 'Menyiapkan hasil ujian Anda...';
+    e('kirim-sub').textContent = subTeks || 'Menyiapkan hasil ujian Anda...';
     return new Promise(r => setTimeout(r, 900));
   },
   sembunyikanSemua() {
@@ -6203,7 +6941,11 @@ const ExamEngine = {
     const res = await api('submitUjian', { sesiId: state.sesiId, jawaban: JSON.stringify(state.jawaban) });
     hapusCacheLokal(state.sesiId);
     if (res.ok) {
-      await KumpulUI.sukses();
+      // NILAI SUDAH TERSIMPAN di server di titik ini (submitUjian sukses). Bila guru mengaktifkan bukti
+      // orak-orik, siswa diarahkan ke halaman unggah foto DULU; nilai akhir (lulus/remedial) baru tampil setelahnya.
+      const modeBukti = res.buktiOrek === 'wajib' || res.buktiOrek === 'opsional' ? res.buktiOrek : '';
+      await KumpulUI.sukses(modeBukti ? 'Selanjutnya: unggah bukti orak-orik jawaban Anda.' : '');
+      if (modeBukti) await BuktiUI.buka({ mode: modeBukti, sesiId: state.sesiId, judul: state.ujian.judul });
       ExamEngine.tampilkanHasil(res.nilai, res.lulus, state.ujian.judul);
     } else {
       KumpulUI.gagal();
@@ -6689,12 +7431,17 @@ document.addEventListener('focusout', (ev) => {
   if (/\$[^$\n]+\$/.test(salin.textContent)) rtRenderUlang_(ed);
 });
 // Klik 2x pada rumus di kotak editor -> ubah rumusnya (LaTeX).
-document.addEventListener('dblclick', (ev) => {
+document.addEventListener('dblclick', async (ev) => {
   const k = ev.target && ev.target.closest ? ev.target.closest('.rich-editable .katex') : null;
   if (!k) return;
   const ed = k.closest('.rich-editable');
   const ann = k.querySelector('annotation[encoding="application/x-tex"]');
-  const baru = prompt('Ubah rumus (format LaTeX, tanpa tanda $). Kosongkan untuk menghapus rumus:', ann ? ann.textContent : '');
+  const baru = await Dialog.input({
+    judul: 'Ubah Rumus', ikon: 'fa-square-root-variable',
+    pesan: 'Ubah rumus dalam format **LaTeX**. Kosongkan lalu simpan untuk menghapus rumus.',
+    label: 'Rumus (LaTeX)', nilai: ann ? ann.textContent : '', teksYa: 'Simpan Rumus'
+  });
+  if (baru !== null && !k.isConnected) return;
   if (baru === null) return;
   if (!baru.trim()) k.remove(); else k.replaceWith(document.createTextNode('$' + baru.trim() + '$'));
   rtRenderUlang_(ed);
