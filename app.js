@@ -1672,7 +1672,26 @@ function toast(msg, jenis) {
 // cache, sehingga dialog konfirmasi tampil TANPA gaya (jatuh ke bawah halaman, tombol di belakangnya masih bisa
 // diklik, dialog menumpuk). Dengan disuntik dari app.js, dialog dijamin tampil di tengah layar & menutupi halaman.
 // ----------------------------------------------------------------------------
-const VERSI_APLIKASI = '26';
+const VERSI_APLIKASI = '28';
+const CSS_SHEET = `
+/* Lembar pilihan sumber foto (tombol "+" di halaman unggah bukti orak-orik) */
+.bk-sheet-backdrop { position: fixed; inset: 0; z-index: 9000; display: flex; align-items: center; justify-content: center; padding: 1rem; background: rgba(14, 18, 40, .5); -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); animation: dlg-fade .15s ease-out; }
+.bk-sheet { width: min(400px, 100%); box-sizing: border-box; padding: 1.3rem 1.2rem 1.1rem; background: var(--c-surface); color: var(--c-text); border-radius: 20px; box-shadow: 0 24px 60px rgba(10, 15, 40, .4); animation: dlg-pop .2s cubic-bezier(.2, .9, .3, 1.15); }
+.bk-sheet .bk-sheet-judul { font-weight: 700; font-size: 1.1rem; text-align: center; }
+.bk-sheet .bk-sheet-sub { margin: .25rem 0 1rem; font-size: .82rem; text-align: center; color: var(--c-muted); }
+.bk-sheet .bk-sheet-opsi, .bk-sheet .bk-sheet-opsi:active {
+  display: flex; align-items: center; gap: .9rem; width: 100%; box-sizing: border-box; margin-bottom: .65rem; padding: .85rem 1rem; text-align: left; cursor: pointer;
+  color: var(--c-text); background: var(--c-surface); border: 1.5px solid var(--c-line); border-radius: 14px; box-shadow: 0 3px 10px rgba(10, 15, 40, .08); transform: none; filter: none;
+}
+.bk-sheet .bk-sheet-opsi:hover { background: color-mix(in srgb, var(--c-primary) 7%, var(--c-surface)); border-color: var(--c-primary); box-shadow: 0 8px 18px color-mix(in srgb, var(--c-primary) 22%, transparent); transform: translateY(-1px); filter: none; }
+.bk-sheet .bk-sheet-ikon { flex-shrink: 0; width: 46px; height: 46px; display: flex; align-items: center; justify-content: center; font-size: 1.3rem; border-radius: 14px; color: var(--c-on-primary); background: var(--c-primary); }
+.bk-sheet .bk-sheet-teks { flex: 1; display: flex; flex-direction: column; gap: .1rem; }
+.bk-sheet .bk-sheet-teks b { font-size: .95rem; }
+.bk-sheet .bk-sheet-teks small { font-size: .75rem; line-height: 1.35; color: var(--c-muted); }
+.bk-sheet .bk-sheet-panah { font-size: .8rem; color: var(--c-muted); }
+.bk-sheet .bk-sheet-batal, .bk-sheet .bk-sheet-batal:hover, .bk-sheet .bk-sheet-batal:active { width: 100%; padding: .7rem; font-weight: 600; cursor: pointer; color: var(--c-muted); background: transparent; border: 0; box-shadow: none; transform: none; filter: none; }
+.bk-sheet .bk-sheet-batal:hover { color: var(--c-text); }
+`;
 const CSS_DIALOG = `/* ============================================================================
    DIALOG PROFESIONAL v24 — pengganti confirm()/prompt()/alert() bawaan browser
    Dipakai di seluruh Portal Guru. Warna ikut variabel tema (33 gaya & mode gelap).
@@ -1765,7 +1784,7 @@ function injectGayaDialog_() {
   if (document.getElementById('dlg-gaya')) return;
   const el = document.createElement('style');
   el.id = 'dlg-gaya';
-  el.textContent = CSS_DIALOG;
+  el.textContent = CSS_DIALOG + CSS_SHEET;
   document.head.appendChild(el);
 }
 injectGayaDialog_();
@@ -2115,8 +2134,12 @@ function renderKontenSoal(soal, opts) {
   const tagKunci = (i) => tandaiKunci.includes(i) ? '<span class="opsi-kunci-tag">✔ Kunci</span>' : '';
   let html = '';
   if (opts.nomor && opts.total) html += `<div class="no">Soal ${opts.nomor} dari ${opts.total}</div>`;
+  // opts.pecah (hanya layar ujian siswa): bagian soal (teks + gambar) dibungkus .soal-kiri dan pilihan jawaban
+  // .soal-kanan, supaya pada layar lebar bisa tampil dua kolom -- soal di kiri, jawaban selalu terlihat di kanan.
+  if (opts.pecah) html += '<div class="soal-kiri">';
   html += `<div class="pertanyaan">${kontenSoalHtml(soal.pertanyaan)}</div>`;
   if (soal.gambar) html += tagGambarAman_(soal.gambar, 'gambar-soal', 'Gambar soal');
+  if (opts.pecah) html += '</div><div class="soal-kanan">';
 
   // Setiap item opsi bisa berupa string polos (data lama) atau objek
   // { teks, gambar } (format baru yang mendukung teks berformat & gambar opsi).
@@ -2157,6 +2180,7 @@ function renderKontenSoal(soal, opts) {
     const isi = jawaban[soal.id] || '';
     html += `<textarea rows="8" placeholder="Tulis jawaban Anda di sini..." ${interaktif ? `oninput="ExamEngine.isiJawabanUraian('${soal.id}', this.value)"` : 'readonly'}>${escapeHtml_(isi)}</textarea>`;
   }
+  if (opts.pecah) html += '</div>';
   return html;
 }
 
@@ -6596,6 +6620,48 @@ const BuktiUI = {
     if (s && !s.selesai && s.items.some(BuktiUI._berjalan)) { e.preventDefault(); e.returnValue = ''; }
   },
 
+  // Tombol "+" / tile "Tambah foto" -> lembar pilihan: Kamera atau Galeri.
+  // PENTING: input.click() dipanggil SINKRON di dalam handler klik tombol pilihan (bukan setelah await) supaya
+  // browser (terutama Safari/iPhone) tetap menganggapnya aksi pengguna dan membuka kamera/galeri.
+  bukaPilihan() {
+    const s = BuktiUI._s;
+    if (!s || s.sibuk || s.items.length >= BuktiFoto.MAKS_FOTO || document.getElementById('bk-sheet')) return;
+    const wrap = document.createElement('div');
+    wrap.id = 'bk-sheet';
+    wrap.className = 'bk-sheet-backdrop';
+    wrap.innerHTML = `<div class="bk-sheet" role="dialog" aria-modal="true" aria-label="Tambah foto bukti">
+      <div class="bk-sheet-judul">Tambah Foto Bukti</div>
+      <div class="bk-sheet-sub">Sisa ${BuktiFoto.MAKS_FOTO - s.items.length} foto. Pilih sumber foto:</div>
+      <button type="button" class="bk-sheet-opsi" data-sumber="kamera">
+        <span class="bk-sheet-ikon"><i class="fa-solid fa-camera"></i></span>
+        <span class="bk-sheet-teks"><b>Ambil Foto</b><small>Foto kertas coretan langsung memakai kamera</small></span>
+        <i class="fa-solid fa-chevron-right bk-sheet-panah"></i>
+      </button>
+      <button type="button" class="bk-sheet-opsi" data-sumber="galeri">
+        <span class="bk-sheet-ikon"><i class="fa-solid fa-images"></i></span>
+        <span class="bk-sheet-teks"><b>Pilih dari Galeri</b><small>Boleh pilih beberapa foto sekaligus (JPG, PNG, HEIC)</small></span>
+        <i class="fa-solid fa-chevron-right bk-sheet-panah"></i>
+      </button>
+      <button type="button" class="bk-sheet-batal" data-sumber="batal">Batal</button>
+    </div>`;
+    document.body.appendChild(wrap);
+    const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); tutup(); } };
+    const tutup = () => { document.removeEventListener('keydown', onKey, true); wrap.remove(); };
+    document.addEventListener('keydown', onKey, true);
+    wrap.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-sumber]');
+      if (b) {
+        const sumber = b.dataset.sumber;
+        tutup();
+        if (sumber === 'kamera') document.getElementById('bukti-input-kamera').click();
+        else if (sumber === 'galeri') document.getElementById('bukti-input-galeri').click();
+        return;
+      }
+      if (e.target === wrap) tutup();
+    });
+    const pertama = wrap.querySelector('.bk-sheet-opsi'); if (pertama) pertama.focus();
+  },
+
   dariInput(input) {
     const files = Array.from(input.files || []);
     input.value = ''; // supaya foto yang sama bisa dipilih lagi
@@ -6751,13 +6817,14 @@ const BuktiUI = {
     const ikon = { ok: 'fa-circle-check', unggah: 'fa-spinner fa-spin', proses: 'fa-spinner fa-spin', antre: 'fa-clock', gagal: 'fa-triangle-exclamation' };
     const label = { ok: 'Terkirim', unggah: 'Mengirim...', proses: 'Memproses...', antre: 'Menunggu giliran' };
     const tileTambah = total < BuktiFoto.MAKS_FOTO ? `
-      <div class="bk-tambah ${s.sibuk ? 'nonaktif' : ''}">
-        <div class="bk-plus"><i class="fa-solid fa-plus"></i></div>
+      <div class="bk-tambah ${s.sibuk ? 'nonaktif' : ''}" role="button" tabindex="0" aria-label="Tambah foto: pilih kamera atau galeri"
+           onclick="BuktiUI.bukaPilihan()" onkeydown="if (event.target === this && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); BuktiUI.bukaPilihan(); }">
+        <span class="bk-plus"><i class="fa-solid fa-plus"></i></span>
         <span class="bk-tambah-judul">Tambah foto</span>
         <span class="bk-tambah-sisa">Sisa ${BuktiFoto.MAKS_FOTO - total} foto</span>
         <div class="bk-tambah-aksi">
-          <button type="button" onclick="document.getElementById('bukti-input-kamera').click()"><i class="fa-solid fa-camera"></i> Kamera</button>
-          <button type="button" onclick="document.getElementById('bukti-input-galeri').click()"><i class="fa-solid fa-images"></i> Galeri</button>
+          <button type="button" class="bk-btn-kamera" onclick="event.stopPropagation(); document.getElementById('bukti-input-kamera').click()"><i class="fa-solid fa-camera"></i> Kamera</button>
+          <button type="button" class="bk-btn-galeri" onclick="event.stopPropagation(); document.getElementById('bukti-input-galeri').click()"><i class="fa-solid fa-images"></i> Galeri</button>
         </div>
       </div>` : '';
     BuktiUI._el('bukti-aksi').classList.toggle('hidden', total > 0); // tombol besar hanya saat belum ada foto; selanjutnya pakai tile "+"
@@ -6995,7 +7062,8 @@ const ExamEngine = {
   renderSoal() {
     const soal = state.soal[state.idxSoal];
     const card = document.getElementById('question-card');
-    card.innerHTML = renderKontenSoal(soal, { nomor: state.idxSoal + 1, total: state.soal.length, interaktif: true, jawaban: state.jawaban });
+    card.innerHTML = renderKontenSoal(soal, { nomor: state.idxSoal + 1, total: state.soal.length, interaktif: true, jawaban: state.jawaban, pecah: true });
+    card.classList.toggle('ada-gambar', !!card.querySelector('.soal-kiri img')); // layar lebar: soal bergambar -> dua kolom
     renderMatika(card);
     document.getElementById('chk-ragu').checked = state.ragu.includes(soal.id);
     document.getElementById('btn-soal-prev').disabled = state.idxSoal === 0;
