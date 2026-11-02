@@ -218,6 +218,16 @@ function cocokFilterSiswa_(item, kelasId, cariId) {
   return true;
 }
 
+// Checkbox "Diblokir saja": true bila dicentang. Juga memperbarui angka jumlah di labelnya.
+function hanyaBlokir_(idCek, jumlah) {
+  const cek = document.getElementById(idCek);
+  const jml = document.getElementById(idCek + '-jml');
+  if (jml && jumlah !== undefined) jml.textContent = '(' + jumlah + ')';
+  const lbl = document.getElementById('lbl-' + idCek);
+  if (lbl && jumlah !== undefined) lbl.classList.toggle('ada', jumlah > 0);
+  return !!(cek && cek.checked);
+}
+
 function filterAktif_(kelasId, cariId) {
   return !!((kelasId && document.getElementById(kelasId)?.value) || (cariId && document.getElementById(cariId)?.value.trim()));
 }
@@ -1677,7 +1687,7 @@ function toast(msg, jenis) {
 // cache, sehingga dialog konfirmasi tampil TANPA gaya (jatuh ke bawah halaman, tombol di belakangnya masih bisa
 // diklik, dialog menumpuk). Dengan disuntik dari app.js, dialog dijamin tampil di tengah layar & menutupi halaman.
 // ----------------------------------------------------------------------------
-const VERSI_APLIKASI = '35';
+const VERSI_APLIKASI = '36';
 const CSS_SEGAR = `
 /* Tombol "Segarkan" di halaman portal guru (Rekap Nilai, Log Pelanggaran, dll.) */
 .btn-segarkan { display: inline-flex; align-items: center; gap: .45rem; white-space: nowrap; }
@@ -1686,6 +1696,9 @@ const CSS_SEGAR = `
 @keyframes segar-putar { to { transform: rotate(360deg); } }
 .segar-info { font-size: .78rem; color: var(--c-muted); white-space: nowrap; }
 .segar-info.gagal { color: var(--c-danger); font-weight: 600; }
+.filter-cek { display: inline-flex; align-items: center; gap: .4rem; padding: .4rem .8rem; border: 1px solid var(--c-line); border-radius: 999px; font-size: .85rem; white-space: nowrap; cursor: pointer; user-select: none; }
+.filter-cek input { width: auto; margin: 0; }
+.filter-cek.ada { color: var(--c-danger); font-weight: 600; border-color: var(--c-danger); }
 `;
 const CSS_FSBUKTI = `
 /* Penutup "wajib layar penuh" di halaman unggah bukti orak-orik */
@@ -5097,7 +5110,8 @@ const Guru = {
 
   // Data rekap setelah Filter Kelas + kotak cari.
   rekapTersaring_() {
-    return (state.guru._rekapAktif || []).filter(r => cocokFilterSiswa_(r, 'kelas-rekap', 'cari-rekap'));
+    const saringBlokir = !!document.getElementById('blokir-rekap')?.checked;
+    return (state.guru._rekapAktif || []).filter(r => cocokFilterSiswa_(r, 'kelas-rekap', 'cari-rekap') && (!saringBlokir || r.status === 'diblokir'));
   },
 
   // Sel "Bukti Orak-Orik" di sebelah nilai: miniatur + jumlah foto (klik = galeri) atau status belum unggah.
@@ -5117,6 +5131,7 @@ const Guru = {
     const tercentang = new Set([...cont.querySelectorAll('.rekap-cek:checked')].map(c => c.value));
     const semua = state.guru._rekapAktif || [];
     if (semua.length === 0) { tampilkanInfoFilter_('kelas-rekap-info', 0, 0); cont.innerHTML = '<p class="subtitle">Belum ada siswa yang <strong>menyelesaikan</strong> ujian ini (siswa yang masih mengerjakan tidak dihitung di sini — lihat tab "Pemantauan Ujian" untuk yang sedang berlangsung).</p>'; return; }
+    hanyaBlokir_('blokir-rekap', semua.filter(r => r.status === 'diblokir').length);
     const data = Guru.rekapTersaring_();
     const angka = data.map(r => Number(r.nilai)).filter(n => !isNaN(n) && n !== null);
     const rata = angka.length ? (angka.reduce((a, b) => a + b, 0) / angka.length) : null;
@@ -5174,7 +5189,7 @@ const Guru = {
   },
 
   hapusSemuaNilaiUjian() {
-    const disaring = filterAktif_('kelas-rekap', 'cari-rekap');
+    const disaring = filterAktif_('kelas-rekap', 'cari-rekap') || !!document.getElementById('blokir-rekap')?.checked;
     const ids = Guru.rekapTersaring_().map(r => r.sesiId).filter(Boolean);
     if (!ids.length) { toast('Belum ada nilai untuk dihapus.', 'error'); return; }
     const kelasDipilih = document.getElementById('kelas-rekap')?.value || '';
@@ -5465,8 +5480,10 @@ const Guru = {
     const semuaPemantauan = state.guru._pemantauanAktif || [];
     const maxPelanggaran = state.guru._pemantauanMax || 999;
     if (semuaPemantauan.length === 0) { tampilkanInfoFilter_('kelas-pemantauan-info', 0, 0); cont.innerHTML = '<p class="subtitle">Belum ada siswa yang membuka ujian ini.</p>'; return; }
-    const data = semuaPemantauan.filter(s => cocokFilterSiswa_(s, 'kelas-pemantauan', 'cari-pemantauan'));
+    const saringBlokirP = hanyaBlokir_('blokir-pemantauan', semuaPemantauan.filter(s => s.status === 'diblokir').length);
+    const data = semuaPemantauan.filter(s => cocokFilterSiswa_(s, 'kelas-pemantauan', 'cari-pemantauan') && (!saringBlokirP || s.status === 'diblokir'));
     tampilkanInfoFilter_('kelas-pemantauan-info', data.length, semuaPemantauan.length, data.filter(s => s.status === 'berlangsung').length + ' sedang mengerjakan');
+    if (saringBlokirP && data.length === 0) { cont.innerHTML = '<p class="subtitle">Tidak ada siswa yang diblokir pada ujian ini.</p>'; return; }
     if (data.length === 0) { cont.innerHTML = '<p class="subtitle">Tidak ada siswa yang cocok dengan kelas/pencarian ini.</p>'; return; }
 
     const labelStatus = { berlangsung: 'Sedang Mengerjakan', selesai: 'Selesai', diblokir: 'Diblokir (Pelanggaran)' };
@@ -5607,11 +5624,13 @@ const Guru = {
     const cont = document.getElementById('daftar-siswa');
     const filterKelas = document.getElementById('filter-kelas-siswa')?.value || '';
     const semua = state.guru.daftarSiswa || [];
-    const data = semua.filter(s => cocokFilterSiswa_(s, 'filter-kelas-siswa', 'cari-siswa'));
-    tampilkanInfoFilter_('cari-siswa-info', data.length, semua.length);
-    if (semua.length === 0) { cont.innerHTML = '<p class="subtitle">Belum ada data siswa.</p>'; return; }
-    if (data.length === 0) { cont.innerHTML = `<p class="subtitle">Tidak ada siswa yang cocok${filterKelas ? ` di kelas "${escapeHtml_(filterKelas)}"` : ''} dengan pencarian ini.</p>`; return; }
     const jmlBlokir = semua.filter(s => s.blokir).length;
+    const saringBlokir = hanyaBlokir_('blokir-siswa', jmlBlokir);
+    const data = semua.filter(s => cocokFilterSiswa_(s, 'filter-kelas-siswa', 'cari-siswa') && (!saringBlokir || s.blokir));
+    tampilkanInfoFilter_('cari-siswa-info', data.length, semua.length, saringBlokir ? 'hanya akun diblokir' : '');
+    if (semua.length === 0) { cont.innerHTML = '<p class="subtitle">Belum ada data siswa.</p>'; return; }
+    if (saringBlokir && data.length === 0) { cont.innerHTML = '<p class="subtitle">Tidak ada akun siswa yang diblokir' + (filterKelas ? ` di kelas "${escapeHtml_(filterKelas)}"` : '') + '.</p>'; return; }
+    if (data.length === 0) { cont.innerHTML = `<p class="subtitle">Tidak ada siswa yang cocok${filterKelas ? ` di kelas "${escapeHtml_(filterKelas)}"` : ''} dengan pencarian ini.</p>`; return; }
     cont.innerHTML = (jmlBlokir ? `<p class="subtitle" style="margin-bottom:.6rem">🚫 <strong>${jmlBlokir}</strong> akun siswa sedang diblokir (tidak bisa mengikuti kuis).</p>` : '') +
       `<table class="ledger"><thead><tr><th>Username</th><th>Password</th><th>Nama</th><th>Kelas</th><th>Status</th><th></th></tr></thead><tbody>` +
       data.map(s => `<tr>
