@@ -1677,7 +1677,7 @@ function toast(msg, jenis) {
 // cache, sehingga dialog konfirmasi tampil TANPA gaya (jatuh ke bawah halaman, tombol di belakangnya masih bisa
 // diklik, dialog menumpuk). Dengan disuntik dari app.js, dialog dijamin tampil di tengah layar & menutupi halaman.
 // ----------------------------------------------------------------------------
-const VERSI_APLIKASI = '33';
+const VERSI_APLIKASI = '35';
 const CSS_SEGAR = `
 /* Tombol "Segarkan" di halaman portal guru (Rekap Nilai, Log Pelanggaran, dll.) */
 .btn-segarkan { display: inline-flex; align-items: center; gap: .45rem; white-space: nowrap; }
@@ -1686,6 +1686,16 @@ const CSS_SEGAR = `
 @keyframes segar-putar { to { transform: rotate(360deg); } }
 .segar-info { font-size: .78rem; color: var(--c-muted); white-space: nowrap; }
 .segar-info.gagal { color: var(--c-danger); font-weight: 600; }
+`;
+const CSS_FSBUKTI = `
+/* Penutup "wajib layar penuh" di halaman unggah bukti orak-orik */
+#bukti-fs-overlay { position: fixed; inset: 0; z-index: 8900; display: flex; align-items: center; justify-content: center; padding: 1.2rem; background: rgba(14, 18, 40, .92); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+#bukti-fs-overlay.hidden { display: none; }
+#bukti-fs-overlay .fs-kartu { width: min(440px, 100%); box-sizing: border-box; padding: 1.8rem 1.4rem 1.4rem; text-align: center; background: var(--c-surface); color: var(--c-text); border-radius: 22px; box-shadow: 0 24px 60px rgba(0, 0, 0, .45); }
+#bukti-fs-overlay .fs-ikon { width: 64px; height: 64px; margin: 0 auto .9rem; display: flex; align-items: center; justify-content: center; border-radius: 50%; font-size: 1.7rem; color: #fff; background: var(--c-accent, #f5a524); }
+#bukti-fs-overlay h3 { margin: 0 0 .5rem; font-size: 1.2rem; }
+#bukti-fs-overlay p { margin: 0 0 1.2rem; color: var(--c-muted); line-height: 1.55; font-size: .92rem; }
+#bukti-fs-overlay button { width: 100%; }
 `;
 const CSS_SHEET = `
 /* Lembar pilihan sumber foto (tombol "+" di halaman unggah bukti orak-orik) */
@@ -1851,7 +1861,7 @@ function injectGayaDialog_() {
   if (document.getElementById('dlg-gaya')) return;
   const el = document.createElement('style');
   el.id = 'dlg-gaya';
-  el.textContent = CSS_DIALOG + CSS_SEGAR + CSS_SHEET + CSS_KAMERA + CSS_GALERI + CSS_KUNCI;
+  el.textContent = CSS_DIALOG + CSS_SEGAR + CSS_FSBUKTI + CSS_SHEET + CSS_KAMERA + CSS_GALERI + CSS_KUNCI;
   document.head.appendChild(el);
 }
 injectGayaDialog_();
@@ -6789,7 +6799,101 @@ const BuktiUI = {
     const kembali = e.altKey && (k === 'arrowleft' || k === 'arrowright');
     if (muatUlang || kembali) { e.preventDefault(); e.stopPropagation(); BuktiUI.peringatanKeluar(); }
   },
+  // ---------------- WAJIB LAYAR PENUH selama bukti belum terkirim ----------------
+  // Layar penuh tidak bisa dipaksa oleh browser tanpa ketukan pengguna, jadi bila gagal (mis. halaman dimuat ulang)
+  // muncul penutup berisi tombol "Masuk Layar Penuh". Keluar layar penuh / pindah tab TIDAK menambah pelanggaran
+  // (nilai sudah tersimpan), tetapi memunculkan peringatan wajib unggah bukti. Saat siswa membuka kamera/galeri
+  // ada masa tenggang agar tidak dianggap meninggalkan halaman. Bila perangkat tidak mendukung layar penuh
+  // (mis. iPhone), pembatasan ini dilewati.
+  _graceSampai: 0,
+  _pergi: false,
+  _fsDidukung() { const el = document.documentElement; return !!(el.requestFullscreen || el.webkitRequestFullscreen); },
+  _adaFullscreen() { return !!(document.fullscreenElement || document.webkitFullscreenElement); },
+  _mintaFullscreen() {
+    const el = document.documentElement;
+    const req = el.requestFullscreen || el.webkitRequestFullscreen;
+    if (!req) return Promise.resolve(false);
+    try {
+      return Promise.resolve(req.call(el)).then(() => {
+        try { if (navigator.keyboard && navigator.keyboard.lock) navigator.keyboard.lock(['Escape']).catch(() => {}); } catch (e) { /* abaikan */ }
+        return true;
+      }).catch(() => false);
+    } catch (e) { return Promise.resolve(false); }
+  },
+  _keluarFullscreen() {
+    try { if (navigator.keyboard && navigator.keyboard.unlock) navigator.keyboard.unlock(); } catch (e) { /* abaikan */ }
+    try {
+      if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+      else if (document.webkitFullscreenElement && document.webkitExitFullscreen) document.webkitExitFullscreen();
+    } catch (e) { /* abaikan */ }
+  },
+  _overlayFs(tampil) {
+    let ov = document.getElementById('bukti-fs-overlay');
+    if (!ov) {
+      if (!tampil) return;
+      ov = document.createElement('div');
+      ov.id = 'bukti-fs-overlay';
+      ov.className = 'hidden';
+      ov.innerHTML = `<div class="fs-kartu" role="alertdialog" aria-modal="true" aria-labelledby="fs-judul">
+        <div class="fs-ikon"><i class="fa-solid fa-expand"></i></div>
+        <h3 id="fs-judul">Wajib Layar Penuh</h3>
+        <p>Anda <strong>wajib mengunggah bukti orak-orik jawaban</strong>. Halaman ini harus tetap dalam <strong>layar penuh</strong> sampai semua foto berstatus <strong>Terkirim</strong>.</p>
+        <button type="button" class="accent" id="fs-tombol"><i class="fa-solid fa-expand"></i> Masuk Layar Penuh</button>
+      </div>`;
+      document.body.appendChild(ov);
+      ov.querySelector('#fs-tombol').addEventListener('click', () => { BuktiUI._mintaFullscreen().then(() => BuktiUI._periksaFullscreen()); });
+    }
+    ov.classList.toggle('hidden', !tampil);
+    if (tampil) { const t = ov.querySelector('#fs-tombol'); if (t && !document.querySelector('.dlg-backdrop, .bk-sheet-backdrop')) t.focus(); }
+  },
+  // Tampilkan/sembunyikan penutup sesuai kondisi saat ini. Dipanggil tiap render() dan tiap perubahan layar penuh.
+  _periksaFullscreen() {
+    const perlu = BuktiUI._perluTahan() && BuktiUI._fsDidukung();
+    BuktiUI._overlayFs(perlu && !BuktiUI._adaFullscreen());
+  },
+  _peringatanLayarPenuh(pesan) {
+    if (!BuktiUI._perluTahan()) return;
+    const t = BuktiUI._pesanTahan();
+    Dialog.info({ judul: 'Wajib Unggah Bukti', tipe: 'danger', ikon: 'fa-lock', pesan: pesan + '\n\n' + t.pesan, teksYa: BuktiUI._fsDidukung() ? 'Mengerti, Kembali ke Layar Penuh' : 'Mengerti, Lanjut Unggah', tanpaAntre: true })
+      .then(() => { if (BuktiUI._s && BuktiUI._perluTahan()) BuktiUI._mintaFullscreen().then(() => BuktiUI._periksaFullscreen()); });
+  },
+  _onFsChange() {
+    if (!BuktiUI._s) return;
+    BuktiUI._periksaFullscreen();
+    if (BuktiUI._adaFullscreen() || !BuktiUI._perluTahan() || !BuktiUI._fsDidukung()) return;
+    if (Date.now() < BuktiUI._graceSampai) return; // sedang membuka kamera/galeri
+    BuktiUI._peringatanLayarPenuh('Anda **keluar dari layar penuh**.');
+  },
+  _onVisibilitas() {
+    if (!BuktiUI._s) return;
+    if (document.hidden) { BuktiUI._pergi = Date.now() >= BuktiUI._graceSampai; return; }
+    BuktiUI._graceSampai = Math.min(BuktiUI._graceSampai, Date.now() + 2500);
+    if (BuktiUI._pergi) {
+      BuktiUI._pergi = false;
+      if (BuktiUI._perluTahan()) BuktiUI._peringatanLayarPenuh('Anda **berpindah tab/aplikasi** dari halaman ini.');
+    }
+    BuktiUI._periksaFullscreen();
+  },
+  _onFokusKembali() { if (BuktiUI._s) BuktiUI._graceSampai = Math.min(BuktiUI._graceSampai, Date.now() + 2500); },
+  _mulaiGrace() { BuktiUI._graceSampai = Date.now() + 180000; },
+  _akhiriGrace() { BuktiUI._graceSampai = Date.now() + 2500; },
+
+  _guardAktif: false,
   _pasangPenjaga() {
+    BuktiUI._guardAktif = true;
+    ['bukti-input-kamera', 'bukti-input-galeri'].forEach(id => {
+      const el = document.getElementById(id); if (!el) return;
+      el.addEventListener('click', BuktiUI._mulaiGrace);
+      el.addEventListener('change', BuktiUI._akhiriGrace);
+      el.addEventListener('cancel', BuktiUI._akhiriGrace);
+    });
+    document.addEventListener('fullscreenchange', BuktiUI._onFsChange);
+    document.addEventListener('webkitfullscreenchange', BuktiUI._onFsChange);
+    document.addEventListener('visibilitychange', BuktiUI._onVisibilitas);
+    window.addEventListener('focus', BuktiUI._onFokusKembali);
+    window.addEventListener('pageshow', BuktiUI._onFokusKembali);
+    BuktiUI._graceSampai = 0; BuktiUI._pergi = false;
+    if (BuktiUI._perluTahan() && BuktiUI._fsDidukung()) BuktiUI._mintaFullscreen().then(() => BuktiUI._periksaFullscreen());
     try { history.pushState({ bukti: 1 }, '', location.href); } catch (e) { /* abaikan */ }
     window.addEventListener('popstate', BuktiUI._onPopState);
     window.addEventListener('beforeunload', BuktiUI._onBeforeUnload);
@@ -6798,6 +6902,20 @@ const BuktiUI = {
     document.body.classList.add('bukti-terkunci');
   },
   _lepasPenjaga() {
+    BuktiUI._guardAktif = false;
+    ['bukti-input-kamera', 'bukti-input-galeri'].forEach(id => {
+      const el = document.getElementById(id); if (!el) return;
+      el.removeEventListener('click', BuktiUI._mulaiGrace);
+      el.removeEventListener('change', BuktiUI._akhiriGrace);
+      el.removeEventListener('cancel', BuktiUI._akhiriGrace);
+    });
+    document.removeEventListener('fullscreenchange', BuktiUI._onFsChange);
+    document.removeEventListener('webkitfullscreenchange', BuktiUI._onFsChange);
+    document.removeEventListener('visibilitychange', BuktiUI._onVisibilitas);
+    window.removeEventListener('focus', BuktiUI._onFokusKembali);
+    window.removeEventListener('pageshow', BuktiUI._onFokusKembali);
+    BuktiUI._overlayFs(false);
+    BuktiUI._keluarFullscreen();
     window.removeEventListener('popstate', BuktiUI._onPopState);
     window.removeEventListener('beforeunload', BuktiUI._onBeforeUnload);
     document.removeEventListener('keydown', BuktiUI._onKeyTahan, true);
@@ -7019,6 +7137,7 @@ const BuktiUI = {
   render() {
     const s = BuktiUI._s;
     if (!s) return;
+    if (BuktiUI._guardAktif) BuktiUI._periksaFullscreen(); // penutup layar penuh hilang sendiri saat semua foto terkirim
     const total = s.items.length;
     const ok = s.items.filter(i => i.status === 'ok').length;
     const gagal = s.items.filter(i => i.status === 'gagal').length;
