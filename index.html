@@ -28,7 +28,7 @@
      dimuat TANPA memblokir tampilan halaman login (dulu halaman kosong sampai keduanya selesai diunduh). -->
 <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
 <link rel="dns-prefetch" href="https://script.google.com">
-<link rel="stylesheet" href="style.css?v=30">
+<link rel="stylesheet" href="style.css?v=33">
 <!-- Font Awesome: ikon sidebar & tombol (gaya dashboard modern) -->
 <link rel="preload" as="style" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" onload="this.onload=null;this.rel='stylesheet'">
 <!-- KaTeX: render persamaan matematika (LaTeX) di dalam soal -->
@@ -176,12 +176,6 @@
       <button class="nav-tab" data-tab="tab-pengaturan" onclick="UI.gantiTabGuru('tab-pengaturan')"><i class="fa-solid fa-gear nav-ico"></i><span>Pengaturan</span></button>
     </nav>
 
-    <button type="button" class="mode-badge" id="mode-badge-guru" onclick="UI.gantiTabGuru('tab-pengaturan')"></button>
-    <div class="sidebar-sync hidden" id="sidebar-sync-guru">
-      <div class="sidebar-sync-label">Opsi Cadangan</div>
-      <button type="button" class="secondary" title="Paksa tulis data ujian yang sedang berlangsung (jawaban/status siswa) ke Google Sheets sekarang juga, tanpa menunggu jeda otomatis ~1 menit -- pakai kalau angka di Pemantauan/Rekap/Analisis terasa belum update." onclick="Guru.paksaSinkronSekarang()"><i class="fa-solid fa-cloud-arrow-up"></i> Kirim ke Spreadsheet</button>
-      <button type="button" class="secondary" title="Tarik ulang data halaman yang sedang dibuka dari Google Sheets sekarang juga." onclick="Guru.tarikHalamanAktifSekarang()"><i class="fa-solid fa-arrows-rotate"></i> Tarik Data Terbaru</button>
-    </div>
     <div class="sidebar-footer">
       <div class="who">Masuk sebagai<br><strong id="guru-nama-label">-</strong></div>
       <button class="secondary" style="width:100%" onclick="Auth.logout()"><i class="fa-solid fa-right-from-bracket"></i> Keluar</button>
@@ -193,7 +187,7 @@
     <section id="tab-dashboard">
       <div class="dash-top">
         <div><h2>Dashboard</h2><span class="dash-chip" id="dash-mode-chip"></span></div>
-        <label class="dash-search"><i class="fa-solid fa-magnifying-glass"></i><input type="text" placeholder="Cari ujian atau token..." oninput="Guru.filterDashboardUjian(this.value)"></label>
+        <div style="display:flex;gap:.6rem;align-items:center;flex-wrap:wrap"><button type="button" class="secondary btn-segarkan" title="Ambil data terbaru tanpa mengubah pilihan ujian &amp; kelas" onclick="Guru.segarkan('tab-dashboard', this)"><i class="fa-solid fa-rotate"></i> Segarkan</button><span class="segar-info" id="segar-info-tab-dashboard" aria-live="polite"></span><label class="dash-search"><i class="fa-solid fa-magnifying-glass"></i><input type="text" placeholder="Cari ujian atau token..." oninput="Guru.filterDashboardUjian(this.value)"></label></div>
       </div>
 
       <div class="dash-hero">
@@ -243,7 +237,7 @@
         <div class="toolbar" style="margin-bottom:1rem">
           <div></div>
           <div class="toolbar-actions">
-            <button class="secondary icon" title="Segarkan sekarang" onclick="Guru.muatBankSoal()">🔄</button>
+            <button type="button" class="secondary btn-segarkan" title="Ambil data terbaru tanpa mengubah pilihan ujian &amp; kelas" onclick="Guru.segarkan('tab-bank-soal', this)"><i class="fa-solid fa-rotate"></i> Segarkan</button><span class="segar-info" id="segar-info-tab-bank-soal" aria-live="polite"></span>
             <button class="secondary" onclick="Guru.bukaModalKelolaKategori()">⚙ Kelola Kategori</button>
             <button class="secondary" id="btn-lihat-arsip" onclick="Guru.bukaArsipSoal()">🗄 Arsip</button>
           </div>
@@ -390,7 +384,7 @@
       <div class="panel">
         <div class="toolbar">
           <div></div>
-          <button class="secondary icon" title="Segarkan sekarang" onclick="Guru.muatDaftarUjian()">🔄</button>
+          <button type="button" class="secondary btn-segarkan" title="Ambil data terbaru tanpa mengubah pilihan ujian &amp; kelas" onclick="Guru.segarkan('tab-ujian', this)"><i class="fa-solid fa-rotate"></i> Segarkan</button><span class="segar-info" id="segar-info-tab-ujian" aria-live="polite"></span>
           <button class="accent" onclick="UI.bukaModalUjian()">+ Buat Ujian</button>
         </div>
 
@@ -405,6 +399,7 @@
       <div class="panel">
         <div class="toolbar">
           <select id="pilih-ujian-rekap" onchange="Guru.muatRekap()" style="max-width:320px"></select>
+          <button type="button" class="secondary btn-segarkan" title="Ambil data terbaru tanpa mengubah pilihan ujian &amp; kelas" onclick="Guru.segarkan('tab-rekap', this)"><i class="fa-solid fa-rotate"></i> Segarkan</button><span class="segar-info" id="segar-info-tab-rekap" aria-live="polite"></span>
           <button class="secondary" onclick="Guru.unduhRekapCSV()" title="Unduh nilai sesuai Filter Kelas & pencarian yang sedang tampil (pilih satu kelas = nilai kelas itu saja)">⬇ Unduh (sesuai filter)</button>
           <button class="secondary" onclick="Guru.unduhRekapCSV('semua')" title="Unduh nilai SEMUA kelas pada ujian ini: 1 sheet gabungan + 1 sheet per kelas">⬇ Semua Kelas</button>
           <button class="secondary" onclick="Guru.unduhRekapCSV('semuaUjian')" title="Unduh nilai dari SEMUA ujian sekaligus (mengikuti Filter Kelas): 1 sheet gabungan + 1 sheet per kelas">⬇ Semua Ujian</button>
@@ -432,7 +427,7 @@
       <div class="panel">
         <div class="toolbar">
           <select id="pilih-ujian-analisis" onchange="Guru.muatAnalisisSoal()" style="max-width:320px"></select>
-          <button class="secondary icon" title="Segarkan sekarang" onclick="Guru.muatAnalisisSoal()">🔄</button>
+          <button type="button" class="secondary btn-segarkan" title="Ambil data terbaru tanpa mengubah pilihan ujian &amp; kelas" onclick="Guru.segarkan('tab-analisis', this)"><i class="fa-solid fa-rotate"></i> Segarkan</button><span class="segar-info" id="segar-info-tab-analisis" aria-live="polite"></span>
         </div>
       </div>
 
@@ -463,7 +458,10 @@
       <h2>Log Pelanggaran Anti-Cheat</h2>
       <p class="subtitle">Riwayat pelanggaran (pindah tab, keluar fullscreen, dll.) per ujian.</p>
       <div class="panel">
-        <select id="pilih-ujian-log" onchange="Guru.muatLogPelanggaran()" style="max-width:320px;margin-bottom:1rem"></select>
+        <div class="toolbar">
+          <select id="pilih-ujian-log" onchange="Guru.muatLogPelanggaran()" style="max-width:320px"></select>
+          <button type="button" class="secondary btn-segarkan" title="Ambil data terbaru tanpa mengubah pilihan ujian &amp; kelas" onclick="Guru.segarkan('tab-pelanggaran', this)"><i class="fa-solid fa-rotate"></i> Segarkan</button><span class="segar-info" id="segar-info-tab-pelanggaran" aria-live="polite"></span>
+        </div>
         <div class="filter-bar">
           <input type="search" id="cari-log" placeholder="🔍 Cari nama siswa..." oninput="Guru.renderLogPelanggaran_()" autocomplete="off">
           <select id="kelas-log" onchange="Guru.renderLogPelanggaran_()" title="Filter per kelas"><option value="">Semua Kelas</option></select>
@@ -483,7 +481,7 @@
       <div class="panel">
         <div class="toolbar">
           <select id="pilih-ujian-pemantauan" onchange="Guru.muatPemantauan()" style="max-width:320px"></select>
-          <button class="secondary icon" title="Segarkan sekarang" onclick="Guru.muatPemantauan()">🔄</button>
+          <button type="button" class="secondary btn-segarkan" title="Ambil data terbaru tanpa mengubah pilihan ujian &amp; kelas" onclick="Guru.segarkan('tab-pemantauan', this)"><i class="fa-solid fa-rotate"></i> Segarkan</button><span class="segar-info" id="segar-info-tab-pemantauan" aria-live="polite"></span>
         </div>
         <p class="subtitle" style="margin-top:-.6rem">
           <strong>⏱ Tambah Waktu</strong> — memberi waktu ekstra ke satu siswa saja (mis. karena koneksi sempat
@@ -540,7 +538,7 @@
         <div class="toolbar">
           <h3 style="margin:0">Impor Massal</h3>
           <div class="toolbar-actions">
-            <button class="secondary icon" title="Segarkan sekarang" onclick="Guru.muatDaftarSiswa()">🔄</button>
+            <button type="button" class="secondary btn-segarkan" title="Ambil data terbaru tanpa mengubah pilihan ujian &amp; kelas" onclick="Guru.segarkan('tab-siswa', this)"><i class="fa-solid fa-rotate"></i> Segarkan</button><span class="segar-info" id="segar-info-tab-siswa" aria-live="polite"></span>
             <button class="secondary" onclick="Guru.unduhTemplateSiswa()">⬇ Unduh Template (.xlsx)</button>
             <button class="secondary" onclick="document.getElementById('input-import-siswa').click()">Impor dari file (.xlsx/.csv)</button>
             <input type="file" id="input-import-siswa" accept=".xlsx,.csv" class="hidden" onchange="Guru.importSiswaDariFile(event)">
@@ -610,7 +608,7 @@
             <select id="filter-kelas-login" onchange="Guru.renderTabelStatusLogin()" style="width:auto;flex:1"><option value="">Semua Kelas</option></select>
           </label>
           <button class="accent small" title="Lepas perangkat semua siswa pada kelas yang dipilih di Filter Kelas (pilih 'Semua Kelas' untuk seluruh siswa)" onclick="Guru.resetDeviceKelas('filter-kelas-login')">🔓 Lepas Semua Perangkat</button>
-          <button class="secondary icon" title="Segarkan sekarang" onclick="Guru.muatStatusLogin()">🔄</button>
+          <button type="button" class="secondary btn-segarkan" title="Ambil data terbaru tanpa mengubah pilihan ujian &amp; kelas" onclick="Guru.segarkan('tab-login', this)"><i class="fa-solid fa-rotate"></i> Segarkan</button><span class="segar-info" id="segar-info-tab-login" aria-live="polite"></span>
         </div>
         <div class="filter-bar"><input type="search" id="cari-login" placeholder="🔍 Cari nama / username..." oninput="Guru.renderTabelStatusLogin()" autocomplete="off"><span class="filter-info" id="cari-login-info"></span></div>
         <div id="tabel-status-login">Memuat...</div>
@@ -771,6 +769,12 @@
         <p class="subtitle">Hubungkan aplikasi ke Google Sheets (lewat URL Web App Google Apps Script) supaya data tersinkron ke semua perangkat, atau lepas koneksi untuk kembali ke Mode Lokal.</p>
         <p id="pengaturan-status-server" class="subtitle" style="font-weight:600"></p>
         <button class="accent" onclick="UI.bukaPengaturanServer()">Atur Koneksi Google Sheets</button>
+      </div>
+
+      <div class="panel hidden" id="pengaturan-sync-guru">
+        <h3>🗄️ Opsi Cadangan</h3>
+        <p class="subtitle">Paksa tulis data ujian yang sedang berlangsung (jawaban/status siswa) ke Google Sheets sekarang juga, tanpa menunggu jeda otomatis sekitar 1 menit. Pakai kalau angka di Pemantauan, Rekap, atau Analisis terasa belum update. Untuk memperbarui tampilan sebuah halaman, gunakan tombol <strong>Segarkan</strong> di halaman tersebut.</p>
+        <button type="button" class="secondary" onclick="Guru.paksaSinkronSekarang()"><i class="fa-solid fa-cloud-arrow-up"></i> Kirim ke Spreadsheet</button>
       </div>
 
       <div class="panel">
@@ -1212,6 +1216,7 @@
     <h2 class="hasil-judul" id="bukti-judul-ujian">-</h2>
     <h3 class="bukti-judul"><i class="fa-solid fa-camera"></i> Unggah Bukti Orak-Orik Jawaban</h3>
     <p class="bukti-sub" id="bukti-sub"></p>
+    <div class="bukti-kunci" id="bukti-kunci" role="status"><i class="fa-solid fa-lock"></i><span id="bukti-kunci-teks"></span></div>
     <div class="bukti-aksi" id="bukti-aksi">
       <button type="button" class="accent" onclick="BuktiUI.pilihKamera()"><i class="fa-solid fa-camera"></i> Ambil Foto</button>
       <button type="button" class="secondary" onclick="document.getElementById('bukti-input-galeri').click()"><i class="fa-solid fa-images"></i> Pilih dari Galeri</button>
@@ -1286,6 +1291,6 @@
 </div>
 
 <script src="config.js"></script>
-<script src="app.js?v=30"></script>
+<script src="app.js?v=33"></script>
 </body>
 </html>
