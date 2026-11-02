@@ -1687,7 +1687,7 @@ function toast(msg, jenis) {
 // cache, sehingga dialog konfirmasi tampil TANPA gaya (jatuh ke bawah halaman, tombol di belakangnya masih bisa
 // diklik, dialog menumpuk). Dengan disuntik dari app.js, dialog dijamin tampil di tengah layar & menutupi halaman.
 // ----------------------------------------------------------------------------
-const VERSI_APLIKASI = '36';
+const VERSI_APLIKASI = '37';
 const CSS_SEGAR = `
 /* Tombol "Segarkan" di halaman portal guru (Rekap Nilai, Log Pelanggaran, dll.) */
 .btn-segarkan { display: inline-flex; align-items: center; gap: .45rem; white-space: nowrap; }
@@ -5111,7 +5111,9 @@ const Guru = {
   // Data rekap setelah Filter Kelas + kotak cari.
   rekapTersaring_() {
     const saringBlokir = !!document.getElementById('blokir-rekap')?.checked;
-    return (state.guru._rekapAktif || []).filter(r => cocokFilterSiswa_(r, 'kelas-rekap', 'cari-rekap') && (!saringBlokir || r.status === 'diblokir'));
+    const hasil = document.getElementById('status-rekap')?.value || ''; // '' | 'lulus' | 'remedial'
+    return (state.guru._rekapAktif || []).filter(r => cocokFilterSiswa_(r, 'kelas-rekap', 'cari-rekap') && (!saringBlokir || r.status === 'diblokir')
+      && (!hasil || (hasil === 'lulus') === (String(r.lulus) === 'true')));
   },
 
   // Sel "Bukti Orak-Orik" di sebelah nilai: miniatur + jumlah foto (klik = galeri) atau status belum unggah.
@@ -5135,7 +5137,8 @@ const Guru = {
     const data = Guru.rekapTersaring_();
     const angka = data.map(r => Number(r.nilai)).filter(n => !isNaN(n) && n !== null);
     const rata = angka.length ? (angka.reduce((a, b) => a + b, 0) / angka.length) : null;
-    tampilkanInfoFilter_('kelas-rekap-info', data.length, semua.length, rata === null ? '' : 'rata-rata nilai ' + (Math.round(rata * 10) / 10));
+    const jmlLulus = data.filter(r => String(r.lulus) === 'true').length;
+    tampilkanInfoFilter_('kelas-rekap-info', data.length, semua.length, (rata === null ? '' : 'rata-rata nilai ' + (Math.round(rata * 10) / 10) + ' • ') + jmlLulus + ' lulus, ' + (data.length - jmlLulus) + ' remedial');
     if (data.length === 0) { cont.innerHTML = '<p class="subtitle">Tidak ada siswa yang cocok dengan kelas/pencarian ini.</p>'; return; }
     const adaKolomBukti = !!state.guru._rekapBuktiMode || semua.some(r => Array.isArray(r.bukti) && r.bukti.length);
     cont.innerHTML = `<table class="ledger"><thead><tr><th style="width:2rem"><input type="checkbox" id="rekap-pilih-semua" title="Pilih semua yang tampil" onchange="Guru.pilihSemuaRekap(this.checked)"></th><th>Nama</th><th>Kelas</th><th>Nilai</th>${adaKolomBukti ? '<th>Bukti Orak-Orik</th>' : ''}<th>Status</th><th>Pelanggaran</th><th>Selesai</th><th>Durasi</th><th></th></tr></thead><tbody>` +
@@ -5189,7 +5192,7 @@ const Guru = {
   },
 
   hapusSemuaNilaiUjian() {
-    const disaring = filterAktif_('kelas-rekap', 'cari-rekap') || !!document.getElementById('blokir-rekap')?.checked;
+    const disaring = filterAktif_('kelas-rekap', 'cari-rekap') || !!document.getElementById('blokir-rekap')?.checked || !!document.getElementById('status-rekap')?.value;
     const ids = Guru.rekapTersaring_().map(r => r.sesiId).filter(Boolean);
     if (!ids.length) { toast('Belum ada nilai untuk dihapus.', 'error'); return; }
     const kelasDipilih = document.getElementById('kelas-rekap')?.value || '';
