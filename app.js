@@ -1672,7 +1672,7 @@ function toast(msg, jenis) {
 // cache, sehingga dialog konfirmasi tampil TANPA gaya (jatuh ke bawah halaman, tombol di belakangnya masih bisa
 // diklik, dialog menumpuk). Dengan disuntik dari app.js, dialog dijamin tampil di tengah layar & menutupi halaman.
 // ----------------------------------------------------------------------------
-const VERSI_APLIKASI = '29';
+const VERSI_APLIKASI = '30';
 const CSS_SHEET = `
 /* Lembar pilihan sumber foto (tombol "+" di halaman unggah bukti orak-orik) */
 .bk-sheet-backdrop { position: fixed; inset: 0; z-index: 9000; display: flex; align-items: center; justify-content: center; padding: 1rem; background: rgba(14, 18, 40, .5); -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); animation: dlg-fade .15s ease-out; }
@@ -1716,6 +1716,25 @@ const CSS_KAMERA = `
 .kc-panel .kc-rana:hover { transform: scale(1.05); background: #fff; border-color: var(--c-primary); }
 .kc-panel .kc-rana:active::after { transform: scale(.85); }
 .kc-panel .kc-rana:disabled { opacity: .45; cursor: not-allowed; }
+`;
+const CSS_GALERI = `
+/* Penampil gambar galeri bukti (guru): kanvas + alat perbesar/perkecil/putar */
+.bg-panel .bg-stage { position: relative; flex: 1; min-width: 0; height: min(64vh, 620px); min-height: 300px; overflow: hidden; background: #1a1e2c; border: 1px solid var(--c-line); border-radius: 12px; touch-action: none; user-select: none; -webkit-user-select: none; cursor: zoom-in; }
+.bg-panel .bg-stage.geser { cursor: grab; }
+.bg-panel .bg-stage.menggeser { cursor: grabbing; }
+.bg-panel .bg-stage img { position: absolute; left: 50%; top: 50%; max-width: none; max-height: none; transform-origin: center center; will-change: transform; pointer-events: none; opacity: 0; transition: opacity .15s ease; }
+.bg-panel .bg-stage img.siap { opacity: 1; }
+.bg-panel .bg-stage .bg-galat { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 1.5rem; text-align: center; font-size: .88rem; color: #cbd5e1; }
+.bg-panel .bg-stage .bg-galat.hidden { display: none; }
+.bg-panel .bg-tools { position: absolute; left: 50%; bottom: .8rem; transform: translateX(-50%); z-index: 2; display: flex; align-items: center; gap: .2rem; padding: .3rem .45rem; background: rgba(18, 22, 38, .86); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); border-radius: 14px; box-shadow: 0 8px 22px rgba(0, 0, 0, .45); cursor: default; }
+.bg-panel .bg-tools button, .bg-panel .bg-tools button:active { display: inline-flex; align-items: center; gap: .4rem; padding: .5rem .7rem; font-size: .78rem; font-weight: 600; white-space: nowrap; cursor: pointer; color: #fff; background: transparent; border: 0; border-radius: 10px; box-shadow: none; transform: none; filter: none; }
+.bg-panel .bg-tools button:hover { background: rgba(255, 255, 255, .18); }
+.bg-panel .bg-tools button:disabled { opacity: .35; cursor: not-allowed; background: transparent; }
+.bg-panel .bg-tools .bg-zoom { min-width: 3.4rem; text-align: center; font-size: .78rem; font-weight: 700; color: #fff; font-variant-numeric: tabular-nums; }
+.bg-panel .bg-tools .bg-sekat { width: 1px; height: 22px; margin: 0 .25rem; background: rgba(255, 255, 255, .28); }
+.bg-panel .bg-bar { flex-wrap: wrap; }
+.bg-panel .bg-petunjuk { flex: 1; text-align: center; font-size: .72rem; opacity: .85; }
+@media (max-width: 640px) { .bg-panel .bg-tools .bg-lbl { display: none; } .bg-panel .bg-tools button { padding: .5rem .6rem; } .bg-panel .bg-petunjuk { display: none; } .bg-panel .bg-stage { height: 56vh; } }
 `;
 const CSS_DIALOG = `/* ============================================================================
    DIALOG PROFESIONAL v24 — pengganti confirm()/prompt()/alert() bawaan browser
@@ -1809,7 +1828,7 @@ function injectGayaDialog_() {
   if (document.getElementById('dlg-gaya')) return;
   const el = document.createElement('style');
   el.id = 'dlg-gaya';
-  el.textContent = CSS_DIALOG + CSS_SHEET + CSS_KAMERA;
+  el.textContent = CSS_DIALOG + CSS_SHEET + CSS_KAMERA + CSS_GALERI;
   document.head.appendChild(el);
 }
 injectGayaDialog_();
@@ -6899,10 +6918,16 @@ const BuktiUI = {
   }
 };
 
-// Galeri foto bukti orak-orik untuk GURU (dibuka dari kolom "Bukti" di Rekap Nilai)
+// Galeri foto bukti orak-orik untuk GURU (dibuka dari kolom "Bukti" di Rekap Nilai).
+// Penampil gambar: perbesar / perkecil / putar kiri-kanan / pas layar, zoom roda mouse, geser (drag), cubit (pinch),
+// klik gambar = zoom cepat. Arah putar tiap foto diingat (localStorage) supaya tidak perlu diputar lagi saat dibuka ulang.
 const BuktiGaleri = {
   _s: null,
+  ZOOM_MIN: 0.5, ZOOM_MAKS: 8,
   _besar(url) { return String(url || '').replace(/sz=w\d+/, 'sz=w2000'); },
+  _kunciRot(f) { return 'cbt_rot_' + String(f.id || f.url).slice(-60); },
+  _bacaRot(f) { try { const v = localStorage.getItem(BuktiGaleri._kunciRot(f)); return v === null ? null : (Number(v) || 0); } catch (e) { return null; } },
+  _simpanRot(f, r) { try { localStorage.setItem(BuktiGaleri._kunciRot(f), String(r)); } catch (e) { /* abaikan */ } },
 
   buka(sesiId) {
     const r = (state.guru._rekapAktif || []).find(x => String(x.sesiId) === String(sesiId));
@@ -6918,33 +6943,160 @@ const BuktiGaleri = {
         <button type="button" class="bg-tutup" data-aksi="tutup" aria-label="Tutup"><i class="fa-solid fa-xmark"></i></button>
       </div>
       <div class="bg-viewer">
-        <button type="button" class="bg-nav" data-aksi="prev" aria-label="Sebelumnya"><i class="fa-solid fa-chevron-left"></i></button>
-        <div class="bg-gambar-wrap"><img id="bg-img" alt="Foto bukti"><div class="bg-galat hidden" id="bg-galat">Gambar gagal dimuat. Coba tombol di bawah.</div></div>
-        <button type="button" class="bg-nav" data-aksi="next" aria-label="Berikutnya"><i class="fa-solid fa-chevron-right"></i></button>
+        <button type="button" class="bg-nav" data-aksi="prev" aria-label="Foto sebelumnya"><i class="fa-solid fa-chevron-left"></i></button>
+        <div class="bg-stage" id="bg-stage" title="Klik gambar untuk memperbesar / mengembalikan">
+          <img id="bg-img" alt="Foto bukti" draggable="false">
+          <div class="bg-galat hidden" id="bg-galat">Gambar gagal dimuat. Coba tombol "Buka ukuran asli" di bawah.</div>
+          <div class="bg-tools" role="toolbar" aria-label="Alat gambar">
+            <button type="button" data-alat="kecil" title="Perkecil ( - )"><i class="fa-solid fa-magnifying-glass-minus"></i><span class="bg-lbl">Perkecil</span></button>
+            <span class="bg-zoom" id="bg-zoom">100%</span>
+            <button type="button" data-alat="besar" title="Perbesar ( + )"><i class="fa-solid fa-magnifying-glass-plus"></i><span class="bg-lbl">Perbesar</span></button>
+            <span class="bg-sekat"></span>
+            <button type="button" data-alat="kiri" title="Putar ke kiri ( L )"><i class="fa-solid fa-rotate-left"></i><span class="bg-lbl">Putar Kiri</span></button>
+            <button type="button" data-alat="kanan" title="Putar ke kanan ( R )"><i class="fa-solid fa-rotate-right"></i><span class="bg-lbl">Putar Kanan</span></button>
+            <span class="bg-sekat"></span>
+            <button type="button" data-alat="pas" title="Pas layar ( 0 )"><i class="fa-solid fa-expand"></i><span class="bg-lbl">Pas Layar</span></button>
+          </div>
+        </div>
+        <button type="button" class="bg-nav" data-aksi="next" aria-label="Foto berikutnya"><i class="fa-solid fa-chevron-right"></i></button>
       </div>
-      <div class="bg-bar"><span id="bg-hitung"></span><a id="bg-asli" class="bg-link" rel="noopener"></a></div>
+      <div class="bg-bar"><span id="bg-hitung"></span><span class="bg-petunjuk">Roda mouse = zoom • seret = geser • klik gambar = perbesar</span><a id="bg-asli" class="bg-link" rel="noopener"></a></div>
       <div class="bg-strip">${foto.map((f, i) => `<button type="button" class="bg-th" data-idx="${i}"><img src="${escapeHtml_(f.url)}" alt="Foto ${i + 1}" loading="lazy"></button>`).join('')}</div>
     </div>`;
     document.body.appendChild(wrap);
-    const s = BuktiGaleri._s = { wrap, foto, idx: 0, nama: r.nama };
+    const s = BuktiGaleri._s = { wrap, foto, idx: 0, nama: r.nama, rot: 0, zoom: 1, px: 0, py: 0, nw: 0, nh: 0, ptr: new Map(), gerak: false, rotTerakhir: 0 };
     s.onKey = (e) => {
-      if (e.key === 'Escape') { e.stopPropagation(); BuktiGaleri.tutup(); }
-      else if (e.key === 'ArrowLeft') BuktiGaleri.geser(-1);
-      else if (e.key === 'ArrowRight') BuktiGaleri.geser(1);
+      const k = e.key;
+      if (k === 'Escape') { e.stopPropagation(); BuktiGaleri.tutup(); }
+      else if (k === 'ArrowLeft') BuktiGaleri.geser(-1);
+      else if (k === 'ArrowRight') BuktiGaleri.geser(1);
+      else if (k === '+' || k === '=') { e.preventDefault(); BuktiGaleri.ubahZoom(1.25); }
+      else if (k === '-' || k === '_') { e.preventDefault(); BuktiGaleri.ubahZoom(0.8); }
+      else if (k === '0') { e.preventDefault(); BuktiGaleri.pas(); }
+      else if (k === 'r' || k === 'R') { e.preventDefault(); BuktiGaleri.putar(90); }
+      else if (k === 'l' || k === 'L') { e.preventDefault(); BuktiGaleri.putar(-90); }
     };
     document.addEventListener('keydown', s.onKey, true);
+
     let mulaiDiLatar = false;
     wrap.addEventListener('mousedown', (e) => { mulaiDiLatar = e.target === wrap; });
     wrap.addEventListener('click', (e) => {
       if (e.target === wrap && mulaiDiLatar) { BuktiGaleri.tutup(); return; }
       const th = e.target.closest('[data-idx]');
       if (th) { BuktiGaleri.tampil(Number(th.dataset.idx)); return; }
+      const alat = e.target.closest('[data-alat]');
+      if (alat) {
+        const a = alat.dataset.alat;
+        if (a === 'besar') BuktiGaleri.ubahZoom(1.25);
+        else if (a === 'kecil') BuktiGaleri.ubahZoom(0.8);
+        else if (a === 'kiri') BuktiGaleri.putar(-90);
+        else if (a === 'kanan') BuktiGaleri.putar(90);
+        else if (a === 'pas') BuktiGaleri.pas();
+        return;
+      }
       const aksi = e.target.closest('[data-aksi]');
       if (!aksi) return;
       if (aksi.dataset.aksi === 'tutup') BuktiGaleri.tutup();
       else BuktiGaleri.geser(aksi.dataset.aksi === 'next' ? 1 : -1);
     });
+
+    // --- interaksi pada kanvas gambar: roda = zoom, drag = geser, 2 jari = cubit, klik = zoom cepat ---
+    const stage = wrap.querySelector('#bg-stage');
+    const titikPusat = (e) => { const b = stage.getBoundingClientRect(); return { x: e.clientX - (b.left + b.width / 2), y: e.clientY - (b.top + b.height / 2) }; };
+    stage.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const p = titikPusat(e);
+      BuktiGaleri.setZoom(s.zoom * (e.deltaY < 0 ? 1.15 : 1 / 1.15), p.x, p.y);
+    }, { passive: false });
+    stage.addEventListener('pointerdown', (e) => {
+      if (e.target.closest('.bg-tools') || (e.button !== undefined && e.button > 0)) return;
+      try { stage.setPointerCapture(e.pointerId); } catch (err) { /* abaikan */ }
+      s.ptr.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (s.ptr.size === 1) { s.gerak = false; s.total = 0; }
+      if (s.ptr.size === 2) { const [a, b] = Array.from(s.ptr.values()); s.jarakAwal = Math.hypot(a.x - b.x, a.y - b.y) || 1; s.zoomAwal = s.zoom; s.gerak = true; }
+    });
+    stage.addEventListener('pointermove', (e) => {
+      const lama = s.ptr.get(e.pointerId);
+      if (!lama) return;
+      const baru = { x: e.clientX, y: e.clientY };
+      if (s.ptr.size >= 2) {
+        s.ptr.set(e.pointerId, baru);
+        const [a, b] = Array.from(s.ptr.values());
+        const d = Math.hypot(a.x - b.x, a.y - b.y) || 1;
+        const bb = stage.getBoundingClientRect();
+        BuktiGaleri.setZoom(s.zoomAwal * d / s.jarakAwal, (a.x + b.x) / 2 - (bb.left + bb.width / 2), (a.y + b.y) / 2 - (bb.top + bb.height / 2));
+        return;
+      }
+      const dx = baru.x - lama.x, dy = baru.y - lama.y;
+      s.ptr.set(e.pointerId, baru);
+      s.total += Math.abs(dx) + Math.abs(dy);
+      if (s.total > 4) s.gerak = true;
+      if (s.gerak) { s.px += dx; s.py += dy; BuktiGaleri._klem(); BuktiGaleri._terapkan(); stage.classList.add('menggeser'); }
+    });
+    const lepas = (e) => {
+      if (!s.ptr.has(e.pointerId)) return;
+      const hanyaSatu = s.ptr.size === 1;
+      s.ptr.delete(e.pointerId);
+      stage.classList.remove('menggeser');
+      if (hanyaSatu && !s.gerak && e.type === 'pointerup') { // klik (bukan geser): zoom cepat di titik klik
+        const p = titikPusat(e);
+        if (s.zoom > 1.05) { s.zoom = 1; s.px = 0; s.py = 0; BuktiGaleri._terapkan(); }
+        else BuktiGaleri.setZoom(2.5, p.x, p.y);
+      }
+    };
+    stage.addEventListener('pointerup', lepas);
+    stage.addEventListener('pointercancel', lepas);
+
     BuktiGaleri.tampil(0);
+  },
+
+  _ukuran() { const st = BuktiGaleri._s.wrap.querySelector('#bg-stage'); return { w: st.clientWidth || 800, h: st.clientHeight || 500 }; },
+  _dimRotasi() { const s = BuktiGaleri._s, tegak = s.rot % 180 === 0; return { w: tegak ? s.nw : s.nh, h: tegak ? s.nh : s.nw }; },
+  _fit() {
+    const s = BuktiGaleri._s; if (!s.nw || !s.nh) return 1;
+    const u = BuktiGaleri._ukuran(), d = BuktiGaleri._dimRotasi();
+    return Math.min(u.w / d.w, u.h / d.h, 1);
+  },
+  _skala() { return BuktiGaleri._fit() * BuktiGaleri._s.zoom; },
+  _klem() { // gambar tidak boleh "hilang": bila lebih kecil dari kanvas -> di tengah; bila lebih besar -> sampai tepi
+    const s = BuktiGaleri._s, u = BuktiGaleri._ukuran(), d = BuktiGaleri._dimRotasi(), k = BuktiGaleri._skala();
+    const mx = Math.max(0, (d.w * k - u.w) / 2), my = Math.max(0, (d.h * k - u.h) / 2);
+    s.px = Math.max(-mx, Math.min(mx, s.px)); s.py = Math.max(-my, Math.min(my, s.py));
+  },
+  _terapkan() {
+    const s = BuktiGaleri._s; if (!s) return;
+    const img = s.wrap.querySelector('#bg-img');
+    if (s.nw && s.nh) {
+      img.style.width = s.nw + 'px'; img.style.height = s.nh + 'px';
+      img.style.marginLeft = (-s.nw / 2) + 'px'; img.style.marginTop = (-s.nh / 2) + 'px';
+      img.style.transform = `translate(${s.px.toFixed(1)}px, ${s.py.toFixed(1)}px) rotate(${s.rot}deg) scale(${BuktiGaleri._skala().toFixed(4)})`;
+    }
+    s.wrap.querySelector('#bg-zoom').textContent = Math.round(s.zoom * 100) + '%';
+    const u = BuktiGaleri._ukuran(), d = BuktiGaleri._dimRotasi(), k = BuktiGaleri._skala();
+    s.wrap.querySelector('#bg-stage').classList.toggle('geser', d.w * k > u.w + 1 || d.h * k > u.h + 1);
+    const tbl = (a) => s.wrap.querySelector(`[data-alat="${a}"]`);
+    tbl('kecil').disabled = s.zoom <= BuktiGaleri.ZOOM_MIN + 1e-6;
+    tbl('besar').disabled = s.zoom >= BuktiGaleri.ZOOM_MAKS - 1e-6;
+  },
+
+  // zoom relatif terhadap "pas layar" (100%); titik (cx, cy) = posisi kursor dari pusat kanvas, tetap di tempatnya
+  setZoom(z, cx = 0, cy = 0) {
+    const s = BuktiGaleri._s; if (!s) return;
+    z = Math.max(BuktiGaleri.ZOOM_MIN, Math.min(BuktiGaleri.ZOOM_MAKS, z));
+    const k = z / s.zoom;
+    s.px = cx - k * (cx - s.px); s.py = cy - k * (cy - s.py);
+    s.zoom = z;
+    BuktiGaleri._klem(); BuktiGaleri._terapkan();
+  },
+  ubahZoom(faktor) { const s = BuktiGaleri._s; if (s) BuktiGaleri.setZoom(s.zoom * faktor); },
+  pas() { const s = BuktiGaleri._s; if (!s) return; s.zoom = 1; s.px = 0; s.py = 0; BuktiGaleri._terapkan(); },
+  putar(derajat) {
+    const s = BuktiGaleri._s; if (!s) return;
+    s.rot = ((s.rot + derajat) % 360 + 360) % 360;
+    s.rotTerakhir = s.rot;
+    BuktiGaleri._simpanRot(s.foto[s.idx], s.rot);
+    s.zoom = 1; s.px = 0; s.py = 0; // setelah diputar, tampilkan utuh supaya langsung terbaca
+    BuktiGaleri._terapkan();
   },
 
   geser(d) {
@@ -6956,8 +7108,12 @@ const BuktiGaleri = {
     const s = BuktiGaleri._s; if (!s) return;
     s.idx = i;
     const f = s.foto[i];
+    const simpan = BuktiGaleri._bacaRot(f);
+    s.rot = simpan !== null ? simpan : s.rotTerakhir; // foto belum pernah diputar: ikut arah putar terakhir (biasanya satu HP = satu orientasi)
+    s.zoom = 1; s.px = 0; s.py = 0; s.nw = 0; s.nh = 0;
     const img = s.wrap.querySelector('#bg-img'), galat = s.wrap.querySelector('#bg-galat');
-    galat.classList.add('hidden'); img.classList.remove('hidden');
+    galat.classList.add('hidden'); img.classList.remove('hidden', 'siap');
+    img.onload = () => { if (BuktiGaleri._s !== s || s.idx !== i) return; s.nw = img.naturalWidth || 1; s.nh = img.naturalHeight || 1; img.classList.add('siap'); BuktiGaleri._terapkan(); };
     img.onerror = () => { img.classList.add('hidden'); galat.classList.remove('hidden'); };
     img.src = BuktiGaleri._besar(f.url);
     s.wrap.querySelector('#bg-hitung').textContent = `Foto ${i + 1} dari ${s.foto.length}`;
@@ -6971,6 +7127,7 @@ const BuktiGaleri = {
     }
     s.wrap.querySelectorAll('.bg-th').forEach((b, n) => b.classList.toggle('aktif', n === i));
     const aktif = s.wrap.querySelector('.bg-th.aktif'); if (aktif && aktif.scrollIntoView) aktif.scrollIntoView({ block: 'nearest', inline: 'center' });
+    BuktiGaleri._terapkan();
   },
 
   tutup() {
