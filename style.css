@@ -8,7 +8,7 @@
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap');
 
 :root {
-  --versi-css: "29"; /* harus sama dengan VERSI_APLIKASI di app.js (deteksi style.css usang di cache) */
+  --versi-css: "30"; /* harus sama dengan VERSI_APLIKASI di app.js (deteksi style.css usang di cache) */
   /* --- warna dasar (ditimpa JS: lihat Tampilan.terapkan di app.js) --- */
   --c-primary: #e58a72;
   --c-secondary: #6f9f94;
@@ -1607,9 +1607,6 @@ details.tm-det > summary { cursor: pointer; font-weight: 700; font-size: .88rem;
 .bg-tutup { width: 36px; height: 36px; padding: 0; border-radius: 50%; border: 1px solid var(--c-line); background: var(--c-bg); color: var(--c-text); cursor: pointer; box-shadow: none; transform: none; }
 .bg-tutup:hover { background: var(--c-danger); color: #fff; border-color: var(--c-danger); }
 .bg-viewer { display: flex; align-items: center; gap: .6rem; min-height: 0; flex: 1; }
-.bg-gambar-wrap { flex: 1; min-height: 240px; max-height: 62vh; display: flex; align-items: center; justify-content: center; overflow: auto; background: var(--c-bg); border: 1px solid var(--c-line); border-radius: 12px; }
-.bg-gambar-wrap img { max-width: 100%; max-height: 62vh; object-fit: contain; display: block; }
-.bg-galat { padding: 1.5rem; font-size: .85rem; color: var(--c-muted); }
 .bg-nav { flex-shrink: 0; width: 40px; height: 40px; padding: 0; border-radius: 50%; border: 1px solid var(--c-line); background: var(--c-surface); color: var(--c-text); cursor: pointer; box-shadow: none; transform: none; }
 .bg-nav:hover { background: var(--c-primary); color: var(--c-on-primary); border-color: var(--c-primary); }
 .bg-bar { display: flex; align-items: center; justify-content: space-between; gap: 1rem; font-size: .82rem; color: var(--c-muted); }
