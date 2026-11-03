@@ -7470,7 +7470,10 @@ const BuktiUI = {
   pilihKamera() {
     const s = BuktiUI._s;
     if (!s || s.sibuk) return;
-    if (BuktiFoto.perangkatSeluler()) document.getElementById('bukti-input-kamera').click();
+    // Kamera DI DALAM halaman (getUserMedia): siswa TIDAK pindah ke aplikasi kamera HP, jadi Chrome tidak ikut dimatikan
+    // sistem saat RAM HP kecil (penyebab siswa terlempar ke login). Aplikasi kamera bawaan HP hanya jadi cadangan.
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.isSecureContext) BuktiKamera.buka();
+    else if (BuktiFoto.perangkatSeluler()) document.getElementById('bukti-input-kamera').click();
     else BuktiKamera.buka();
   },
 
@@ -7960,6 +7963,7 @@ const BuktiKamera = {
       else if (a === 'ganti') BuktiKamera._ganti();
       else if (a === 'coba') BuktiKamera._nyalakan();
       else if (a === 'galeri') { BuktiKamera.tutup(); document.getElementById('bukti-input-galeri').click(); }
+      else if (a === 'bawaan') { BuktiKamera.tutup(); document.getElementById('bukti-input-kamera').click(); }
     });
     await BuktiKamera._nyalakan();
   },
@@ -7979,7 +7983,8 @@ const BuktiKamera = {
         '<button type="button" class="kc-btn utama" data-kc="gunakan"><i class="fa-solid fa-check"></i> Gunakan Foto</button>';
     } else if (mode === 'galat') {
       el.innerHTML = '<button type="button" class="kc-btn utama" data-kc="coba"><i class="fa-solid fa-rotate-right"></i> Coba Lagi</button>' +
-        '<button type="button" class="kc-btn" data-kc="galeri"><i class="fa-solid fa-images"></i> Pilih dari Galeri</button>';
+        '<button type="button" class="kc-btn" data-kc="galeri"><i class="fa-solid fa-images"></i> Pilih dari Galeri</button>' +
+        (BuktiFoto.perangkatSeluler() ? '<button type="button" class="kc-btn" data-kc="bawaan"><i class="fa-solid fa-camera"></i> Pakai Aplikasi Kamera HP</button>' : '');
     } else { el.innerHTML = ''; }
   },
 
@@ -8043,7 +8048,7 @@ const BuktiKamera = {
     const st = BuktiKamera._s; if (!st) return;
     const v = BuktiKamera._el('kc-video');
     if (!v.videoWidth || !v.videoHeight) { toast('Kamera belum siap, tunggu sebentar lalu coba lagi.', 'info'); return; }
-    const skala = Math.min(1, 2000 / Math.max(v.videoWidth, v.videoHeight));
+    const skala = Math.min(1, (BuktiFoto.perangkatSeluler() ? 1600 : 2000) / Math.max(v.videoWidth, v.videoHeight));
     const c = document.createElement('canvas');
     c.width = Math.round(v.videoWidth * skala); c.height = Math.round(v.videoHeight * skala);
     c.getContext('2d').drawImage(v, 0, 0, c.width, c.height); // tidak dibalik (mirror) supaya tulisan tetap terbaca benar
