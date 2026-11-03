@@ -8,7 +8,7 @@
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap');
 
 :root {
-  --versi-css: "38"; /* harus sama dengan VERSI_APLIKASI di app.js (deteksi style.css usang di cache) */
+  --versi-css: "41"; /* harus sama dengan VERSI_APLIKASI di app.js (deteksi style.css usang di cache) */
   /* --- warna dasar (ditimpa JS: lihat Tampilan.terapkan di app.js) --- */
   --c-primary: #e58a72;
   --c-secondary: #6f9f94;
@@ -1706,16 +1706,133 @@ details.tm-det > summary { cursor: pointer; font-weight: 700; font-size: .88rem;
 .dsw-chip-salah, .dsw-chip-kosong { color: var(--c-danger); border-color: color-mix(in srgb, var(--c-danger) 40%, transparent); }
 .dsw-chip-sebagian, .dsw-chip-manual { color: var(--c-warn-ink); border-color: color-mix(in srgb, var(--c-accent) 50%, transparent); }
 .dsw-evaluasi { font-size: .86rem; margin: 0 0 .9rem; padding: .6rem .8rem; border-radius: 6px; background: var(--c-surface); border: 1px solid var(--c-line); }
-#dsw-list { max-height: 58vh; overflow-y: auto; padding-right: .3rem; }
+#modal-detail-siswa { align-items: center; padding: 1rem; }
+.dsw-modal { display: flex; flex-direction: column; max-height: 100%; overflow: hidden; }
+.dsw-modal > * { flex: none; }
+#dsw-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding-right: .3rem; overscroll-behavior: contain; }
+.dsw-modal .dj-card:last-child { margin-bottom: .2rem; }
+.dj-pembahasan > :last-child, .dj-card .pertanyaan > :last-child { margin-bottom: 0; }
+.dj-card .katex-display { margin: .4em 0; }
 .dsw-aksi { align-items: center; flex-wrap: wrap; justify-content: flex-end; }
 .dsw-posisi { margin-right: auto; font-size: .8rem; color: var(--c-muted); }
 @media (max-width: 640px) { .dsw-aksi .dsw-posisi { width: 100%; order: -1; } }
 
-@media print {
-  body.cetak-detail-siswa > *:not(#modal-detail-siswa) { display: none !important; }
-  body.cetak-detail-siswa #modal-detail-siswa { position: static !important; display: block !important; background: none !important; padding: 0 !important; overflow: visible !important; }
-  body.cetak-detail-siswa #modal-detail-siswa .modal { box-shadow: none !important; max-width: none !important; padding: 0 !important; background: none !important; }
-  body.cetak-detail-siswa #dsw-list { max-height: none !important; overflow: visible !important; }
-  body.cetak-detail-siswa .dsw-aksi, body.cetak-detail-siswa .detail-tabs { display: none !important; }
-  body.cetak-detail-siswa .dj-card { break-inside: avoid; box-shadow: none !important; }
+/* ============================================================================
+   LEMBAR CETAK DETAIL JAWABAN SISWA (A4, selalu terang, hemat halaman)
+   Dibuat oleh Guru.cetakDetailSiswa() sebagai #cetak-area; di layar disembunyikan.
+   ============================================================================ */
+#cetak-area { display: none; }
+@page cetakdsw {
+  size: A4; margin: 13mm 14mm 16mm;
+  @bottom-center { content: "Halaman " counter(page) " dari " counter(pages); font: 8pt Arial, sans-serif; color: #555; }
 }
+@media print {
+  html:has(body.cetak-detail-siswa), body.cetak-detail-siswa { height: auto !important; min-height: 0 !important; overflow: visible !important; background: #fff !important; }
+  body.cetak-detail-siswa {
+    margin: 0 !important; padding: 0 !important; display: block !important; color: #111 !important;
+    --c-bg: #fff !important; --c-surface: #fff !important; --c-text: #111 !important; --c-muted: #555 !important; --c-line: #c9ced6 !important;
+    --c-success: #15803d !important; --c-danger: #b91c1c !important; --c-warn-ink: #8a5a00 !important; --c-accent: #d98e04 !important;
+    --c-primary: #1f4e79 !important; --c-secondary: #1f4e79 !important; --c-shadow: 0,0,0 !important;
+  }
+  body.cetak-detail-siswa > *:not(#cetak-area) { display: none !important; }
+  body.cetak-detail-siswa #cetak-area {
+    display: block !important; page: cetakdsw; position: static !important; width: auto !important; max-width: none !important;
+    font: 10pt/1.42 "Segoe UI", Arial, Helvetica, sans-serif; color: #111; background: #fff;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  #cetak-area *, #cetak-area *::before, #cetak-area *::after { box-sizing: border-box; color-scheme: light; text-shadow: none !important; animation: none !important; transition: none !important; }
+
+  /* kop & identitas */
+  #cetak-area .cp-kop { display: flex; align-items: center; gap: 10px; padding-bottom: 6px; border-bottom: 3px double #111; }
+  #cetak-area .cp-logo { height: 15mm; width: auto; max-width: 20mm; object-fit: contain; }
+  #cetak-area .cp-kop-teks h1 { margin: 0; font-size: 14pt; line-height: 1.2; letter-spacing: .02em; text-transform: uppercase; color: #111; }
+  #cetak-area .cp-kop-teks p { margin: 1px 0 0; font-size: 9pt; color: #444; }
+  #cetak-area .cp-judul { margin: 9px 0 6px; text-align: center; font-size: 11.5pt; letter-spacing: .05em; text-transform: uppercase; color: #111; }
+  #cetak-area .cp-info { width: 100%; border-collapse: collapse; margin-bottom: 6px; font-size: 9.5pt; }
+  #cetak-area .cp-info th { width: 13%; padding: 2px 4px; text-align: left; font-weight: 600; color: #444; vertical-align: top; }
+  #cetak-area .cp-info td { padding: 2px 4px; vertical-align: top; }
+  #cetak-area .cp-info td:nth-of-type(1) { width: 37%; }
+  #cetak-area .cp-nilai { font-size: 12pt; }
+  #cetak-area .cp-status { display: inline-block; margin-left: 4px; padding: 0 7px; border: 1px solid; border-radius: 99px; font-size: 8.5pt; font-weight: 700; }
+  #cetak-area .cp-lulus { color: #15803d; background: #e6f4ea; border-color: #15803d; }
+  #cetak-area .cp-remedial { color: #b91c1c; background: #fdecec; border-color: #b91c1c; }
+  #cetak-area .cp-ringkas { display: flex; flex-wrap: wrap; gap: 4px; margin: 2px 0 5px; }
+  #cetak-area .cp-chip { padding: 0 8px; border: 1px solid #b9bec6; border-radius: 99px; font-size: 8.5pt; background: #fff; }
+  #cetak-area .cp-evaluasi { margin: 0 0 6px; padding: 4px 8px; border: 1px solid #b9bec6; border-radius: 3px; background: #f3f4f6; font-size: 9pt; }
+  #cetak-area .cp-sub { margin: 8px 0 5px; padding-bottom: 2px; border-bottom: 1px solid #888; font-size: 10pt; color: #111; break-after: avoid; }
+  #cetak-area .cp-kosong { margin: 8px 0; padding: 10px; text-align: center; border: 1px dashed #999; color: #333; }
+  #cetak-area .cp-foot { display: flex; justify-content: space-between; margin-top: 10px; padding-top: 4px; border-top: 1px solid #888; font-size: 8pt; color: #555; break-inside: avoid; }
+
+  /* kartu soal ringkas */
+  #cetak-area .dj-card {
+    background: #fff !important; color: #111 !important; border: 1px solid #b9bec6 !important; border-left: 3.5px solid #8a8f98 !important; border-radius: 4px !important;
+    padding: 5px 8px 6px !important; margin: 0 0 6px !important; box-shadow: none !important; overflow: visible !important; font-size: 9.5pt;
+    break-inside: avoid; page-break-inside: avoid;
+  }
+  #cetak-area .dj-status-benar { border-left-color: #15803d !important; }
+  #cetak-area .dj-status-salah, #cetak-area .dj-status-kosong { border-left-color: #b91c1c !important; }
+  #cetak-area .dj-status-sebagian, #cetak-area .dj-status-manual { border-left-color: #d98e04 !important; }
+  #cetak-area .dj-head { display: flex; align-items: center; gap: 6px; margin: 0 0 3px; font-size: 9pt; }
+  #cetak-area .dj-no { font-weight: 700; }
+  #cetak-area .dj-skor { margin-left: auto; font-size: 8.5pt; color: #444; }
+  #cetak-area .dj-badge { padding: 0 7px; border: 1px solid currentColor; background: transparent !important; font-size: 8pt; }
+  #cetak-area .dj-badge-benar { color: #15803d !important; }
+  #cetak-area .dj-badge-salah, #cetak-area .dj-badge-kosong { color: #b91c1c !important; }
+  #cetak-area .dj-badge-sebagian, #cetak-area .dj-badge-manual { color: #8a5a00 !important; }
+  #cetak-area .pertanyaan { margin: 0 0 3px; line-height: 1.4; color: #111; font-size: 9.5pt; }
+  #cetak-area .dj-card img { display: inline-block; vertical-align: top; width: auto; height: auto; max-width: 62%; max-height: 48mm; margin: 3px 0; padding: 0; object-fit: contain; background: #fff; border: .5px solid #bbb; border-radius: 0; box-shadow: none; outline: 0; }
+  #cetak-area .dj-card .opsi-konten img { max-height: 24mm; max-width: 100%; margin: 2px 6px 0 0; }
+  #cetak-area .dj-zoom-hint { display: none !important; }
+
+  /* opsi jawaban */
+  #cetak-area .opsi-list { display: block; margin: 0; }
+  #cetak-area .opsi-list.cp-2col { display: grid; grid-template-columns: 1fr 1fr; column-gap: 6px; }
+  #cetak-area .opsi-item {
+    display: block; overflow: hidden; min-height: 0; margin: 0 0 2px; padding: 2px 6px; background: #fff !important; color: #111 !important;
+    border: 1px solid #cfd3d8 !important; border-radius: 3px; box-shadow: none !important; font-size: 9.5pt; line-height: 1.35; cursor: default;
+  }
+  #cetak-area .opsi-huruf { float: left; width: 15px; height: 15px; margin: 1px 6px 0 0; line-height: 13px; padding: 0; text-align: center; font-size: 8pt; font-weight: 700; color: #111; background: #fff !important; border: 1px solid #888; border-radius: 50%; }
+  #cetak-area .opsi-konten { display: block; overflow: hidden; min-width: 0; overflow-wrap: anywhere; color: #111; }
+  #cetak-area .dj-tag { float: right; margin: 1px 0 0 6px; padding: 0; font-size: 7.5pt; font-weight: 700; white-space: nowrap; color: #444; }
+  #cetak-area .cp-2col .dj-tag { white-space: normal; text-align: right; max-width: 45%; }
+  #cetak-area .dj-opsi.dj-benar, #cetak-area .dj-jodoh-row.dj-benar { background: #e6f4ea !important; border-color: #15803d !important; }
+  #cetak-area .dj-opsi.dj-salah, #cetak-area .dj-jodoh-row.dj-salah { background: #fdecec !important; border-color: #b91c1c !important; }
+  #cetak-area .dj-opsi.dj-benar .dj-tag { color: #15803d; }
+  #cetak-area .dj-opsi.dj-salah .dj-tag { color: #b91c1c; }
+  #cetak-area .dj-jodoh-row { margin: 0 0 2px; padding: 2px 6px; font-size: 9pt; border: 1px solid #cfd3d8; border-radius: 3px; }
+  #cetak-area .dj-jodoh-kiri { margin: 0; }
+  #cetak-area .dj-uraian-teks { padding: 3px 6px; border: 1px solid #cfd3d8; border-radius: 3px; background: #fff; }
+  #cetak-area .dj-label { margin: 0 0 1px; font-size: 7.5pt; color: #555; }
+  #cetak-area .dj-catatan { margin: 3px 0 0; font-size: 8.5pt; color: #444; }
+  #cetak-area .dj-pembahasan { margin: 4px 0 0; padding: 3px 7px; font-size: 9pt; color: #111; background: #f1f3f6 !important; border: 0 !important; border-left: 2.5px solid #1f4e79 !important; border-radius: 0 3px 3px 0; }
+  #cetak-area .dj-pembahasan p, #cetak-area .pertanyaan p, #cetak-area .opsi-konten p { margin: 0 0 2px; }
+  #cetak-area .katex { font-size: 1.02em; }
+  #cetak-area .katex-display { margin: .25em 0; }
+}
+
+/* ---- Cetak detail per kelas ---- */
+@media print {
+  #cetak-area .cp-cover { break-after: page; }
+  #cetak-area .cp-cover-ujian { margin: 0 0 4px; text-align: center; font-weight: 600; font-size: 10.5pt; }
+  #cetak-area .cp-cover-petunjuk { margin: 0 0 8px; padding: 4px 8px; font-size: 9pt; color: #333; background: #f3f4f6; border: 1px solid #b9bec6; border-radius: 3px; }
+  #cetak-area .cp-daftar { width: 100%; border-collapse: collapse; font-size: 9.5pt; }
+  #cetak-area .cp-daftar th { padding: 3px 5px; text-align: left; background: #e9edf2 !important; border: 1px solid #9aa1ab; font-size: 9pt; }
+  #cetak-area .cp-daftar td { padding: 2px 5px; border: 1px solid #c9ced6; }
+  #cetak-area .cp-daftar tr { break-inside: avoid; }
+  #cetak-area .cp-daftar thead { display: table-header-group; }
+  #cetak-area .cp-daftar tbody tr:nth-child(even) td { background: #f7f8fa !important; }
+  #cetak-area .cp-c { text-align: center !important; }
+  #cetak-area .cp-siswa { break-before: page; }
+  #cetak-area .cp-banner { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 0 5px; padding: 5px 10px; background: #1f4e79 !important; color: #fff; border-radius: 4px; }
+  #cetak-area .cp-banner-nama { font-size: 13pt; font-weight: 700; color: #fff; text-transform: uppercase; letter-spacing: .02em; }
+  #cetak-area .cp-banner-sub { font-size: 8.5pt; color: #dbe6f2; }
+  #cetak-area .cp-banner-nilai { display: flex; align-items: center; gap: 6px; color: #fff; white-space: nowrap; }
+  #cetak-area .cp-banner .cp-nilai { font-size: 15pt; color: #fff; }
+}
+@media print { #cetak-area .cp-pemilik { margin-left: 4px; font-size: 8pt; color: #555; } }
+@media print {
+  #cetak-area .opsi-item, #cetak-area .dj-jodoh-row, #cetak-area .dj-uraian-teks { break-inside: avoid; page-break-inside: avoid; }
+  #cetak-area .dj-head { break-after: avoid; }
+  #cetak-area .dj-card img { break-inside: avoid; }
+}
+@media print { #cetak-area .dj-card.cp-panjang { break-inside: auto !important; page-break-inside: auto !important; } }
