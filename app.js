@@ -5322,13 +5322,15 @@ const Guru = {
     items.forEach((it, i) => { if (it.status !== 'benar') nomorBelum.push(i + 1); });
     const tampil = [];
     items.forEach((it, i) => { if (filter === 'semua' || it.status !== 'benar') tampil.push({ it, no: i + 1 }); });
-    const kartu = tampil.length
+    // Siswa yang SEMUA jawabannya benar: jangan cetak soal satu pun (tidak perlu membocorkan/menghabiskan halaman) -- cukup keterangan.
+    const semuaBenar = items.length > 0 && nomorBelum.length === 0;
+    const kartu = (tampil.length && !semuaBenar)
       ? tampil.map(x => ExamEngine.htmlItemDetail_(x.it, x.no, { guru: true })).join('')
       : '<p class="cp-kosong">Semua jawaban siswa ini benar. Tidak ada soal yang perlu dievaluasi.</p>';
     const status = `<span class="cp-status ${lulus ? 'cp-lulus' : 'cp-remedial'}">${lulus ? 'Lulus' : 'Remedial'}</span>`;
     const ringkas = `<div class="cp-ringkas"><span class="cp-chip"><strong>${items.length}</strong> soal</span>${chip(hitung('benar'), 'benar')}${chip(hitung('sebagian'), 'sebagian benar')}${chip(hitung('salah'), 'salah')}${chip(hitung('kosong'), 'tidak dijawab')}${chip(hitung('manual'), 'perlu dikoreksi')}</div>
       <p class="cp-evaluasi">${nomorBelum.length ? `<strong>Perlu dievaluasi (nomor pada lembar siswa ini):</strong> ${nomorBelum.join(', ')}.` : '<strong>Semua jawaban benar.</strong>'}</p>
-      <h3 class="cp-sub">${filter === 'semua' ? 'Seluruh Soal' : 'Soal yang Perlu Dievaluasi'} (${tampil.length})</h3>
+      ${semuaBenar ? '' : `<h3 class="cp-sub">${filter === 'semua' ? 'Seluruh Soal' : 'Soal yang Perlu Dievaluasi'} (${tampil.length})</h3>`}
       <section class="cp-soal">${kartu}</section>`;
     if (opsi && opsi.kop) {
       return `${Guru._identitasSekolah_().kop}
@@ -5454,8 +5456,7 @@ const Guru = {
         ${gagal.length ? `<p class="cp-evaluasi"><strong>Detail tidak dapat dimuat:</strong> ${gagal.map(r => esc(r.nama || '-')).join(', ')}. Coba cetak ulang.</p>` : ''}
         <div class="cp-foot"><span>Dicetak dari ${esc(namaSekolah)}</span><span>${esc(waktu)}</span></div></section>`;
       const bagian = berhasil.map(x => {
-        const filter = x.items.some(it => it.status !== 'benar') ? 'salah' : 'semua';
-        return Guru._htmlLembarSiswa_(x.r, x.items, filter, judulUjian, { kop: false });
+        return Guru._htmlLembarSiswa_(x.r, x.items, 'salah', judulUjian, { kop: false }); // hanya soal yang belum benar; siswa nilai sempurna cukup diberi keterangan
       }).join('');
       await Guru._cetakArea_(cover + bagian, ['Detail Jawaban', labelKelas, judulUjian].filter(Boolean).join(' - '));
     } finally {
@@ -7135,13 +7136,42 @@ const BuktiFoto = {
     } finally { URL.revokeObjectURL(url); }
   },
 
+  // Ukuran asli foto (sesudah orientasi EXIF di browser modern) TANPA mendekode seluruh piksel.
+  async _ukuranAsli(blob) {
+    const url = URL.createObjectURL(blob);
+    try {
+      return await new Promise((res, rej) => { const i = new Image(); i.onload = () => res({ w: i.naturalWidth, h: i.naturalHeight }); i.onerror = () => rej(new Error('ukuran')); i.src = url; });
+    } finally { URL.revokeObjectURL(url); }
+  },
+  // HP berkamera 50-108 MP: mendekode foto utuh = ratusan MB RAM -> di HP RAM kecil browser DIMATIKAN sistem
+  // (\"Tidak dapat menyelesaikan operasi sebelumnya karena sisa memori sedikit\") dan siswa terlempar ke login.
+  // Karena itu foto diperkecil langsung saat dekode. Bila gagal/tidak didukung -> cara lama (_dekode).
+  async _dekodeHemat(blob, maksSisi) {
+    try {
+      if (window.createImageBitmap) {
+        const u = await BuktiFoto._ukuranAsli(blob);
+        const terbesar = Math.max(u.w, u.h);
+        if (u.w > 0 && u.h > 0 && terbesar > maksSisi) {
+          const tw = Math.max(1, Math.round(u.w * maksSisi / terbesar));
+          const bmp = await createImageBitmap(blob, { imageOrientation: 'from-image', resizeWidth: tw, resizeQuality: 'medium' });
+          const rasioAsli = u.w / u.h, rasioBmp = bmp.width / bmp.height;
+          if (Math.abs(rasioBmp - rasioAsli) / rasioAsli < 0.03) { // rasio cocok -> aman (bila tidak, orientasi berbeda: pakai cara lama)
+            return { sumber: bmp, w: bmp.width, h: bmp.height, tutup: () => { try { bmp.close(); } catch (e) { /* abaikan */ } } };
+          }
+          try { bmp.close(); } catch (e) { /* abaikan */ }
+        }
+      }
+    } catch (e) { /* lanjut ke cara lama */ }
+    return BuktiFoto._dekode(blob);
+  },
+
   // Foto apa pun (JPG/PNG/WEBP/GIF/BMP/AVIF/HEIC/HEIF, resolusi tinggi) -> JPEG terkompresi yang aman dikirim.
   async proses(file) {
     const lokal = !modeServerAktif(); // Mode Lokal: penyimpanan browser terbatas -> foto dibuat lebih kecil
-    const maksSisi = lokal ? 1200 : 2000, targetByte = lokal ? 250000 : 2200000;
+    const maksSisi = lokal ? 1200 : (BuktiFoto.perangkatSeluler() ? 1600 : 2000), targetByte = lokal ? 250000 : 2200000;
     let blob = file, dekode = null;
     if (BuktiFoto.adalahHeic(file)) {
-      try { dekode = await BuktiFoto._dekode(file); } // Safari/iPhone bisa membaca HEIC langsung
+      try { dekode = await BuktiFoto._dekodeHemat(file, maksSisi); } // Safari/iPhone bisa membaca HEIC langsung
       catch (e) {
         await muatPustaka_('heic2any'); // Chrome/Firefox/Android: konversi dgn pustaka
         try {
@@ -7151,7 +7181,7 @@ const BuktiFoto = {
       }
     }
     if (!dekode) {
-      try { dekode = await BuktiFoto._dekode(blob); }
+      try { dekode = await BuktiFoto._dekodeHemat(blob, maksSisi); }
       catch (e) { throw new Error('Format gambar tidak didukung di perangkat ini. Pilih foto JPG/PNG/HEIC atau foto ulang.'); }
     }
     let skala = Math.min(1, maksSisi / Math.max(dekode.w, dekode.h, 1)), kualitas = lokal ? 0.7 : 0.86, hasilBlob = null;
@@ -7163,6 +7193,7 @@ const BuktiFoto = {
       ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height); // PNG transparan -> latar putih (bukan hitam)
       ctx.drawImage(dekode.sumber, 0, 0, c.width, c.height);
       hasilBlob = await new Promise(r => c.toBlob(r, 'image/jpeg', kualitas));
+      c.width = c.height = 0; // lepaskan memori kanvas segera (penting di HP RAM kecil)
       if (!hasilBlob) throw new Error('Gagal memproses foto. Coba lagi.');
       if (hasilBlob.size <= targetByte) break;
       kualitas = Math.max(0.55, kualitas - 0.08);
