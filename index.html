@@ -28,7 +28,7 @@
      dimuat TANPA memblokir tampilan halaman login (dulu halaman kosong sampai keduanya selesai diunduh). -->
 <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
 <link rel="dns-prefetch" href="https://script.google.com">
-<link rel="stylesheet" href="style.css?v=37">
+<link rel="stylesheet" href="style.css?v=38">
 <!-- Font Awesome: ikon sidebar & tombol (gaya dashboard modern) -->
 <link rel="preload" as="style" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" onload="this.onload=null;this.rel='stylesheet'">
 <!-- KaTeX: render persamaan matematika (LaTeX) di dalam soal -->
@@ -402,6 +402,7 @@
           <button type="button" class="secondary btn-segarkan" title="Ambil data terbaru tanpa mengubah pilihan ujian &amp; kelas" onclick="Guru.segarkan('tab-rekap', this)"><i class="fa-solid fa-rotate"></i> Segarkan</button><span class="segar-info" id="segar-info-tab-rekap" aria-live="polite"></span>
           <button class="secondary" onclick="Guru.unduhRekapCSV()" title="Unduh nilai sesuai Filter Kelas & pencarian yang sedang tampil (pilih satu kelas = nilai kelas itu saja)">⬇ Unduh (sesuai filter)</button>
           <button class="secondary" onclick="Guru.unduhRekapCSV('semua')" title="Unduh nilai SEMUA kelas pada ujian ini: 1 sheet gabungan + 1 sheet per kelas">⬇ Semua Kelas</button>
+          <button class="secondary" onclick="Guru.unduhEvaluasiSalah()" title="Unduh Excel evaluasi: ringkasan benar/salah per siswa + daftar soal yang salah beserta jawaban siswa & kunci (mengikuti filter yang tampil)">⬇ Evaluasi Jawaban Salah</button>
           <button class="secondary" onclick="Guru.unduhRekapCSV('semuaUjian')" title="Unduh nilai dari SEMUA ujian sekaligus (mengikuti Filter Kelas): 1 sheet gabungan + 1 sheet per kelas">⬇ Semua Ujian</button>
           <button class="danger" title="Hapus nilai siswa yang dicentang pada tabel di bawah" onclick="Guru.hapusNilaiTerpilih()">🗑 Hapus Terpilih</button>
           <button class="danger" title="Hapus SEMUA nilai pada ujian yang sedang dipilih. Kalau Filter Kelas/pencarian aktif, hanya yang sedang tampil yang dihapus." onclick="Guru.hapusSemuaNilaiUjian()">🗑 Hapus Semua Nilai</button>
@@ -934,6 +935,34 @@
   </div>
 </div>
 
+<!-- ======================= MODAL: DETAIL JAWABAN SISWA (guru, dari Rekap Nilai) ======================= -->
+<div id="modal-detail-siswa" class="modal-backdrop hidden" onclick="if(event.target===this)Guru.tutupDetailSiswa()">
+  <div class="modal modal-wide dsw-modal">
+    <div class="dsw-head">
+      <div>
+        <p class="dsw-eyebrow">Detail Jawaban Siswa</p>
+        <h3 id="dsw-nama" style="margin:0">-</h3>
+        <p class="subtitle" id="dsw-meta" style="margin:.2rem 0 0"></p>
+      </div>
+      <div class="dsw-nilai-box"><span class="dsw-nilai" id="dsw-nilai">0</span><span id="dsw-status" class="badge"></span></div>
+    </div>
+    <div class="dsw-chips" id="dsw-chips"></div>
+    <p class="dsw-evaluasi" id="dsw-evaluasi"></p>
+    <div class="detail-tabs">
+      <button type="button" class="detail-tab active" id="dsw-tab-salah" onclick="Guru.gantiFilterDetailSiswa('salah')">Yang Salah</button>
+      <button type="button" class="detail-tab" id="dsw-tab-semua" onclick="Guru.gantiFilterDetailSiswa('semua')">Semua Soal</button>
+    </div>
+    <div id="dsw-list"></div>
+    <div class="modal-close-row dsw-aksi">
+      <button type="button" class="secondary" id="dsw-prev" onclick="Guru.pindahDetailSiswa(-1)"><i class="fa-solid fa-arrow-left"></i> Sebelumnya</button>
+      <span class="dsw-posisi" id="dsw-posisi"></span>
+      <button type="button" class="secondary" id="dsw-next" onclick="Guru.pindahDetailSiswa(1)">Berikutnya <i class="fa-solid fa-arrow-right"></i></button>
+      <button type="button" class="secondary" onclick="Guru.cetakDetailSiswa()" title="Cetak atau simpan sebagai PDF untuk diberikan ke siswa"><i class="fa-solid fa-print"></i> Cetak / PDF</button>
+      <button type="button" onclick="Guru.tutupDetailSiswa()">Tutup</button>
+    </div>
+  </div>
+</div>
+
 <!-- ======================= MODAL: UBAH SISWA ======================= -->
 <div id="modal-siswa" class="modal-backdrop hidden">
   <div class="modal">
@@ -1291,6 +1320,6 @@
 </div>
 
 <script src="config.js"></script>
-<script src="app.js?v=37"></script>
+<script src="app.js?v=38"></script>
 </body>
 </html>
