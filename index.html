@@ -28,7 +28,7 @@
      dimuat TANPA memblokir tampilan halaman login (dulu halaman kosong sampai keduanya selesai diunduh). -->
 <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
 <link rel="dns-prefetch" href="https://script.google.com">
-<link rel="stylesheet" href="style.css?v=38">
+<link rel="stylesheet" href="style.css?v=41">
 <!-- Font Awesome: ikon sidebar & tombol (gaya dashboard modern) -->
 <link rel="preload" as="style" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" onload="this.onload=null;this.rel='stylesheet'">
 <!-- KaTeX: render persamaan matematika (LaTeX) di dalam soal -->
@@ -403,6 +403,7 @@
           <button class="secondary" onclick="Guru.unduhRekapCSV()" title="Unduh nilai sesuai Filter Kelas & pencarian yang sedang tampil (pilih satu kelas = nilai kelas itu saja)">⬇ Unduh (sesuai filter)</button>
           <button class="secondary" onclick="Guru.unduhRekapCSV('semua')" title="Unduh nilai SEMUA kelas pada ujian ini: 1 sheet gabungan + 1 sheet per kelas">⬇ Semua Kelas</button>
           <button class="secondary" onclick="Guru.unduhEvaluasiSalah()" title="Unduh Excel evaluasi: ringkasan benar/salah per siswa + daftar soal yang salah beserta jawaban siswa & kunci (mengikuti filter yang tampil)">⬇ Evaluasi Jawaban Salah</button>
+          <button class="secondary" onclick="Guru.cetakDetailKelas()" title="Cetak / simpan PDF detail jawaban seluruh siswa yang tampil (pilih Filter Kelas dulu untuk satu kelas): halaman 1 daftar nama, lalu tiap siswa satu bagian berisi soal yang salah">🖨 Cetak Detail Kelas (PDF)</button>
           <button class="secondary" onclick="Guru.unduhRekapCSV('semuaUjian')" title="Unduh nilai dari SEMUA ujian sekaligus (mengikuti Filter Kelas): 1 sheet gabungan + 1 sheet per kelas">⬇ Semua Ujian</button>
           <button class="danger" title="Hapus nilai siswa yang dicentang pada tabel di bawah" onclick="Guru.hapusNilaiTerpilih()">🗑 Hapus Terpilih</button>
           <button class="danger" title="Hapus SEMUA nilai pada ujian yang sedang dipilih. Kalau Filter Kelas/pencarian aktif, hanya yang sedang tampil yang dihapus." onclick="Guru.hapusSemuaNilaiUjian()">🗑 Hapus Semua Nilai</button>
@@ -1320,6 +1321,6 @@
 </div>
 
 <script src="config.js"></script>
-<script src="app.js?v=38"></script>
+<script src="app.js?v=41"></script>
 </body>
 </html>
