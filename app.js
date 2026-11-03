@@ -1687,7 +1687,7 @@ function toast(msg, jenis) {
 // cache, sehingga dialog konfirmasi tampil TANPA gaya (jatuh ke bawah halaman, tombol di belakangnya masih bisa
 // diklik, dialog menumpuk). Dengan disuntik dari app.js, dialog dijamin tampil di tengah layar & menutupi halaman.
 // ----------------------------------------------------------------------------
-const VERSI_APLIKASI = '38';
+const VERSI_APLIKASI = '41';
 const CSS_SEGAR = `
 /* Tombol "Segarkan" di halaman portal guru (Rekap Nilai, Log Pelanggaran, dll.) */
 .btn-segarkan { display: inline-flex; align-items: center; gap: .45rem; white-space: nowrap; }
@@ -2191,7 +2191,39 @@ function isiKayaOtomatis_(str) { return /<[a-z][\s\S]*>/i.test(String(str || '')
 function kontenSoalHtml(str) {
   const s = String(str == null ? '' : str);
   if (!s) return '';
-  return isiKayaOtomatis_(s) ? sanitasiHtmlKaya_(s) : teksSoalHtml(s);
+  if (isiKayaOtomatis_(s)) return rapikanKontenKaya_(sanitasiHtmlKaya_(s));
+  // teks polos: buang baris kosong di awal/akhir & ringkas >2 baris kosong beruntun
+  return teksSoalHtml(s.replace(/\r\n?/g, '\n').replace(/^\s*\n+/, '').replace(/\s+$/, '').replace(/\n{3,}/g, '\n\n'));
+}
+
+// Merapikan HTML teks kaya: membuang elemen/baris kosong di awal & akhir serta meringkas
+// <br> / <div> / <p> kosong beruntun. Tanpa ini, pembahasan hasil impor/tempel dari Word
+// yang berekor banyak baris kosong membuat kartu detail jawaban "bisa di-scroll tapi kosong".
+function rapikanKontenKaya_(html) {
+  const tpl = document.createElement('template');
+  tpl.innerHTML = String(html == null ? '' : html);
+  const teksKosong = t => !String(t).replace(/[\s\u00a0\u200b]/g, '');
+  const kosong = n => n.nodeType === 3 ? teksKosong(n.textContent)
+    : (n.nodeType === 1 && n.tagName !== 'IMG' && !n.querySelector('img') && (n.tagName === 'BR' || teksKosong(n.textContent)));
+  const pangkas = node => {
+    while (node.lastChild && kosong(node.lastChild)) node.removeChild(node.lastChild);
+    while (node.firstChild && kosong(node.firstChild)) node.removeChild(node.firstChild);
+    if (node.lastChild && node.lastChild.nodeType === 1) pangkas(node.lastChild);
+  };
+  pangkas(tpl.content);
+  const sebelumnya = n => { let p = n.previousSibling; while (p && p.nodeType === 3 && teksKosong(p.textContent)) p = p.previousSibling; return p; };
+  Array.from(tpl.content.querySelectorAll('br')).forEach(br => {
+    const p1 = sebelumnya(br);
+    if (p1 && p1.nodeType === 1 && p1.tagName === 'BR') {
+      const p2 = sebelumnya(p1);
+      if (p2 && p2.nodeType === 1 && p2.tagName === 'BR') br.remove();
+    }
+  });
+  Array.from(tpl.content.querySelectorAll('div, p')).forEach(el => {
+    const prev = el.previousElementSibling;
+    if (prev && (prev.tagName === 'DIV' || prev.tagName === 'P') && kosong(el) && kosong(prev)) el.remove();
+  });
+  return tpl.innerHTML;
 }
 
 function richTeksKosong_(html) {
@@ -3212,6 +3244,7 @@ const Auth = {
         document.getElementById('siswa-nama-label').textContent = res.user.nama;
         Siswa.terapkanStatusBlokir(res.user.blokir);
         Siswa.mulaiPing();
+        BuktiUI.pulihkanTertunda(); // login ulang saat masih punya unggahan bukti tertunda -> langsung kembali ke halaman unggah
       }
     } finally {
       tombol.disabled = false;
@@ -3221,7 +3254,7 @@ const Auth = {
 
   async logout() {
     if (BuktiUI.peringatanKeluar()) return; // masih di langkah unggah bukti: tidak boleh keluar
-    try { sessionStorage.removeItem('cbt_bukti_tertunda'); } catch (e) { /* abaikan */ }
+    BuktiTertunda.hapus();
     if (state.user && state.user.role === 'siswa') {
       await api('logout', { role: 'siswa', siswaId: state.user.id });
     }
@@ -3233,7 +3266,16 @@ const Auth = {
   },
 
   pulihkanSesiLogin() {
-    const raw = sessionStorage.getItem('cbt_user');
+    let raw = sessionStorage.getItem('cbt_user');
+    if (!raw) {
+      // Tab dimatikan/dimuat ulang browser (mis. saat kamera dibuka) dan sessionStorage hilang:
+      // bila siswa masih punya unggahan bukti tertunda, pulihkan akunnya dari catatan tersebut.
+      const t = BuktiTertunda.baca();
+      if (t && t.user && t.user.role === 'siswa' && String(t.user.id) === String(t.userId)) {
+        raw = JSON.stringify(t.user);
+        try { sessionStorage.setItem('cbt_user', raw); } catch (e) { /* abaikan */ }
+      }
+    }
     if (!raw) return;
     try {
       const user = JSON.parse(raw);
@@ -5259,12 +5301,166 @@ const Guru = {
     Guru._navDetailSiswa_();
   },
 
-  // Cetak / simpan PDF: hanya isi modal detail (sesuai tab yang sedang tampil) yang dicetak.
-  cetakDetailSiswa() {
-    document.body.classList.add('cetak-detail-siswa');
-    const bersihkan = () => { document.body.classList.remove('cetak-detail-siswa'); window.removeEventListener('afterprint', bersihkan); };
+  // ---------------- CETAK / PDF (lembar A4 khusus, #cetak-area) ----------------
+  // Membuat lembar cetak khusus -- bukan mencetak modal layar. Warna dipaksa terang (tema gelap tidak ikut)
+  // supaya hasil cetak/PDF tidak blank dan jumlah halaman tetap hemat.
+  _identitasSekolah_() {
+    const elNama = document.querySelector('#sidebar-guru .app-brand-nama');
+    const namaSekolah = (elNama && elNama.textContent.trim()) || 'CBT Sekolah';
+    const logoImg = document.querySelector('#sidebar-guru .app-logo-slot img');
+    const logo = logoImg && logoImg.src ? `<img class="cp-logo" src="${escapeHtml_(logoImg.src)}" alt="">` : '';
+    return { namaSekolah, kop: `<header class="cp-kop">${logo}<div class="cp-kop-teks"><h1>${escapeHtml_(namaSekolah)}</h1><p>Sistem Ujian Online (CBT)</p></div></header>` };
+  },
+
+  // HTML satu siswa. opsi.kop = true -> lembar tunggal (dengan kop & judul); false -> bagian dalam cetak per kelas.
+  _htmlLembarSiswa_(rekap, items, filter, judulUjian, opsi) {
+    const esc = escapeHtml_;
+    const lulus = String(rekap.lulus) === 'true';
+    const hitung = st => items.filter(it => it.status === st).length;
+    const chip = (jml, teks) => jml ? `<span class="cp-chip"><strong>${jml}</strong> ${teks}</span>` : '';
+    const nomorBelum = [];
+    items.forEach((it, i) => { if (it.status !== 'benar') nomorBelum.push(i + 1); });
+    const tampil = [];
+    items.forEach((it, i) => { if (filter === 'semua' || it.status !== 'benar') tampil.push({ it, no: i + 1 }); });
+    const kartu = tampil.length
+      ? tampil.map(x => ExamEngine.htmlItemDetail_(x.it, x.no, { guru: true })).join('')
+      : '<p class="cp-kosong">Semua jawaban siswa ini benar. Tidak ada soal yang perlu dievaluasi.</p>';
+    const status = `<span class="cp-status ${lulus ? 'cp-lulus' : 'cp-remedial'}">${lulus ? 'Lulus' : 'Remedial'}</span>`;
+    const ringkas = `<div class="cp-ringkas"><span class="cp-chip"><strong>${items.length}</strong> soal</span>${chip(hitung('benar'), 'benar')}${chip(hitung('sebagian'), 'sebagian benar')}${chip(hitung('salah'), 'salah')}${chip(hitung('kosong'), 'tidak dijawab')}${chip(hitung('manual'), 'perlu dikoreksi')}</div>
+      <p class="cp-evaluasi">${nomorBelum.length ? `<strong>Perlu dievaluasi (nomor pada lembar siswa ini):</strong> ${nomorBelum.join(', ')}.` : '<strong>Semua jawaban benar.</strong>'}</p>
+      <h3 class="cp-sub">${filter === 'semua' ? 'Seluruh Soal' : 'Soal yang Perlu Dievaluasi'} (${tampil.length})</h3>
+      <section class="cp-soal">${kartu}</section>`;
+    if (opsi && opsi.kop) {
+      return `${Guru._identitasSekolah_().kop}
+      <h2 class="cp-judul">Laporan Evaluasi Jawaban Siswa</h2>
+      <table class="cp-info"><tbody>
+        <tr><th>Nama</th><td>: ${esc(rekap.nama || '-')}</td><th>Nilai</th><td>: <strong class="cp-nilai">${esc(String(rekap.nilai))}</strong> ${status}</td></tr>
+        <tr><th>Kelas</th><td>: ${esc(rekap.kelas || '-')}</td><th>Selesai</th><td>: ${rekap.selesai ? esc(formatTanggal(rekap.selesai)) : '-'}</td></tr>
+        <tr><th>Ujian</th><td colspan="3">: ${esc(judulUjian || '-')}</td></tr>
+      </tbody></table>${ringkas}`;
+    }
+    const kartuBernama = ringkas.split('<span class="dj-skor">').join(`<span class="cp-pemilik">${esc(rekap.nama || '')}</span><span class="dj-skor">`);
+    return `<article class="cp-siswa">
+      <div class="cp-banner"><div><div class="cp-banner-nama">${esc(rekap.nama || '-')}</div><div class="cp-banner-sub">Kelas ${esc(rekap.kelas || '-')} • ${esc(judulUjian || '')}</div></div>
+      <div class="cp-banner-nilai"><strong class="cp-nilai">${esc(String(rekap.nilai))}</strong> ${status}</div></div>${kartuBernama}</article>`;
+  },
+
+  // Pasang #cetak-area, render rumus, tunggu gambar/font, lalu window.print().
+  _cetakArea_(htmlIsi, judulDokumen) {
+    const lama = document.getElementById('cetak-area'); if (lama) lama.remove();
+    const area = document.createElement('div');
+    area.id = 'cetak-area';
+    area.innerHTML = htmlIsi;
+    // opsi yang pendek-pendek ditata 2 kolom supaya hemat halaman
+    area.querySelectorAll('.opsi-list').forEach(ol => {
+      const ks = Array.from(ol.querySelectorAll('.opsi-konten'));
+      if (ks.length >= 4 && ks.every(k => !k.querySelector('img') && k.textContent.trim().length <= 26)) ol.classList.add('cp-2col');
+    });
+    // label (Kunci / Dipilih) dipindah sebelum teks opsi supaya bisa rata kanan dengan float (flex/grid memicu bug pecah halaman di Chrome)
+    area.querySelectorAll('.opsi-item').forEach(it => {
+      const tag = it.querySelector('.dj-tag'), isi = it.querySelector('.opsi-konten');
+      if (tag && isi) it.insertBefore(tag, isi);
+    });
+    document.body.appendChild(area);
+    renderMatika(area);
+    // Kartu yang lebih tinggi dari satu halaman A4 (pembahasan sangat panjang) boleh terpotong antar halaman;
+    // bila dipaksa "tidak boleh terpotong", Chrome meregangkan isinya sehingga tampil kosong & berantakan.
+    area.style.cssText = 'display:block;position:absolute;left:-99999px;top:0;width:182mm;visibility:hidden';
+    area.querySelectorAll('.dj-card').forEach(k => { if (k.offsetHeight > 880) k.classList.add('cp-panjang'); });
+    area.removeAttribute('style');
+    const judulAsli = document.title;
+    document.title = judulDokumen;
+    const bersihkan = () => {
+      document.body.classList.remove('cetak-detail-siswa');
+      document.title = judulAsli;
+      const a = document.getElementById('cetak-area'); if (a) a.remove();
+      window.removeEventListener('afterprint', bersihkan);
+    };
     window.addEventListener('afterprint', bersihkan);
-    window.print();
+    const gambar = Array.from(area.querySelectorAll('img')).filter(im => !im.complete)
+      .map(im => new Promise(r => { im.addEventListener('load', r); im.addEventListener('error', r); }));
+    const font = (document.fonts && document.fonts.ready) ? document.fonts.ready : Promise.resolve();
+    return Promise.race([Promise.all(gambar.concat([font])), new Promise(r => setTimeout(r, 6000))]).then(() => {
+      // gambar Drive yang gagal di percobaan pertama diganti URL cadangan oleh penangan global -> beri waktu sebentar
+      const masihGagal = Array.from(area.querySelectorAll('img')).some(im => !im.complete || im.naturalWidth === 0);
+      return masihGagal ? new Promise(r => setTimeout(r, 2500)) : null;
+    }).then(() => {
+      document.body.classList.add('cetak-detail-siswa');
+      window.print();
+    });
+  },
+
+  // Cetak / simpan PDF detail SATU siswa yang sedang dibuka (mengikuti tab yang tampil).
+  cetakDetailSiswa() {
+    const D = Guru._detailSiswa;
+    const items = D.items || [];
+    if (!items.length) { toast('Detail jawaban belum selesai dimuat.', 'error'); return; }
+    const rekap = D.rekap || {};
+    const sel = document.getElementById('pilih-ujian-rekap');
+    const judulUjian = sel && sel.selectedIndex >= 0 ? sel.options[sel.selectedIndex].text : '';
+    const { namaSekolah } = Guru._identitasSekolah_();
+    const waktu = new Date().toLocaleString('id-ID', { dateStyle: 'long', timeStyle: 'short' });
+    const html = Guru._htmlLembarSiswa_(rekap, items, D.filter, judulUjian, { kop: true }) +
+      `<footer class="cp-foot"><span>Dicetak dari ${escapeHtml_(namaSekolah)}</span><span>${escapeHtml_(waktu)}</span></footer>`;
+    Guru._cetakArea_(html, ['Detail Jawaban', rekap.nama, rekap.kelas].filter(Boolean).join(' - '));
+  },
+
+  // Cetak / simpan PDF SELURUH siswa yang sedang tampil di Rekap Nilai (ikut Filter Kelas, cari, Lulus/Remedial).
+  // Halaman 1 = daftar nama & nilai; setiap siswa mulai di halaman baru berisi soal-soal yang salah.
+  async cetakDetailKelas() {
+    const sel = document.getElementById('pilih-ujian-rekap');
+    if (!sel || !sel.value) { toast('Pilih ujian terlebih dahulu.', 'error'); return; }
+    const data = Guru._daftarSesiDetail_().slice()
+      .sort((a, b) => String(a.kelas || '').localeCompare(String(b.kelas || ''), 'id', { numeric: true }) || String(a.nama || '').localeCompare(String(b.nama || ''), 'id', { sensitivity: 'base' }));
+    if (!data.length) { toast('Tidak ada siswa pada filter ini.', 'error'); return; }
+    if (Guru._sedangCetakKelas) return;
+    Guru._sedangCetakKelas = true;
+    try {
+      const judulUjian = sel.selectedIndex >= 0 ? sel.options[sel.selectedIndex].text : '';
+      toast(`Mengambil detail jawaban ${data.length} siswa...`);
+      const hasil = new Array(data.length).fill(null);
+      let giliran = 0, selesai = 0;
+      const pekerja = async () => {
+        while (giliran < data.length) {
+          const i = giliran++;
+          try {
+            const res = await api('getDetailJawaban', { sesiId: data[i].sesiId, guruId: state.user ? state.user.id : '' });
+            if (res && res.ok && (res.items || []).length) hasil[i] = res.items;
+          } catch (e) { /* ditandai gagal di bawah */ }
+          selesai++;
+          if (selesai % 10 === 0 && selesai < data.length) toast(`Mengambil detail jawaban... ${selesai}/${data.length}`);
+        }
+      };
+      await Promise.all([pekerja(), pekerja(), pekerja(), pekerja()]);
+      const berhasil = data.map((r, i) => ({ r, items: hasil[i] })).filter(x => x.items);
+      const gagal = data.filter((r, i) => !hasil[i]);
+      if (!berhasil.length) { toast('Gagal mengambil detail jawaban. Coba lagi.', 'error'); return; }
+
+      const esc = escapeHtml_;
+      const { namaSekolah, kop } = Guru._identitasSekolah_();
+      const kelasSet = Array.from(new Set(berhasil.map(x => x.r.kelas).filter(Boolean)));
+      const labelKelas = kelasSet.length === 1 ? 'Kelas ' + kelasSet[0] : (kelasSet.length ? 'Kelas ' + kelasSet.join(', ') : 'Semua Kelas');
+      const waktu = new Date().toLocaleString('id-ID', { dateStyle: 'long', timeStyle: 'short' });
+      const baris = berhasil.map((x, n) => {
+        const lulus = String(x.r.lulus) === 'true';
+        const belum = x.items.filter(it => it.status !== 'benar').length;
+        return `<tr><td class="cp-c">${n + 1}</td><td>${esc(x.r.nama || '-')}</td><td class="cp-c">${esc(x.r.kelas || '-')}</td><td class="cp-c"><strong>${esc(String(x.r.nilai))}</strong></td><td class="cp-c">${lulus ? 'Lulus' : 'Remedial'}</td><td class="cp-c">${belum} / ${x.items.length}</td></tr>`;
+      }).join('');
+      const cover = `<section class="cp-cover">${kop}
+        <h2 class="cp-judul">Detail Jawaban Siswa — ${esc(labelKelas)}</h2>
+        <p class="cp-cover-ujian">${esc(judulUjian)}</p>
+        <p class="cp-cover-petunjuk">Cari nama Anda pada daftar di bawah, lalu buka halaman berisi nama tersebut: di sana tertera soal yang dijawab salah, jawaban yang dipilih, kunci jawaban, dan pembahasan. Daftar berurutan sama dengan urutan halaman.</p>
+        <table class="cp-daftar"><thead><tr><th class="cp-c">No</th><th>Nama</th><th class="cp-c">Kelas</th><th class="cp-c">Nilai</th><th class="cp-c">Status</th><th class="cp-c">Soal belum benar</th></tr></thead><tbody>${baris}</tbody></table>
+        ${gagal.length ? `<p class="cp-evaluasi"><strong>Detail tidak dapat dimuat:</strong> ${gagal.map(r => esc(r.nama || '-')).join(', ')}. Coba cetak ulang.</p>` : ''}
+        <div class="cp-foot"><span>Dicetak dari ${esc(namaSekolah)}</span><span>${esc(waktu)}</span></div></section>`;
+      const bagian = berhasil.map(x => {
+        const filter = x.items.some(it => it.status !== 'benar') ? 'salah' : 'semua';
+        return Guru._htmlLembarSiswa_(x.r, x.items, filter, judulUjian, { kop: false });
+      }).join('');
+      await Guru._cetakArea_(cover + bagian, ['Detail Jawaban', labelKelas, judulUjian].filter(Boolean).join(' - '));
+    } finally {
+      Guru._sedangCetakKelas = false;
+    }
   },
 
   // Unduh Excel evaluasi: semua siswa yang sedang tampil (ikut Filter Kelas/cari/hasil).
@@ -6886,6 +7082,35 @@ SkalaSoal.init();
 // Jaminan terkirim: tiap foto diverifikasi ukurannya oleh server, otomatis dicoba ulang (4x),
 // kirim ulang tidak membuat duplikat, dan sebelum lanjut daftar foto diperiksa ulang ke server.
 // ----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
+// PENYIMPANAN PEMULIHAN LANGKAH UNGGAH BUKTI
+// Saat siswa membuka kamera/galeri di HP, browser sering mematikan/memuat ulang halaman (memori habis, aplikasi
+// kamera mengambil alih). sessionStorage bisa HILANG pada kasus itu sehingga siswa terlempar ke halaman login dan,
+// setelah login ulang, tidak dikembalikan ke langkah unggah -> terulang terus. Karena itu catatan "sedang di langkah
+// unggah bukti" disimpan JUGA di localStorage (kedaluwarsa 12 jam) beserta data akun siswa, dan dipakai untuk
+// memulihkan sesi otomatis maupun setelah login ulang. Catatan dihapus begitu semua foto terkirim / siswa keluar sah.
+// ----------------------------------------------------------------------------
+const BUKTI_TERTUNDA_KEY = 'cbt_bukti_tertunda';
+const BUKTI_TERTUNDA_TTL_MS = 12 * 3600 * 1000;
+const BuktiTertunda = {
+  simpan(rec) {
+    const isi = JSON.stringify(Object.assign({}, rec, { waktu: Date.now() }));
+    try { sessionStorage.setItem(BUKTI_TERTUNDA_KEY, isi); } catch (e) { /* abaikan */ }
+    try { localStorage.setItem(BUKTI_TERTUNDA_KEY, isi); } catch (e) { /* abaikan */ }
+  },
+  baca() {
+    const coba = (st) => { try { return JSON.parse(st.getItem(BUKTI_TERTUNDA_KEY) || 'null'); } catch (e) { return null; } };
+    const d = coba(sessionStorage) || coba(localStorage);
+    if (!d) return null;
+    if (d.waktu && Date.now() - d.waktu > BUKTI_TERTUNDA_TTL_MS) { BuktiTertunda.hapus(); return null; }
+    return d;
+  },
+  hapus() {
+    try { sessionStorage.removeItem(BUKTI_TERTUNDA_KEY); } catch (e) { /* abaikan */ }
+    try { localStorage.removeItem(BUKTI_TERTUNDA_KEY); } catch (e) { /* abaikan */ }
+  }
+};
+
 const BuktiFoto = {
   MAKS_FOTO: 10,
   // HP/tablet: atribut capture membuka aplikasi kamera bawaan. Laptop/PC: capture DIABAIKAN browser (hanya membuka pemilih
@@ -6970,7 +7195,7 @@ const BuktiUI = {
       const itemAwal = (fotoAwal || []).map(f => ({ uid: 's' + f.id, kunci: '', nama: f.nama || 'foto.jpg', status: 'ok', galat: '', blob: null, previewUrl: f.url || '', serverId: f.id }));
       BuktiUI._s = { mode, sesiId, items: itemAwal, mengunggah: false, sibuk: false, selesai: false, resolve };
       // Ingat bahwa siswa sedang di langkah ini: bila halaman sampai dimuat ulang, langsung dikembalikan ke sini (bukan ke beranda).
-      try { sessionStorage.setItem('cbt_bukti_tertunda', JSON.stringify({ userId: state.user && state.user.id, sesiId, mode, judul, nilai, lulus, ujianId })); } catch (e) { /* abaikan */ }
+      BuktiTertunda.simpan({ userId: state.user && state.user.id, user: state.user, sesiId, mode, judul, nilai, lulus, ujianId });
       KumpulUI.sembunyikanSemua();
       UI.tampilkan('bukti-screen');
       window.scrollTo(0, 0);
@@ -7155,9 +7380,9 @@ const BuktiUI = {
 
   // Dipanggil saat aplikasi dibuka lagi (mis. halaman dimuat ulang) dan siswa masih di langkah unggah bukti.
   async pulihkanTertunda() {
-    let d = null;
-    try { d = JSON.parse(sessionStorage.getItem('cbt_bukti_tertunda') || 'null'); } catch (e) { d = null; }
-    if (!d || !state.user || String(d.userId) !== String(state.user.id)) { try { sessionStorage.removeItem('cbt_bukti_tertunda'); } catch (e) { /* abaikan */ } return; }
+    const d = BuktiTertunda.baca();
+    if (!d || !state.user || String(d.userId) !== String(state.user.id)) return; // catatan siswa lain di perangkat ini: biarkan (kedaluwarsa sendiri)
+    if (BuktiUI._s) return; // sudah di halaman unggah
     state.sesiId = d.sesiId;
     state.ujian = { id: d.ujianId, judul: d.judul };
     state.submitting = true;
@@ -7358,7 +7583,7 @@ const BuktiUI = {
     if (!s || s.selesai) return;
     s.selesai = true;
     BuktiUI._lepasPenjaga();
-    try { sessionStorage.removeItem('cbt_bukti_tertunda'); } catch (e) { /* abaikan */ }
+    BuktiTertunda.hapus();
     s.items.forEach(i => { if (i.previewUrl) URL.revokeObjectURL(i.previewUrl); });
     BuktiUI._s = null;
     s.resolve();
