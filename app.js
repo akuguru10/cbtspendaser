@@ -1687,7 +1687,7 @@ function toast(msg, jenis) {
 // cache, sehingga dialog konfirmasi tampil TANPA gaya (jatuh ke bawah halaman, tombol di belakangnya masih bisa
 // diklik, dialog menumpuk). Dengan disuntik dari app.js, dialog dijamin tampil di tengah layar & menutupi halaman.
 // ----------------------------------------------------------------------------
-const VERSI_APLIKASI = '37';
+const VERSI_APLIKASI = '38';
 const CSS_SEGAR = `
 /* Tombol "Segarkan" di halaman portal guru (Rekap Nilai, Log Pelanggaran, dll.) */
 .btn-segarkan { display: inline-flex; align-items: center; gap: .45rem; white-space: nowrap; }
@@ -3107,7 +3107,8 @@ const LocalBackend = (function () {
         if (data.siswaId && String(sesi.siswa_id) !== String(data.siswaId)) return { ok: false, error: 'Sesi ini bukan milik Anda.' };
         if (sesi.status === 'berlangsung') return { ok: false, error: 'Detail jawaban baru bisa dilihat setelah ujian selesai.' };
         const ujian = D.ujian.find(u => u.id === sesi.ujian_id);
-        if (ujian && String(ujian.tampil_detail) === 'false') return { ok: false, error: 'Guru tidak mengaktifkan detail jawaban untuk ujian ini.' };
+        const dariGuru = !data.siswaId && !!data.guruId && D.guru.some(g => String(g.id) === String(data.guruId));
+        if (!dariGuru && ujian && String(ujian.tampil_detail) === 'false') return { ok: false, error: 'Guru tidak mengaktifkan detail jawaban untuk ujian ini.' };
         const items = bangunDetailJawaban_(D, sesi);
         const tampilPembahasan = !(ujian && String(ujian.tampil_pembahasan).toLowerCase() === 'false');
         if (!tampilPembahasan && data.siswaId) items.forEach(it => { it.pembahasan = ''; });
@@ -5150,8 +5151,215 @@ const Guru = {
         <td>${r.pelanggaran || 0} ${r.status === 'diblokir' ? '<span class="badge warn">Diblokir</span>' : ''}</td>
         <td style="font-size:.8rem">${formatTanggal(r.selesai)}</td>
         <td style="font-size:.8rem;white-space:nowrap">${formatDurasi_(hitungDurasiDetik_(r.mulai, r.selesai))}</td>
-        <td class="aksi">${r.sesiId ? `<button class="danger small" title="Hapus nilai siswa ini (siswa bisa mengikuti ujian ini lagi)" onclick="Guru.hapusNilaiSatu('${escapeHtml_(r.sesiId)}')">🗑 Hapus</button>` : ''}</td>
+        <td class="aksi">${r.sesiId ? `<button class="secondary small" title="Lihat soal yang salah, jawaban siswa, dan kunci (untuk evaluasi)" onclick="Guru.bukaDetailSiswa('${escapeHtml_(r.sesiId)}')">🔍 Detail Jawaban</button><button class="danger small" title="Hapus nilai siswa ini (siswa bisa mengikuti ujian ini lagi)" onclick="Guru.hapusNilaiSatu('${escapeHtml_(r.sesiId)}')">🗑 Hapus</button>` : ''}</td>
       </tr>`).join('') + `</tbody></table>`;
+  },
+
+  // ---------------- DETAIL JAWABAN PER SISWA (Rekap Nilai) ----------------
+  // Guru membuka detail jawaban satu siswa: soal mana yang salah, jawaban yang
+  // dipilih siswa, kunci jawaban, skor & pembahasan -- untuk bahan evaluasi/remedial
+  // per siswa. Memakai renderer yang sama dengan layar detail siswa (htmlItemDetail_).
+  _detailSiswa: { sesiId: null, items: [], filter: 'salah', token: 0, rekap: null },
+
+  _daftarSesiDetail_() { return Guru.rekapTersaring_().filter(r => r.sesiId); },
+
+  async bukaDetailSiswa(sesiId) {
+    const rekap = (state.guru._rekapAktif || []).find(x => String(x.sesiId) === String(sesiId));
+    if (!rekap) return;
+    const D = Guru._detailSiswa;
+    const token = ++D.token;
+    D.sesiId = sesiId; D.items = []; D.rekap = rekap;
+    if (!Guru._dswKey) {
+      Guru._dswKey = true;
+      document.addEventListener('keydown', ev => {
+        const m = document.getElementById('modal-detail-siswa');
+        if (ev.key === 'Escape' && m && !m.classList.contains('hidden') && !ImageLightbox.aktif) Guru.tutupDetailSiswa();
+      });
+    }
+    const lulus = String(rekap.lulus) === 'true';
+    const sel = document.getElementById('pilih-ujian-rekap');
+    const judul = sel && sel.selectedIndex >= 0 ? sel.options[sel.selectedIndex].text : '';
+    document.getElementById('dsw-nama').textContent = rekap.nama || '-';
+    document.getElementById('dsw-meta').textContent = [rekap.kelas ? 'Kelas ' + rekap.kelas : '', judul, rekap.selesai ? 'Selesai ' + formatTanggal(rekap.selesai) : ''].filter(Boolean).join(' • ');
+    document.getElementById('dsw-nilai').textContent = rekap.nilai;
+    const st = document.getElementById('dsw-status');
+    st.className = 'badge ' + (lulus ? 'ok' : 'no');
+    st.textContent = lulus ? 'Lulus' : 'Remedial';
+    document.getElementById('dsw-chips').innerHTML = '';
+    document.getElementById('dsw-evaluasi').textContent = '';
+    document.getElementById('dsw-list').innerHTML = '<p class="subtitle">Memuat detail jawaban...</p>';
+    Guru._navDetailSiswa_();
+    document.getElementById('modal-detail-siswa').classList.remove('hidden');
+    let res = null;
+    try { res = await api('getDetailJawaban', { sesiId, guruId: state.user ? state.user.id : '' }); } catch (e) { res = null; }
+    if (D.token !== token) return; // guru sudah pindah ke siswa lain
+    if (!res || !res.ok) {
+      document.getElementById('dsw-list').innerHTML = `<p class="subtitle" style="color:var(--c-danger)">${escapeHtml_((res && res.error) || 'Gagal memuat detail jawaban.')}</p>`;
+      return;
+    }
+    D.items = res.items || [];
+    D.filter = D.items.some(it => it.status !== 'benar') ? 'salah' : 'semua';
+    Guru.renderDetailSiswa_();
+    const box = document.querySelector('#modal-detail-siswa .modal'); if (box) box.scrollTop = 0;
+  },
+
+  tutupDetailSiswa() {
+    Guru._detailSiswa.token++;
+    document.getElementById('modal-detail-siswa').classList.add('hidden');
+  },
+
+  _navDetailSiswa_() {
+    const daftar = Guru._daftarSesiDetail_();
+    const i = daftar.findIndex(r => String(r.sesiId) === String(Guru._detailSiswa.sesiId));
+    document.getElementById('dsw-posisi').textContent = i >= 0 ? `Siswa ${i + 1} dari ${daftar.length}` : '';
+    document.getElementById('dsw-prev').disabled = i <= 0;
+    document.getElementById('dsw-next').disabled = i < 0 || i >= daftar.length - 1;
+  },
+
+  pindahDetailSiswa(arah) {
+    const daftar = Guru._daftarSesiDetail_();
+    const i = daftar.findIndex(r => String(r.sesiId) === String(Guru._detailSiswa.sesiId));
+    const target = daftar[i + arah];
+    if (target) return Guru.bukaDetailSiswa(target.sesiId);
+  },
+
+  gantiFilterDetailSiswa(f) {
+    Guru._detailSiswa.filter = f;
+    Guru.renderDetailSiswa_();
+  },
+
+  renderDetailSiswa_() {
+    const D = Guru._detailSiswa;
+    const items = D.items;
+    const hitung = s => items.filter(it => it.status === s).length;
+    const nBenar = hitung('benar'), nSebagian = hitung('sebagian'), nSalah = hitung('salah'), nKosong = hitung('kosong'), nManual = hitung('manual');
+    const nBelumBenar = items.length - nBenar;
+    const chip = (kelas, jml, teks) => jml ? `<span class="dsw-chip dsw-chip-${kelas}"><strong>${jml}</strong> ${teks}</span>` : '';
+    document.getElementById('dsw-chips').innerHTML =
+      `<span class="dsw-chip"><strong>${items.length}</strong> soal</span>` +
+      chip('benar', nBenar, 'benar') + chip('sebagian', nSebagian, 'sebagian benar') + chip('salah', nSalah, 'salah') +
+      chip('kosong', nKosong, 'tidak dijawab') + chip('manual', nManual, 'perlu dikoreksi');
+    const nomorBelum = [];
+    items.forEach((it, i) => { if (it.status !== 'benar') nomorBelum.push(i + 1); });
+    document.getElementById('dsw-evaluasi').innerHTML = nomorBelum.length
+      ? `<strong>Perlu dievaluasi (nomor pada lembar siswa ini):</strong> ${nomorBelum.join(', ')}. <span style="color:var(--c-muted)">Soal diacak per siswa, jadi nomor bisa berbeda dengan siswa lain.</span>`
+      : '<strong>Semua jawaban benar.</strong> Tidak ada soal yang perlu dievaluasi.';
+    const f = D.filter;
+    document.getElementById('dsw-tab-salah').classList.toggle('active', f === 'salah');
+    document.getElementById('dsw-tab-semua').classList.toggle('active', f === 'semua');
+    document.getElementById('dsw-tab-salah').textContent = 'Yang Salah / Belum Benar (' + nBelumBenar + ')';
+    document.getElementById('dsw-tab-semua').textContent = 'Semua Soal (' + items.length + ')';
+    const tampil = [];
+    items.forEach((it, i) => { if (f === 'semua' || it.status !== 'benar') tampil.push({ it, no: i + 1 }); });
+    const cont = document.getElementById('dsw-list');
+    cont.innerHTML = tampil.length
+      ? tampil.map(x => ExamEngine.htmlItemDetail_(x.it, x.no, { guru: true })).join('')
+      : '<div class="dj-kosong"><i class="fa-solid fa-circle-check"></i><p>Semua jawaban siswa ini benar. Tidak ada soal yang perlu dievaluasi.</p></div>';
+    renderMatika(cont);
+    Guru._navDetailSiswa_();
+  },
+
+  // Cetak / simpan PDF: hanya isi modal detail (sesuai tab yang sedang tampil) yang dicetak.
+  cetakDetailSiswa() {
+    document.body.classList.add('cetak-detail-siswa');
+    const bersihkan = () => { document.body.classList.remove('cetak-detail-siswa'); window.removeEventListener('afterprint', bersihkan); };
+    window.addEventListener('afterprint', bersihkan);
+    window.print();
+  },
+
+  // Unduh Excel evaluasi: semua siswa yang sedang tampil (ikut Filter Kelas/cari/hasil).
+  // Sheet "Ringkasan" = 1 baris per siswa; sheet "Jawaban Salah" = 1 baris per soal yang belum benar.
+  async unduhEvaluasiSalah() {
+    const sel = document.getElementById('pilih-ujian-rekap');
+    if (!sel || !sel.value) { toast('Pilih ujian terlebih dahulu.', 'error'); return; }
+    const data = Guru._daftarSesiDetail_();
+    if (!data.length) { toast('Tidak ada siswa untuk dievaluasi pada filter ini.', 'error'); return; }
+    try { await muatPustaka_('xlsx'); } catch (e) { toast(e.message, 'error'); return; }
+    const judulUjian = sel.selectedIndex >= 0 ? sel.options[sel.selectedIndex].text : 'Ujian';
+    toast(`Mengambil detail jawaban ${data.length} siswa...`);
+    const hasil = new Array(data.length).fill(null);
+    let giliran = 0, gagal = 0;
+    const pekerja = async () => {
+      while (giliran < data.length) {
+        const i = giliran++;
+        try {
+          const res = await api('getDetailJawaban', { sesiId: data[i].sesiId, guruId: state.user ? state.user.id : '' });
+          if (res && res.ok) hasil[i] = res.items || []; else gagal++;
+        } catch (e) { gagal++; }
+      }
+    };
+    await Promise.all([pekerja(), pekerja(), pekerja(), pekerja()]);
+
+    const teksPolos = (html) => {
+      const tpl = document.createElement('template');
+      tpl.innerHTML = kontenSoalHtml(html);
+      tpl.content.querySelectorAll('img').forEach(im => im.replaceWith('[gambar]'));
+      tpl.content.querySelectorAll('br').forEach(b => b.replaceWith('\n'));
+      return tpl.content.textContent.replace(/\n{2,}/g, '\n').trim();
+    };
+    const potong = t => { t = String(t == null ? '' : t); return t.length > 32000 ? t.slice(0, 32000) + '…' : t; };
+    const opsiTeks = (o) => { const x = (o && typeof o === 'object') ? o : { teks: o || '', gambar: '' }; return teksPolos(x.teks) + (x.gambar ? ' [gambar]' : ''); };
+    const hurufOpsi = (it, daftar) => daftar.map(i => String.fromCharCode(65 + i) + '. ' + opsiTeks((it.opsi || [])[i])).join('; ');
+    const jawabanTeks = (it) => {
+      if (it.jawaban === null || it.jawaban === undefined) return '(tidak dijawab)';
+      if (it.tipe === 'menjodohkan') {
+        const kiri = (it.opsi && it.opsi.kiri) || [], kanan = (it.opsi && it.opsi.kanan) || [];
+        const j = (it.jawaban && typeof it.jawaban === 'object') ? it.jawaban : {};
+        return kiri.map((k, i) => teksPolos(k) + ' → ' + ((j[i] !== undefined && j[i] !== null && j[i] !== '') ? teksPolos(kanan[j[i]]) : '(kosong)')).join('; ');
+      }
+      if (it.tipe === 'uraian') return String(it.jawaban);
+      const dipilih = Array.isArray(it.jawaban) ? it.jawaban.map(Number) : [Number(it.jawaban)];
+      return hurufOpsi(it, dipilih);
+    };
+    const kunciTeks = (it) => {
+      if (it.tipe === 'menjodohkan') {
+        const kiri = (it.opsi && it.opsi.kiri) || [], kanan = (it.opsi && it.opsi.kanan) || [], k = it.kunciTampil || {};
+        const baris = kiri.map((tk, i) => teksPolos(tk) + ' → ' + (k[i] !== undefined ? teksPolos(kanan[k[i]]) : '(belum diatur)'));
+        return baris.length ? baris.join('; ') : '(belum diatur)';
+      }
+      if (it.tipe === 'uraian') {
+        const kata = ((it.kunciTampil && it.kunciTampil.kataKunci) || []).filter(x => String(x).trim());
+        return kata.length ? 'Kata kunci: ' + kata.join(', ') : '(dikoreksi manual)';
+      }
+      const k = it.kunciTampil || [];
+      return k.length ? hurufOpsi(it, k) : '(belum diatur)';
+    };
+    const label = { benar: 'Benar', salah: 'Salah', sebagian: 'Sebagian benar', kosong: 'Tidak dijawab', manual: 'Perlu dikoreksi' };
+
+    const ringkasan = [], salah = [];
+    let no = 0, tanpaData = 0;
+    data.forEach((r, i) => {
+      const items = hasil[i];
+      if (!items) { tanpaData++; return; }
+      no++;
+      const hitung = s => items.filter(it => it.status === s).length;
+      const nomorBelum = [];
+      items.forEach((it, k) => {
+        if (it.status === 'benar') return;
+        nomorBelum.push(k + 1);
+        salah.push([no, r.nama || '', r.kelas || '', k + 1, potong(teksPolos(it.pertanyaan)), potong(jawabanTeks(it)), potong(kunciTeks(it)),
+          label[it.status] || it.status, it.skor, it.bobot, potong(teksPolos(it.pembahasan || ''))]);
+      });
+      const lulus = String(r.lulus) === 'true';
+      ringkasan.push([no, r.nama || '', r.kelas || '', Number(r.nilai), lulus ? 'Lulus' : 'Remedial', items.length,
+        hitung('benar'), hitung('sebagian'), hitung('salah'), hitung('kosong'), hitung('manual'), nomorBelum.join(', ')]);
+    });
+    if (!ringkasan.length) { toast('Gagal mengambil detail jawaban. Coba lagi.', 'error'); return; }
+
+    const wb = XLSX.utils.book_new();
+    const wsR = XLSX.utils.aoa_to_sheet([['No', 'Nama', 'Kelas', 'Nilai', 'Keterangan', 'Jumlah Soal', 'Benar', 'Sebagian Benar', 'Salah', 'Tidak Dijawab', 'Perlu Dikoreksi', 'Nomor Soal yang Perlu Dievaluasi (urutan di lembar siswa)'], ...ringkasan]);
+    wsR['!cols'] = [5, 30, 10, 8, 12, 12, 8, 14, 8, 14, 15, 40].map(w => ({ wch: w }));
+    wsR['!freeze'] = { xSplit: 0, ySplit: 1 };
+    XLSX.utils.book_append_sheet(wb, wsR, 'Ringkasan');
+    const wsS = XLSX.utils.aoa_to_sheet([['No', 'Nama', 'Kelas', 'No. Soal (urutan siswa)', 'Pertanyaan', 'Jawaban Siswa', 'Kunci Jawaban', 'Status', 'Skor', 'Bobot', 'Pembahasan'], ...salah]);
+    wsS['!cols'] = [5, 30, 10, 12, 60, 40, 40, 15, 8, 8, 50].map(w => ({ wch: w }));
+    wsS['!freeze'] = { xSplit: 0, ySplit: 1 };
+    wsS['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: Math.max(salah.length, 1), c: 10 } }) };
+    XLSX.utils.book_append_sheet(wb, wsS, 'Jawaban Salah');
+    const bersih = t => String(t).replace(/[\\/:*?"<>|]+/g, '-').trim().slice(0, 60);
+    const kelasFilter = document.getElementById('kelas-rekap')?.value || '';
+    XLSX.writeFile(wb, 'evaluasi-jawaban-' + bersih(judulUjian) + (kelasFilter ? '-' + bersih(kelasFilter) : '') + '.xlsx');
+    toast(`Evaluasi ${ringkasan.length} siswa (${salah.length} jawaban perlu dievaluasi) diunduh.` + (tanpaData ? ` ${tanpaData} siswa gagal dimuat.` : ''), tanpaData ? 'error' : 'success');
   },
 
   pilihSemuaRekap(aktif) {
@@ -7921,8 +8129,10 @@ const ExamEngine = {
     renderMatika(cont);
   },
 
-  htmlItemDetail_(it, no) {
-    const label = { benar: 'Benar', salah: 'Salah', sebagian: 'Sebagian benar', kosong: 'Tidak dijawab', manual: 'Dikoreksi guru' }[it.status] || it.status;
+  htmlItemDetail_(it, no, opsiTampil) {
+    // opsiTampil.guru = true: dipakai di Portal Guru (Detail Jawaban per siswa) -> kata ganti "Anda" diganti "siswa".
+    const G = !!(opsiTampil && opsiTampil.guru);
+    const label = { benar: 'Benar', salah: 'Salah', sebagian: 'Sebagian benar', kosong: 'Tidak dijawab', manual: G ? 'Perlu dikoreksi' : 'Dikoreksi guru' }[it.status] || it.status;
     const opsiObj = (o) => (o && typeof o === 'object') ? o : { teks: o || '', gambar: '' };
     let isi = '';
     if (it.tipe === 'pilihan_ganda' || it.tipe === 'benar_salah' || it.tipe === 'checkbox') {
@@ -7933,14 +8143,14 @@ const ExamEngine = {
         const benar = kunci.indexOf(i) !== -1;
         const pilih = dipilih.indexOf(i) !== -1;
         const kelas = benar ? 'dj-benar' : (pilih ? 'dj-salah' : '');
-        const tag = benar && pilih ? 'Jawaban Anda · Kunci' : (benar ? 'Kunci jawaban' : (pilih ? 'Jawaban Anda' : ''));
+        const tag = benar && pilih ? (G ? 'Dipilih siswa · Kunci' : 'Jawaban Anda · Kunci') : (benar ? 'Kunci jawaban' : (pilih ? (G ? 'Dipilih siswa' : 'Jawaban Anda') : ''));
         return `<div class="opsi-item opsi-readonly dj-opsi ${kelas}">
           <span class="opsi-huruf">${String.fromCharCode(65 + i)}</span>
           <span class="opsi-konten">${kontenSoalHtml(item.teks)}${item.gambar ? tagGambarAman_(item.gambar, 'opsi-gambar-tampil', 'Gambar opsi') : ''}</span>
           ${tag ? `<span class="dj-tag">${tag}</span>` : ''}
         </div>`;
       }).join('') + '</div>';
-      if (kunci.length === 0) isi += '<p class="dj-catatan">Kunci jawaban soal ini belum diatur / tidak ditemukan. Mohon laporkan ke guru.</p>';
+      if (kunci.length === 0) isi += G ? '<p class="dj-catatan">Kunci jawaban soal ini belum diatur / tidak ditemukan. Periksa soal ini di Bank Soal.</p>' : '<p class="dj-catatan">Kunci jawaban soal ini belum diatur / tidak ditemukan. Mohon laporkan ke guru.</p>';
     } else if (it.tipe === 'menjodohkan') {
       const kiri = (it.opsi && it.opsi.kiri) || [], kanan = (it.opsi && it.opsi.kanan) || [];
       const jwb = (it.jawaban && typeof it.jawaban === 'object') ? it.jawaban : {};
@@ -7951,16 +8161,16 @@ const ExamEngine = {
         const benar = adaJwb && String(j) === String(kunci[i]);
         return `<div class="dj-jodoh-row ${benar ? 'dj-benar' : 'dj-salah'}">
           <div class="dj-jodoh-kiri">${escapeHtml_(tk)}</div>
-          <div>Jawaban Anda: <strong>${adaJwb ? escapeHtml_(kanan[j] == null ? '-' : String(kanan[j])) : '(kosong)'}</strong></div>
+          <div>${G ? 'Jawaban siswa' : 'Jawaban Anda'}: <strong>${adaJwb ? escapeHtml_(kanan[j] == null ? '-' : String(kanan[j])) : '(kosong)'}</strong></div>
           ${benar ? '' : `<div>Kunci: <strong>${kunci[i] !== undefined ? escapeHtml_(kanan[kunci[i]] == null ? '-' : String(kanan[kunci[i]])) : '(belum diatur)'}</strong></div>`}
         </div>`;
       }).join('') + '</div>';
     } else { // uraian
       const kata = ((it.kunciTampil && it.kunciTampil.kataKunci) || []).filter(k => String(k).trim());
-      isi += `<div class="dj-uraian"><div class="dj-label">Jawaban Anda</div><div class="dj-uraian-teks">${it.jawaban ? escapeHtml_(String(it.jawaban)) : '<em>(kosong)</em>'}</div></div>`;
+      isi += `<div class="dj-uraian"><div class="dj-label">${G ? 'Jawaban siswa' : 'Jawaban Anda'}</div><div class="dj-uraian-teks">${it.jawaban ? escapeHtml_(String(it.jawaban)) : '<em>(kosong)</em>'}</div></div>`;
       isi += kata.length
         ? `<p class="dj-catatan">Kata kunci penilaian: <strong>${kata.map(escapeHtml_).join(', ')}</strong></p>`
-        : '<p class="dj-catatan">Soal uraian ini dikoreksi manual oleh guru.</p>';
+        : (G ? '<p class="dj-catatan">Soal uraian ini belum punya kata kunci, jadi perlu Anda koreksi manual.</p>' : '<p class="dj-catatan">Soal uraian ini dikoreksi manual oleh guru.</p>');
     }
     const pembahasan = it.pembahasan && !richTeksKosong_(it.pembahasan)
       ? `<div class="dj-pembahasan"><div class="dj-label">Pembahasan</div>${kontenSoalHtml(it.pembahasan)}</div>` : '';
