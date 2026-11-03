@@ -8,7 +8,7 @@
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap');
 
 :root {
-  --versi-css: "37"; /* harus sama dengan VERSI_APLIKASI di app.js (deteksi style.css usang di cache) */
+  --versi-css: "38"; /* harus sama dengan VERSI_APLIKASI di app.js (deteksi style.css usang di cache) */
   /* --- warna dasar (ditimpa JS: lihat Tampilan.terapkan di app.js) --- */
   --c-primary: #e58a72;
   --c-secondary: #6f9f94;
@@ -1691,3 +1691,31 @@ details.tm-det > summary { cursor: pointer; font-weight: 700; font-size: .88rem;
 .bk-tambah .bk-btn-kamera:hover { background: var(--c-primary); color: var(--c-on-primary); transform: translateY(-2px); box-shadow: 0 10px 20px color-mix(in srgb, var(--c-primary) 48%, transparent), inset 0 1px 0 rgba(255, 255, 255, .28); }
 .bk-tambah .bk-btn-galeri:hover { background: color-mix(in srgb, var(--c-primary) 8%, var(--c-surface)); color: var(--c-primary); transform: translateY(-2px); box-shadow: 0 9px 18px color-mix(in srgb, var(--c-text) 20%, transparent); }
 .bk-tambah .bk-btn-kamera:active, .bk-tambah .bk-btn-galeri:active { transform: translateY(0); }
+
+
+/* ============================================================================
+   v38 — DETAIL JAWABAN PER SISWA (Portal Guru > Rekap Nilai)
+   ============================================================================ */
+.dsw-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-bottom: .7rem; }
+.dsw-eyebrow { margin: 0 0 .15rem; font-size: .72rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--c-muted); }
+.dsw-nilai-box { display: flex; align-items: center; gap: .6rem; }
+.dsw-nilai { font-size: 2rem; font-weight: 800; line-height: 1; }
+.dsw-chips { display: flex; flex-wrap: wrap; gap: .4rem; margin-bottom: .6rem; }
+.dsw-chip { font-size: .8rem; padding: .2rem .65rem; border-radius: 999px; border: 1px solid var(--c-line); background: var(--c-bg); }
+.dsw-chip-benar { color: var(--c-success); border-color: color-mix(in srgb, var(--c-success) 40%, transparent); }
+.dsw-chip-salah, .dsw-chip-kosong { color: var(--c-danger); border-color: color-mix(in srgb, var(--c-danger) 40%, transparent); }
+.dsw-chip-sebagian, .dsw-chip-manual { color: var(--c-warn-ink); border-color: color-mix(in srgb, var(--c-accent) 50%, transparent); }
+.dsw-evaluasi { font-size: .86rem; margin: 0 0 .9rem; padding: .6rem .8rem; border-radius: 6px; background: var(--c-surface); border: 1px solid var(--c-line); }
+#dsw-list { max-height: 58vh; overflow-y: auto; padding-right: .3rem; }
+.dsw-aksi { align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+.dsw-posisi { margin-right: auto; font-size: .8rem; color: var(--c-muted); }
+@media (max-width: 640px) { .dsw-aksi .dsw-posisi { width: 100%; order: -1; } }
+
+@media print {
+  body.cetak-detail-siswa > *:not(#modal-detail-siswa) { display: none !important; }
+  body.cetak-detail-siswa #modal-detail-siswa { position: static !important; display: block !important; background: none !important; padding: 0 !important; overflow: visible !important; }
+  body.cetak-detail-siswa #modal-detail-siswa .modal { box-shadow: none !important; max-width: none !important; padding: 0 !important; background: none !important; }
+  body.cetak-detail-siswa #dsw-list { max-height: none !important; overflow: visible !important; }
+  body.cetak-detail-siswa .dsw-aksi, body.cetak-detail-siswa .detail-tabs { display: none !important; }
+  body.cetak-detail-siswa .dj-card { break-inside: avoid; box-shadow: none !important; }
+}
