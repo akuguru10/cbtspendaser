@@ -1708,7 +1708,7 @@ function toast(msg, jenis) {
 // cache, sehingga dialog konfirmasi tampil TANPA gaya (jatuh ke bawah halaman, tombol di belakangnya masih bisa
 // diklik, dialog menumpuk). Dengan disuntik dari app.js, dialog dijamin tampil di tengah layar & menutupi halaman.
 // ----------------------------------------------------------------------------
-const VERSI_APLIKASI = '45';
+const VERSI_APLIKASI = '46';
 const CSS_SEGAR = `
 /* Tombol "Segarkan" di halaman portal guru (Rekap Nilai, Log Pelanggaran, dll.) */
 .btn-segarkan { display: inline-flex; align-items: center; gap: .45rem; white-space: nowrap; }
@@ -3677,7 +3677,7 @@ const UI = {
     });
     // Reset input file (agar memilih file yang sama lagi tetap memicu upload) & atur tombol Ubah/Hapus Gambar.
     const inpGambar = document.getElementById('soal-gambar-file'); if (inpGambar) inpGambar.value = '';
-    UI.aturAksiGambarSoal(!!(soal && soal.gambar));
+    Guru.aturAksiGambarSoal(!!(soal && soal.gambar));
     UI.renderModalTipeTabs();
     UI.renderFormOpsiSoal(soal);
     document.getElementById('modal-soal').classList.remove('hidden');
@@ -4772,7 +4772,7 @@ const Guru = {
         const prev = document.getElementById(`soal-${jenis}-preview`);
         if (jenis === 'gambar') pasangSrcGambarAman_(prev, res.url); else prev.src = res.url;
         prev.classList.remove('hidden');
-        if (jenis === 'gambar') UI.aturAksiGambarSoal(true);
+        if (jenis === 'gambar') Guru.aturAksiGambarSoal(true);
         toast((jenis[0].toUpperCase() + jenis.slice(1)) + ' berhasil diunggah.', 'success');
       } else {
         toast('Gagal mengunggah ' + jenis + ': ' + res.error, 'error');
@@ -4790,7 +4790,7 @@ const Guru = {
     prev.removeAttribute('src'); prev.removeAttribute('data-drive-id');
     prev.classList.add('hidden');
     const inp = document.getElementById('soal-gambar-file'); if (inp) inp.value = '';
-    UI.aturAksiGambarSoal(false);
+    Guru.aturAksiGambarSoal(false);
     toast('Gambar dihapus. Klik Simpan untuk menyimpan perubahan.', 'success');
   },
 
