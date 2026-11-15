@@ -1,4 +1,443 @@
+# v44 — Ubah Nama Mapel di Bank Soal
+
+- Kartu Mapel di **Bank Soal** kini punya tombol **✏** (di kiri tombol 🗑) untuk mengubah nama, misalnya membetulkan salah ketik. Tombol **✏ Ubah Nama** juga ada di halaman *Kelola Soal* tiap Mapel.
+- Nama baru otomatis diterapkan ke **semua soal Mapel itu (termasuk yang diarsipkan)** dan **semua ujian yang memakai Mapel itu**, jadi ujian tidak kehilangan soalnya. Token dan warna kartu tetap sama.
+- Nama yang sudah dipakai Mapel lain ditolak (supaya soal tidak tercampur tanpa sengaja). Mengubah huruf besar/kecil saja diperbolehkan.
+- **Mode Server**: tempel ulang `Code.gs` lalu *Deploy > Manage deployments > New version* (aksi baru `ubahNamaKategori`; tanpa kolom/sheet baru). **Mode Lokal**: cukup ganti `app.js`, `index.html`, `style.css`.
+- File berubah: `app.js`, `index.html`, `style.css`, `Code.gs`, `README.md`. Versi tampilan 44.
+
+# v43 — Menu Leaderboard (peringkat siswa)
+
+- Menu baru **🏆 Leaderboard** di Portal Guru (sidebar, di bawah Rekap Nilai; di HP lewat tombol *Lainnya*).
+- **Berdasarkan**: pilih salah satu tes (Tes 1, Tes 2, dst. sesuai nama ujian) atau **Rata-rata Seluruh Tes**. **Kelas**: satu kelas atau Semua Kelas. Ada kotak cari nama.
+- Tampilan: ringkasan (peserta, tertinggi, rata-rata, terendah), **podium juara 1-3**, lalu daftar peringkat 1, 2, 3, dst. **sampai siswa terakhir** (nama siswa, kelas, nilai + bar, status Lulus/Remedial). Mode rata-rata menampilkan nilai tiap tes dan jumlah tes yang diikuti.
+- Nilai sama = peringkat sama. Bila satu siswa punya lebih dari satu sesi pada tes yang sama, nilai tertinggi dipakai. Rata-rata dihitung dari tes yang diikuti; kotak *Hanya yang ikut semua tes* membatasi ke siswa yang lengkap.
+- **⬇ Unduh Excel** menyimpan leaderboard yang sedang tampil. Data dimuat saat menu dibuka dan lewat tombol **Segarkan** (tanpa polling otomatis agar server ringan).
+- File berubah: `app.js`, `style.css`, `index.html`, `README.md`. Tidak ada perubahan `Code.gs`. Versi tampilan 43.
+
+# v42 — Ubah & Hapus Gambar pada form Ubah Soal
+
+- Pada **Ubah Soal** (dan Tambah Soal), bila soal sudah punya gambar, kotak "Gambar Soal" kini menampilkan tombol **🔄 Ubah Gambar** (pilih gambar pengganti) dan **🗑 Hapus Gambar** (menghapus gambar dari soal). Bila belum ada gambar, tampil kotak "Klik untuk upload" seperti biasa.
+- Perubahan baru tersimpan setelah klik **Simpan**. Memilih ulang file yang sama setelah dihapus kini juga berfungsi.
+- Gambar pada opsi jawaban sudah punya tombol "Hapus gambar" dan input ganti gambar sejak sebelumnya.
+- File berubah: `app.js`, `style.css`, `index.html`, `README.md`. Tidak ada perubahan `Code.gs`. Versi tampilan 42.
+
+# v41 — Perbaikan cetak: gambar pada opsi & kartu panjang
+
+- Perbaikan tata letak cetak PDF: soal dengan gambar (di soal maupun di opsi) tidak lagi menyisakan halaman setengah kosong atau baris opsi yang membesar. Contoh uji: 5 halaman menjadi 2 halaman.
+- Gambar opsi tampil di samping teks opsi; kartu yang lebih tinggi dari satu halaman boleh terpotong antar halaman. Detail yang kosong dari server dianggap gagal dimuat pada Cetak Detail Kelas.
+- File berubah: `app.js`, `style.css`, `index.html`, `README.md`. Versi tampilan 41.
+
+# v40 — Cetak Detail Kelas (PDF) di Rekap Nilai
+
+- Tombol baru **🖨 Cetak Detail Kelas (PDF)** di toolbar Rekap Nilai. Pilih ujian dan **Filter Kelas** (bisa juga cari / Lulus-Remedial), lalu klik: aplikasi mengambil detail jawaban semua siswa yang tampil dan membuka dialog cetak (pilih *Save as PDF*).
+- **Halaman 1**: daftar nama, kelas, nilai, status, dan jumlah soal belum benar (urut kelas lalu nama). Setelah itu **tiap siswa mulai di halaman baru** dengan banner nama + nilai, ringkasan, dan soal yang salah beserta jawaban siswa, kunci, dan pembahasan. Siswa yang semua benar tetap punya bagian dengan keterangan "Semua jawaban benar".
+- Nama siswa juga tertera di setiap kartu soal sehingga halaman lanjutan tetap jelas milik siapa. Siswa yang detailnya gagal dimuat dicatat di halaman 1.
+- File berubah: `app.js`, `style.css`, `index.html`, `README.md`. Tidak ada perubahan `Code.gs`. Versi tampilan 40.
+
+# v39 — Perbaikan Detail Jawaban: area kosong & cetak PDF blank
+
+- **Detail Jawaban (layar)**: jendela kini berupa kolom tetap — judul & tombol selalu terlihat, hanya daftar soal yang bisa di-scroll (tidak ada scroll ganda).
+  Baris/paragraf kosong berlebih di awal & akhir soal, opsi, dan pembahasan (sering ikut dari impor Word) otomatis dibuang, sehingga tidak ada lagi ruang kosong panjang.
+- **Cetak / PDF**: sekarang membuat lembar cetak khusus A4 — kop sekolah (logo & nama), judul laporan, identitas siswa (nama, kelas, nilai, status, waktu selesai),
+  ringkasan, daftar nomor yang perlu dievaluasi, lalu kartu soal yang ringkas. Warna selalu terang (tema gelap tidak ikut) sehingga **tidak blank lagi**.
+  Opsi pendek ditata 2 kolom, gambar dibatasi ukurannya, kartu tidak terpotong antar halaman, ada nomor halaman. Nama file PDF otomatis "Detail Jawaban - Nama - Kelas".
+- File berubah: `app.js`, `style.css`, `index.html` (versi), `README.md`. Tidak ada perubahan `Code.gs`. Versi tampilan 39.
+
+# v38 — Detail Jawaban per Siswa di Rekap Nilai (untuk evaluasi guru)
+
+Guru kini bisa melihat **soal mana yang dijawab salah oleh tiap siswa dan apa jawaban siswa tersebut**, sebagai bahan evaluasi/remedial.
+
+- **Rekap Nilai**: tombol **🔍 Detail Jawaban** di setiap baris siswa. Membuka jendela berisi nama, kelas, nilai, status Lulus/Remedial, ringkasan
+  (benar / sebagian benar / salah / tidak dijawab / perlu dikoreksi), dan daftar **nomor soal yang perlu dievaluasi**.
+- Tab **Yang Salah / Belum Benar** (default) dan **Semua Soal**. Tiap soal menampilkan pertanyaan, gambar, **jawaban yang dipilih siswa** (merah),
+  **kunci jawaban** (hijau), skor, dan pembahasan. Mendukung pilihan ganda, kompleks, benar/salah, menjodohkan, dan uraian.
+- Urutan opsi yang tampil **sama dengan yang dilihat siswa** (opsi teracak diterjemahkan dengan benar). Nomor soal mengikuti lembar siswa tersebut
+  (soal diacak per siswa).
+- Tombol **Sebelumnya / Berikutnya** untuk berpindah antar siswa (mengikuti Filter Kelas, cari, dan filter Lulus/Remedial yang sedang aktif).
+- **Cetak / PDF**: mencetak (atau menyimpan PDF) detail siswa yang sedang dibuka, untuk diberikan ke siswa. Mengikuti tab yang tampil.
+- **⬇ Evaluasi Jawaban Salah** (toolbar Rekap Nilai): unduh Excel untuk semua siswa yang sedang tampil — sheet *Ringkasan* (1 baris per siswa)
+  dan sheet *Jawaban Salah* (1 baris per soal yang salah: pertanyaan, jawaban siswa, kunci, status, skor, pembahasan).
+- Guru **selalu** boleh melihat detail ini, walau opsi *Izinkan siswa melihat detail jawaban* dimatikan pada ujian (opsi itu hanya membatasi siswa).
+- **Mode Server**: tempel ulang `Code.gs` lalu *Deploy > Manage deployments > New version* (aksi `getDetailJawaban` kini menerima `guruId`).
+  Tidak ada kolom/sheet baru. **Mode Lokal**: cukup ganti `app.js`, `index.html`, `style.css`.
+- File berubah: `app.js`, `index.html`, `style.css`, `Code.gs`, `README.md`. Versi tampilan 38.
+
+# v37 — Filter Lulus / Remedial di Rekap Nilai
+
+- Pilihan **Semua Hasil / ✅ Lulus / 🔁 Remedial** di Rekap Nilai, bisa digabung dengan Filter Kelas, kotak cari, dan *Diblokir saja*.
+- Info di atas tabel menampilkan jumlah lulus dan remedial dari yang sedang tampil. Unduh "sesuai filter" dan Hapus Semua Nilai mengikuti filter ini.
+- File berubah: `app.js`, `index.html`, `style.css` (versi), `README.md`. Versi tampilan 37.
+
+# v36 — Filter "Diblokir saja"
+
+- **Data Siswa**: kotak centang *🚫 Akun diblokir saja (N)* di samping kotak cari; hanya akun yang diblokir guru yang tampil (bisa digabung dengan Filter Kelas & cari).
+- **Pemantauan Ujian** dan **Rekap Nilai**: kotak centang *🚫 Diblokir saja (N)* untuk siswa yang sesi ujiannya diblokir karena melewati batas pelanggaran.
+- Angka (N) = jumlah yang diblokir; merah bila ada. Ikut diperbarui oleh tombol Segarkan. "Hapus Semua Nilai"/unduh di Rekap mengikuti filter yang tampil.
+- File berubah: `app.js`, `index.html`, `style.css` (versi), `README.md`. Versi tampilan 36.
+
+# v35 — Peringatan pindah aplikasi/tab juga muncul di iPhone
+
+- Peringatan *"Wajib Unggah Bukti"* saat siswa berpindah tab/aplikasi kini tampil di SEMUA perangkat, termasuk iPhone/iPad yang tidak mendukung layar penuh
+  (sebelumnya hanya perangkat yang mendukung layar penuh). Di perangkat tanpa layar penuh, tombol peringatan berbunyi *"Mengerti, Lanjut Unggah"*.
+- Masa tenggang saat membuka kamera/galeri tetap berlaku. File berubah: `app.js`, `index.html`, `style.css` (versi), `README.md`. Versi tampilan 35.
+
+# v34 — Halaman unggah bukti wajib layar penuh
+
+- Selama bukti **belum terkirim** (wajib: belum ada foto terkirim, atau ada foto yang masih diproses/dikirim/gagal), halaman unggah masuk **layar penuh**.
+- **Keluar layar penuh** (Esc, dll.) atau **pindah tab/aplikasi**: muncul peringatan *"Wajib Unggah Bukti"*; tombolnya mengembalikan ke layar penuh.
+- Bila browser menolak layar penuh otomatis (mis. halaman dimuat ulang), muncul **penutup "Wajib Layar Penuh"** dengan tombol *Masuk Layar Penuh* sampai siswa menekannya.
+- Di Chrome/Edge, tombol **Esc dikunci** (harus ditahan beberapa detik untuk keluar) bila didukung.
+- **Kamera/galeri tetap bebas dipakai**: ada masa tenggang saat memilih foto, jadi tidak dianggap meninggalkan halaman.
+- Tidak menambah hitungan pelanggaran (nilai sudah tersimpan). Pembatasan hilang otomatis setelah semua foto berstatus **Terkirim**; layar penuh ditutup saat nilai ditampilkan.
+- Perangkat tanpa dukungan layar penuh (mis. iPhone) dilewati agar siswa tidak tertahan.
+- Pemblokiran tombol Back/F5/Keluar dari v31 tetap berlaku. File berubah: `app.js`, `index.html`, `style.css` (versi), `README.md`. `Code.gs` & `config.js` tidak berubah. Versi tampilan 34.
+
+# v33 — Sidebar guru lebih lega: Mode Server & Opsi Cadangan dipindah ke Pengaturan
+
+- **Dihapus dari sidebar**: kotak "Mode: Server (Google Sheets)…" dan blok "Opsi Cadangan". Sidebar kini hanya menu + info akun + Keluar.
+- **Pengaturan**: status koneksi tetap tampil di panel *Koneksi Google Sheets* (lengkap dengan interval sinkron); panel baru *Opsi Cadangan*
+  (tombol Kirim ke Spreadsheet) muncul otomatis hanya saat Mode Server aktif. Tombol "Tarik Data Terbaru" diganti tombol **Segarkan** di tiap halaman.
+- File berubah: `app.js`, `index.html`, `style.css` (nomor versi), `README.md`. `Code.gs` & `config.js` tidak berubah. Versi tampilan 33.
+
+# v32 — Tombol "Segarkan" di halaman guru (data terbaru tanpa memuat ulang halaman)
+
+Masalah: untuk melihat nilai siswa yang baru mengirim, guru harus memuat ulang seluruh halaman lalu memilih lagi jenis ujian dan kelas.
+
+- **Tombol 🔄 Segarkan** kini ada di: **Rekap Nilai**, **Log Pelanggaran**, **Analisis Soal**, **Pemantauan Ujian**, **Kelola Ujian**,
+  **Bank Soal**, **Data Siswa**, **Status Login**, dan **Dashboard**. Ikon berputar selama data diambil.
+- **Pilihan tetap**: ujian yang dipilih, Filter Kelas, dan kotak cari TIDAK berubah. Hanya isi tabel yang diperbarui, jadi nilai siswa
+  yang baru mengirim langsung muncul di tempat yang sama.
+- Di sebelah tombol tampil **"Diperbarui jj.mm.dd"** (juga ikut berubah saat pembaruan otomatis berjalan di Mode Server).
+- **Centang di Rekap Nilai tidak hilang** saat disegarkan (aman bila sedang memilih nilai untuk dihapus).
+- **Bila gagal terhubung**, tabel sebelumnya tetap tampil (tidak dikosongkan) dan muncul pemberitahuan.
+- Belum memilih ujian: tombol hanya menyegarkan daftar ujian dan mengingatkan untuk memilih ujian.
+- Bekerja di Mode Server maupun Mode Lokal.
+- File berubah: `app.js`, `style.css` (hanya nomor versi), `index.html`, `README.md`. `Code.gs` & `config.js` tidak berubah. Versi tampilan 32.
+
+# v31 — Siswa tidak bisa meninggalkan halaman unggah bukti sebelum foto terkirim (screenshot tetap bebas)
+
+**Penjaga halaman unggah bukti orak-orik.** Terkunci bila bukti WAJIB dan belum ada satu foto pun terkirim, atau ada foto yang
+masih diproses / dikirim / gagal. Mode *boleh dilewati*: terkunci hanya selama ada foto yang belum selesai terkirim.
+Kunci terbuka otomatis setelah semua foto berstatus **Terkirim** (banner berubah dari oranye ke hijau).
+
+- **Tombol Back / geser kembali (HP)**: dibatalkan, siswa tetap di halaman, muncul peringatan *"Bukti belum diunggah dan dikirim ke
+  server. Anda tidak bisa meninggalkan halaman ini. Unggah terlebih dahulu foto bukti…"*. Ditekan berkali-kali tidak menumpuk.
+- **F5, Ctrl+R, Ctrl+Shift+R, Cmd+R, Alt+Kiri**: diblokir + peringatan yang sama.
+- **Tombol Keluar/logout**: ditahan sampai bukti terkirim.
+- **Menutup tab / tombol muat-ulang browser**: memunculkan peringatan bawaan browser (browser tidak mengizinkan teks kustom
+  atau pemblokiran total untuk aksi ini).
+- **Tarik-untuk-muat-ulang di HP** dicegah (`overscroll-behavior`).
+- **Bila halaman tetap sampai dimuat ulang / tab ditutup lalu dibuka lagi di tab yang sama**: siswa langsung DIKEMBALIKAN ke halaman
+  unggah (bukan beranda), foto yang sudah terkirim tampil kembali berstatus Terkirim, lalu setelah selesai nilai tampil.
+  (Bila sampai login ulang dari awal dan belum ada foto, jalur pemulihan v25 dari server tetap berlaku.)
+- **Sesi diblokir karena pelanggaran** (melebihi batas) kini juga melewati langkah unggah bukti bila fitur diaktifkan.
+- **Screenshot BEBAS di halaman unggah, halaman nilai akhir, dan detail jawaban**: aplikasi tidak memblokir PrintScreen,
+  Win+Shift+S, Alt+PrintScreen, Ctrl+P, klik kanan, maupun salin; anti-curang sudah nonaktif sejak ujian dikumpulkan, jadi berpindah
+  jendela (mis. ke Snipping Tool) tidak menimbulkan pelanggaran/peringatan.
+- File berubah: `app.js`, `style.css`, `index.html`, `README.md`. `Code.gs` & `config.js` tidak berubah. Versi tampilan 31.
+
+# v30 — Penampil gambar bukti orak-orik untuk guru: perbesar, perkecil, putar
+
+Masalah: foto coretan siswa sering tampil menyamping (teks vertikal) dan berada di kotak yang harus digulir sehingga sulit dibaca.
+
+- **Toolbar di atas gambar** (selalu terlihat): **Perkecil**, indikator zoom (%), **Perbesar**, **Putar Kiri**, **Putar Kanan**, **Pas Layar**.
+  Putar memutar 90° per klik dan otomatis memas ulang gambar agar tampil utuh.
+- **Klik gambar** = zoom cepat 250% di titik yang diklik; klik lagi = kembali pas layar.
+- **Roda mouse** = zoom di titik kursor · **seret (drag)** = geser saat diperbesar · **cubit 2 jari** di HP/tablet = zoom.
+- **Keyboard**: `+` perbesar, `-` perkecil, `0` pas layar, `R` putar kanan, `L` putar kiri, `←` `→` pindah foto, `Esc` tutup.
+- Zoom 50%–800%; gambar tidak bisa terseret keluar dari kanvas.
+- **Arah putar diingat per foto** (di browser guru): buka ulang foto yang sama langsung tampil benar. Foto yang belum pernah diputar
+  mengikuti arah putar terakhir (satu HP biasanya satu orientasi). Pindah foto mereset zoom/geser.
+- Gaya penampil disuntik dari `app.js` (aman dari cache `style.css`). Versi tampilan 30.
+- File berubah: `app.js`, `style.css`, `index.html`, `README.md`. `Code.gs` & `config.js` tidak berubah dari v29.
+
+# v29 — Kamera web untuk laptop/PC pada unggah bukti orak-orik
+
+Masalah: di laptop, tombol *Kamera* malah membuka pemilih file (sama seperti *Galeri*). Penyebab: atribut `capture` pada input file
+hanya dipahami browser HP/tablet; di laptop/PC browser mengabaikannya.
+
+- **Laptop/PC**: tombol *Kamera* (tombol besar, tile "+", maupun lembar pilihan "+") kini membuka **webcam langsung di browser**:
+  pratinjau langsung, tombol jepret bulat, lalu *Ulangi* / *Simpan & Ambil Lagi* (untuk beberapa lembar coretan berturut-turut) /
+  *Gunakan Foto*. Foto tidak dibalik (mirror) agar tulisan terbaca benar. Kamera dimatikan (lampu indikator padam) saat ditutup.
+- Bila ada lebih dari satu kamera: tombol *Ganti Kamera*. Kamera belakang dipilih otomatis jika tersedia; resolusi ideal 1920×1080.
+- Pesan jelas bila izin kamera ditolak (cara mengizinkan), kamera tidak ada, atau sedang dipakai aplikasi lain (Zoom/Meet), plus
+  tombol *Coba Lagi* dan *Pilih dari Galeri*. Bila browser tidak mendukung kamera (mis. bukan HTTPS), otomatis membuka pemilih file.
+- **HP/tablet (termasuk iPad)**: tetap memakai aplikasi kamera bawaan lewat `capture` seperti sebelumnya.
+- Foto dari webcam melewati alur yang sama dengan foto lain: diproses, diunggah, diverifikasi server, dicoba ulang otomatis.
+- Pertama kali dipakai, browser meminta izin kamera (klik *Izinkan*). Situs harus dibuka lewat HTTPS (GitHub Pages sudah HTTPS).
+- File berubah: `app.js`, `style.css`, `index.html`, `README.md`. `Code.gs` & `config.js` tidak berubah. Versi tampilan 29.
+
+# v28 — Tombol "+" tambah foto kini bisa diklik penuh (pilih Kamera / Galeri) + tombol lebih timbul
+
+Masalah: di halaman unggah bukti orak-orik, tombol "+" besar hanya hiasan; yang bisa diklik hanya tombol kecil Kamera & Galeri.
+
+- **Klik di mana pun pada tile "+ Tambah foto"** (lingkaran "+", tulisan, atau area tile) kini membuka **lembar pilihan**:
+  *Ambil Foto* (kamera) atau *Pilih dari Galeri* (boleh banyak foto sekaligus), plus tombol Batal. Esc / klik latar menutupnya.
+  Bisa juga dengan keyboard (Tab ke tile lalu Enter/Spasi).
+- Kamera/galeri dipicu **langsung dari klik pilihan** (tanpa jeda), sehingga tetap diizinkan browser di iPhone/Safari.
+- **Tombol Kamera & Galeri di bawah "+" tetap berfungsi langsung** (tanpa lembar pilihan) dan tampil **lebih timbul**: bayangan,
+  efek terangkat saat disorot, Kamera berwarna solid & Galeri berbingkai, ukuran lebih besar dan lebar penuh.
+- Lembar pilihan tidak bisa dibuka saat foto sedang diperiksa ke server atau saat kuota 10 foto sudah penuh.
+- Gaya lembar pilihan disuntik dari `app.js` (seperti dialog), jadi tidak bergantung pada `style.css` di cache. Versi tampilan 28.
+- File berubah: `app.js`, `style.css`, `index.html`, `README.md`. `Code.gs` & `config.js` tidak berubah.
+
+# v27 — Tata letak soal bergambar yang presisi (tanpa menggulir untuk melihat jawaban)
+
+Masalah: gambar soal tampil sebesar ukuran aslinya sehingga siswa harus menggulir ke bawah dulu untuk melihat pilihan jawaban.
+
+- **Gambar soal dibatasi tingginya** (±44% tinggi layar, maks. 420 px; di HP ±40%) dan tetap proporsional (tidak gepeng). Tetap
+  menghormati tombol *Ukuran soal* (A− / A+). Klik gambar = perbesar penuh (lightbox, bisa zoom & geser) seperti sebelumnya.
+- **Layar lebar (≥ 1100 px) + soal bergambar → DUA KOLOM**: teks soal & gambar di kiri, **pilihan jawaban di kanan** (menempel saat
+  digulir), jadi soal, gambar, dan semua jawaban terlihat sekaligus. Di kolom ini gambar boleh lebih besar (±60% tinggi layar,
+  maks. 560 px). Soal tanpa gambar tetap satu kolom lebar. Berlaku juga untuk uraian, menjodohkan, dan pilihan ganda kompleks.
+- **Bar Sebelumnya / Ragu-ragu / Berikutnya menempel di bawah layar** sehingga selalu terlihat tanpa menggulir.
+- Pratinjau soal guru & detail jawaban tidak berubah. Penanda versi tampilan dinaikkan ke 27 (`--versi-css`, `VERSI_APLIKASI`,
+  `?v=27`) sehingga bilah "Muat Ulang Tampilan" muncul bila `style.css` di cache browser masih lama.
+- File berubah: `app.js`, `style.css`, `index.html`, `README.md`. `Code.gs` & `config.js` tidak berubah.
+
+# v26 — Perbaikan dialog konfirmasi (tidak lagi menumpuk) + tombol "+" tambah foto
+
+**Masalah yang diperbaiki**: dialog konfirmasi (mis. "Hapus Nilai Siswa?") tampil tanpa gaya — jatuh ke bagian bawah halaman, tidak
+di tengah, tombol Hapus di belakangnya masih bisa diklik berkali-kali sehingga dialog menumpuk. Penyebab: `app.js` baru terpasang
+tetapi `style.css` yang dipakai browser masih versi lama (cache browser / GitHub Pages).
+
+- **Gaya dialog kini disuntik langsung dari `app.js`** (tidak lagi bergantung pada `style.css`), jadi dialog selalu tampil di
+  tengah layar dengan latar buram yang menutupi seluruh halaman — meski `style.css` di cache masih lama.
+- **Hanya satu dialog pada satu waktu**: menekan tombol Hapus berkali-kali tidak lagi memunculkan dialog bertumpuk (klik berikutnya
+  diabaikan). Dialog informasi yang beruntun diantre, bukan dibuang.
+- **Halaman di belakang dialog dikunci** (tidak bisa diklik maupun difokus dengan Tab) selama dialog terbuka.
+- **Deteksi tampilan usang**: bila `style.css` yang dimuat bukan versi terbaru, muncul bilah peringatan oranye di atas layar dengan
+  tombol **Muat Ulang Tampilan** (menyegarkan cache lalu memuat ulang). Penanda versi: `--versi-css` di `style.css` harus sama
+  dengan `VERSI_APLIKASI` di `app.js`.
+- `index.html` kini memuat `style.css?v=26` dan `app.js?v=26` (cache-busting): setiap update naikkan angka `v=` ini agar browser
+  mengambil file baru.
+- **Unggah bukti orak-orik**: setelah ada foto, muncul tile **"+ Tambah foto"** di samping foto-foto (tombol *Kamera* dan *Galeri*,
+  menampilkan sisa kuota foto). Tile hilang saat sudah 10 foto dan muncul lagi bila ada foto dihapus.
+- File berubah: `app.js`, `style.css`, `index.html`, `README.md`. `Code.gs` & `config.js` tidak berubah dari v25.
+
+# v25 — Bukti Orak-Orik Jawaban (foto coretan siswa) — opsional per ujian
+
+**Alur siswa**: klik *Selesai* → **nilai dikirim & tersimpan ke server lebih dulu** → halaman *Unggah Bukti Orak-Orik* →
+(foto terverifikasi) → baru **nilai akhir (Lulus / Perlu Remedial)** tampil.
+
+- **Opsional di akun guru**: di form Buat/Ubah Ujian ada pilihan *Bukti Orak-Orik Jawaban*:
+  **Nonaktif** (cocok untuk latihan — alur lama, nilai langsung tampil) · **Aktif — wajib** (min. 1 foto, disarankan untuk
+  ujian) · **Aktif — boleh dilewati**. Bisa diubah kapan saja per ujian.
+- **Foto**: tombol *Ambil Foto* (kamera) & *Pilih dari Galeri* (boleh banyak sekaligus, maks. 10 per ujian). Mendukung
+  JPG/PNG/WEBP/GIF/BMP/AVIF dan **HEIC/HEIF (iPhone) yang otomatis dikonversi ke JPEG**; foto resolusi tinggi otomatis
+  dikecilkan (sisi terpanjang 2000 px, kualitas tinggi) & diperbaiki orientasinya sebelum dikirim.
+- **Dijamin terkirim**: tiap foto otomatis dicoba ulang sampai 4x; server memverifikasi ukuran berkas di Drive harus sama
+  dengan yang dikirim; kirim ulang tidak membuat duplikat; sebelum lanjut, daftar foto diperiksa ulang ke server. Foto yang
+  gagal diberi tombol *Coba lagi*; tombol *Selesai & Lihat Nilai* terkunci selama ada foto yang belum terkirim.
+- **Pemulihan**: bila bukti WAJIB tapi siswa menutup halaman / HP mati sebelum mengunggah, saat masuk lagi dengan token yang
+  sama ia diarahkan langsung ke halaman unggah (nilainya sudah aman), bukan ke pesan "sudah selesai".
+- **Akun guru**: Rekap Nilai punya kolom **Bukti Orak-Orik** tepat di sebelah **Nilai** — miniatur + jumlah foto (klik untuk
+  galeri besar: panah/keyboard ←→, Esc menutup, tombol *Buka ukuran asli*) atau badge *Belum unggah* bila wajib tapi kosong.
+  Ekspor Excel menambah kolom *Foto Bukti Orak-Orik* (jumlah foto).
+- **Hapus nilai siswa** otomatis ikut menghapus foto buktinya (di sheet & Drive).
+
+Catatan teknis:
+- **Mode Server**: tempel ulang `Code.gs` lalu *Deploy > Manage deployments > New version*. Sheet baru **BuktiOrek** dan kolom
+  `bukti_orek` di sheet Ujian dibuat otomatis. Foto disimpan di folder Drive **CBT_Bukti_Orek** (berbagi "siapa pun dengan
+  link", sama seperti folder gambar soal) agar bisa tampil di Portal Guru. Aksi baru: `uploadBuktiOrek`, `getBuktiOrek`,
+  `hapusBuktiOrek`. Pertama kali ada yang mengunggah, Apps Script bisa meminta otorisasi Drive.
+- **Mode Lokal**: foto disimpan di perangkat ini (dikecilkan lebih agresif karena kuota browser terbatas).
+- Pustaka konversi HEIC (`heic2any`) hanya diunduh saat siswa memilih foto HEIC (butuh internet, CDN cadangan otomatis).
+- File berubah: `Code.gs`, `app.js`, `index.html`, `style.css`, `README.md`.
+
+# v24 — Dialog konfirmasi profesional di seluruh Portal Guru
+
+Semua pop-up bawaan browser (`confirm`, `prompt`, `alert` — 33 titik) diganti dengan dialog modern bergaya aplikasi CBT berbayar.
+
+- **Tampilan**: kartu tengah layar dengan latar buram, ikon berwarna sesuai tingkat risiko (merah = berbahaya, kuning =
+  peringatan, hijau = aman, biru = informasi), judul jelas, penjelasan dampak, tombol aksi berlabel spesifik
+  (mis. "Ya, Buka Blokir", "Hapus Permanen") dan Batal. Mengikuti 33 gaya tema & mode gelap; di HP tombol utama tampil di atas.
+- **Rincian**: dialog Buka Blokir menampilkan siswa, kelas, alasan blokir, dan sudah berapa lama diblokir. Dialog Hapus Siswa
+  menampilkan username & kelas, dst.
+- **Pengaman ekstra** untuk tindakan paling berbahaya (Hapus Kelas, Hapus Permanen Semua Arsip, Reset Total Sesi, Hapus Semua
+  Nilai Ujian): tombol terkunci sampai guru mengetik kata konfirmasi (HAPUS / RESET). Pada dialog berisiko, fokus awal di
+  tombol Batal supaya tidak terhapus karena salah tekan Enter.
+- **Isian lebih nyaman** (pengganti `prompt`): Blokir Akun (alasan + pilihan cepat), Atur Waktu (angka + pilihan +5/+10/+15/+30/−5
+  menit, ditolak bila bukan angka), Tambah Mapel (pilihan cepat), Sisipkan/Ubah Rumus (tombol cepat pecahan, pangkat, akar, π).
+- **Peringatan impor** (pengganti `alert`) kini berupa daftar yang bisa digulir.
+- Papan ketik: Esc = batal, Enter = lanjut, Tab terkunci di dalam dialog; klik latar gelap = batal.
+- File berubah: `app.js`, `style.css`, `README.md`. `index.html`, `Code.gs`, `config.js`, ikon tidak berubah.
+- Dialog siap dipakai fitur baru: `await Dialog.konfirmasi({...})`, `Dialog.input({...})`, `Dialog.info({...})`.
+
+# v23 — Tampilan ruang ujian siswa lebih profesional + watermark nama guru
+
+- **Watermark kecil** di pojok kanan-bawah layar ujian: *"Guru Pengajar · Komang Edi Suastrawan, S.Pd., M.Pd."*.
+  Samar, tidak bisa diklik/diseleksi, tidak menutupi soal (ada ruang kosong di bawah konten), dan tidak ikut tercetak.
+  Ganti nama / sembunyikan tanpa mengedit app.js: tambahkan di `config.js` baris
+  `window.CBT_WATERMARK = 'Nama Guru, S.Pd.';` (isi `''` untuk menyembunyikan).
+- **Top bar baru**: logo & nama aplikasi, judul ujian, identitas peserta (nama • kelas), tombol Simpan, dan timer berbentuk
+  pil dengan ikon jam (merah & berdenyut saat sisa < 2 menit). Bar progres tipis di bawah top bar menunjukkan persen soal terjawab.
+- **Panel Navigasi Soal**: kartu tersendiri berisi progres "terjawab / total", kotak nomor, jumlah Sudah dijawab / Ragu-ragu /
+  Belum dijawab, dan tombol "Selesai & Kumpulkan". Panel tetap menempel saat soal digulir (desktop).
+- **Kartu soal & opsi**: label "Soal n dari N" berbentuk chip, teks lebih lega, opsi berupa kartu dengan huruf kotak
+  membulat; opsi terpilih diberi bingkai & cincin warna yang jelas. Tombol Sebelumnya/Ragu-ragu/Berikutnya dalam bar tersendiri.
+- Warna memakai variabel tema, jadi tetap mengikuti 33 gaya & mode gelap. Hanya layar ujian siswa yang berubah
+  (Pratinjau Guru & Detail Jawaban tidak).
+- File berubah: `index.html`, `app.js`, `style.css`, `README.md`. `Code.gs` & `config.js` tidak berubah.
+
+# v22 — Ikon ungu-pink + lambang sekolah (SMP Negeri 2 Seririt)
+
+- Ikon aplikasi kini bergradien **ungu → pink** dengan simbol lembar ujian bercentang + pensil emas
+  (senada dengan warna lambang sekolah), dan **lambang sekolah kecil** di lencana pojok kanan-atas.
+- Ukuran 16/32 px (tab browser) memakai versi sederhana tanpa lambang agar tetap jelas.
+- Nama file ikon tidak berubah; `theme_color` manifest menjadi ungu (#9a5cf5).
+- `icons/icon-source.svg` = sumber vektor (lambang tertanam), bisa diedit/diekspor ulang.
+
+# v21 — Ikon aplikasi baru (cerah & profesional)
+
+- Ikon bawaan diganti: latar gradien biru-cyan cerah, simbol **lembar ujian bercentang + pensil** (tanpa tulisan
+  "SMP 2"/"TEST"), gaya seperti ikon aplikasi profesional. Versi 16/32 px disederhanakan agar tetap jelas.
+- Semua ukuran diperbarui dengan **nama file yang sama** (`icons/*.png`, `favicon.ico`), jadi tidak ada yang perlu
+  diubah di `index.html`/`manifest.json` selain `theme_color` manifest (kini biru cerah).
+- Ikon **maskable** (Android) & **apple-touch-icon** (iPhone) dibuat full-bleed dengan simbol di area aman.
+- `icons/icon-source.svg` = sumber vektor ikon, bisa diedit/diekspor ulang bila ingin warna lain.
+- Logo sekolah sendiri tetap bisa dipasang lewat Portal Guru → Pengaturan → Identitas Aplikasi (otomatis menggantikan ikon ini).
+
+# v20 — Blokir Akun Siswa (hukuman untuk yang tidak serius mengerjakan kuis)
+
+Portal Guru → **Data Siswa**: setiap baris kini punya tombol **🚫 Blokir** (dan **✅ Buka Blokir** bila sedang diblokir).
+
+- Klik **Blokir** → isi alasan singkat (opsional) → akun siswa itu langsung diblokir.
+- Selama diblokir, siswa tersebut **tidak bisa mengikuti ujian/kuis apa pun** (tidak bisa mencari token, tidak bisa
+  memulai ataupun melanjutkan ujian). **Teman sekelasnya tetap bisa mengerjakan** — blokir berlaku per siswa.
+- Siswa masih bisa login; portalnya menampilkan banner merah *“Akun Anda sedang diblokir”* beserta alasannya,
+  dan kolom token terkunci. Banner muncul/hilang otomatis (mengikuti ping tiap ±menit) tanpa siswa perlu login ulang.
+- Klik **Buka Blokir** → siswa langsung bisa mengerjakan kuis lagi.
+- Di tab Data Siswa tampil badge **🚫 Diblokir**, alasannya, dan jumlah akun yang sedang diblokir.
+- Mengubah data siswa (tombol *Ubah*) tidak menghapus status blokir.
+- Berbeda dengan status sesi **“diblokir karena pelanggaran”** (anti-curang, per ujian): blokir akun ini berlaku
+  untuk semua ujian sekaligus dan diatur manual oleh guru.
+
+Catatan teknis:
+- **Mode Server**: tempel ulang `Code.gs` lalu *Deploy > Manage deployments > New version*. Kolom baru `blokir`,
+  `blokir_alasan`, `blokir_sejak` di sheet **Siswa** dibuat otomatis (skema otomatis). Tidak perlu `setupAwal` lagi.
+  Aksi baru: `blokirSiswa`. Status dicache 10 menit (perubahan lewat aplikasi langsung berlaku; bila kolom `blokir`
+  diedit manual di Sheets, isi `ya` untuk memblokir, kosongkan untuk membuka — efeknya paling lambat 10 menit).
+- **Mode Lokal**: otomatis berlaku, hanya perlu mengganti `app.js` & `index.html`.
+- Siswa yang sedang di tengah ujian saat diblokir tidak langsung dikeluarkan (jawaban tetap aman tersimpan);
+  bila halaman ujiannya dimuat ulang, ia tidak bisa lanjut. Untuk menghentikan seketika, gunakan **Paksa Selesai**
+  di tab Pemantauan Ujian.
+- File yang berubah: `Code.gs`, `app.js`, `index.html`, `README.md`. `config.js` & `style.css` tidak berubah.
+
+# v19 — Rumus tampil langsung di kotak editor (Ubah Soal)
+
+- Di form Tambah/Ubah Soal, rumus di kotak **Pertanyaan, Opsi, dan Pembahasan** kini langsung tampil sebagai
+  pecahan/rumus (bukan teks mentah `$\\frac{1}{100}$`). Saat disimpan tetap tersimpan sebagai `$...$`.
+- **Klik 2x** pada rumus untuk mengubahnya; hapus dengan Backspace/Delete. Tombol **RUMUS Σ** juga langsung menampilkan hasilnya.
+- Hanya `app.js` & `style.css` yang berubah.
+
+# v18 — Import Word: rumus matematika & format Pembahasan tidak lagi hilang/berantakan
+
+Masalah: saat template Word (.docx) diimpor, rumus yang dibuat lewat **Insert > Equation** (pecahan,
+tanda coret angka nol, pangkat, akar, dst) **hilang**, dan kolom **Pembahasan** menyatu jadi satu baris
+(`Diketahui:- Tinggi air ...`) tanpa huruf tebal.
+
+Perbaikan (hanya `app.js` & `style.css`; `Code.gs`/`index.html` tidak berubah):
+- Rumus Word (OMML) diubah otomatis menjadi `$LaTeX$` sebelum dibaca mammoth, lalu dirender KaTeX di
+  Pertanyaan, Opsi, dan Pembahasan (layar siswa, pratinjau, detail jawaban). Didukung: pecahan, pangkat/indeks,
+  akar, tanda kurung, sigma/integral, matriks, aksen, garis atas/bawah, dan **tanda coret** (`\cancel`).
+- Kolom **Pertanyaan, Opsi A–H, Pembahasan** kini dibaca sebagai teks kaya: baris/paragraf tetap terpisah,
+  **tebal/miring**, pangkat/indeks, daftar, dan gambar di dalam sel ikut terbawa. Kolom lain (Tipe, Kunci, Bobot, dst) tetap teks biasa.
+- Memakai JSZip (cdnjs, dimuat otomatis saat import, seperti mammoth). Perlu internet saat import.
+- Rumus yang diketik manual `$...$` tetap berfungsi seperti biasa.
+
+# v10 — Tampilan HP baru (Portal Guru & Siswa)
+
+Hanya aktif di layar kecil; tampilan desktop tidak berubah. Semua warna/radius memakai variabel tema, jadi 33 gaya & Studio Gaya tetap berlaku.
+
+- **Login**: hero logo + nama sekolah, formulir tampil sebagai *bottom sheet* dengan tombol besar.
+- **Top bar kaca buram** berisi logo dan judul halaman aktif.
+- **Bottom navigation (guru)**: Beranda · Soal · Ujian · Nilai · Lainnya (membuka menu lengkap).
+- **Dashboard**: kartu ringkasan 2 kolom, tombol hero ringkas.
+- **Tabel otomatis jadi kartu** di HP (label kolom + tombol aksi). Tabel lebar (>8 kolom, mis. matriks jawaban) tetap bisa digeser.
+- **Modal jadi bottom sheet** dengan tombol Batal/Simpan yang menempel di bawah.
+- **Form**: input 48px, font 16px (tanpa auto-zoom iOS), tombol min. 46px.
+- **Portal siswa**: kolom token besar & terpusat.
+- **Ruang ujian**: top bar 2 baris (judul + timer), tombol Sebelumnya/Berikutnya menempel di bawah, nomor soal lebih besar. Area aman iPhone (notch) dihormati.
+- Hanya `index.html`, `app.js`, `style.css` yang berubah; `Code.gs` tidak berubah.
+
+# v9 — Pesan hasil per nilai (0–100) + Import dari Word
+
+Di **Portal Guru → Ujian → Buat/Ubah Ujian → Pesan untuk Siswa Berdasarkan Nilai**:
+
+- Pesan kini diatur **per nilai: 0, 1, 2, … 100** (sebelumnya per rentang 1–5, 6–10, dst.). Editor menampilkan 101 baris dalam kotak yang bisa digulir.
+- **⬇ Unduh Template Word** — tabel 2 kolom (*Nilai | Pesan*) berisi 101 baris, sudah terisi pesan yang sedang ada di editor. Ubah teksnya di Word.
+- **Import dari Word (.docx)** — sekali pilih file, semua nilai terisi pesannya. Hasil import muncul di editor (cek dulu), lalu klik **Simpan Ujian**. Sel *Pesan* yang kosong dilewati (memakai pesan yang ada/default). Kolom *Nilai* juga boleh berupa rentang, mis. `76-80`. Cadangan: paragraf biasa berformat `85: pesan` atau `76-80 = pesan`.
+- **Isi cepat** — satu pesan yang sama untuk beberapa nilai berurutan tanpa Word.
+- Ujian lama yang tersimpan per rentang otomatis dipecah ke tiap nilai; tidak ada data yang hilang.
+- Penyimpanan ringkas: hanya pesan yang **berbeda dari default** yang disimpan, nilai berurutan dengan pesan sama digabung (batas sel Sheets 50.000 karakter dicek, error bila terlampaui).
+- Hanya `index.html`, `app.js`, `style.css` yang berubah; **`Code.gs` tidak berubah** (format `pesan_nilai` tetap kompatibel).
+
+# v8 — Gaya UI baru & perbaikan galeri gaya
+
+- **+13 gaya baru** (total 33): *Portal Navy Magenta* (sidebar navy, menu aktif magenta, kartu putih bergaris — seperti tampilan Rekap Nilai), Senja Hangat, Hutan Tenang, Koran Klasik, Midnight Slate, Sakura Lembut, Mint Segar, Blueprint Teknik, Kuning Kontras, Lavender Kaca, Sporty Bold, Zen Putih, Royal Gold, Pantai Biru.
+- Gaya bertanda **paket** ikut mengganti warna; saring lewat chip *Semua / Terang / Gelap / Paket + warna*.
+- Opsi sidebar baru **Gelap navy** (mengikuti warna sekunder) di Studio Gaya.
+- **Perbaikan**: kartu pilihan gaya tidak lagi memakai elemen `<button>` sehingga tidak tertimpa gaya tombol global (efek hover/tekan yang membuatnya menumpuk dengan tombol lain); jarak ke tombol Acak diperlebar.
+- Hanya `index.html`, `app.js`, `style.css` yang berubah; `Code.gs` tidak berubah.
+
 # Aplikasi CBT — Portal Guru & Portal Siswa
+
+## ⭐ Baru: Tampilan & Tema (warna utama mengubah SEMUA warna + 20 gaya UI + Studio Gaya)
+
+Portal Guru → **Pengaturan → 🎨 Tampilan & Tema**. Berlaku juga untuk portal siswa. Semua perubahan
+langsung terlihat sebagai pratinjau; klik **💾 Simpan Tema** agar tersimpan (↩ Batalkan Perubahan untuk kembali).
+
+**1. Warna**
+- **Warna utama** — pilih satu warna, seluruh aplikasi ikut berubah (sidebar, latar, kartu, tombol, tabel,
+  badge, hero dashboard, halaman login & hasil). Warna sekunder/aksen/latar/teks diturunkan otomatis memakai
+  *harmoni* pilihan (Klasik, Analog, Komplementer, Triad, Split, Tetrad, Monokrom). Warna teks pada tombol
+  otomatis hitam/putih mengikuti kontras.
+- **Mode**: ☀️ Terang, 🌙 Gelap, atau 🖥️ Ikut Perangkat.
+- 12 palet siap pakai, 🎲 Acak Palet, dan pengaturan warna satu per satu (lanjutan).
+
+**2. Gaya Tampilan** — 20 gaya siap pakai: Soft Pastel (bawaan), **Claymorphism**, Glassmorphism, Neumorphism,
+Neo-Brutalism, Flat Minimal, Material, Aurora, Cyber Neon (gelap), Buku Tulis, Retro Terminal, Candy Pop 3D,
+Corporate, Ocean Glass (gelap), Doodle, Bento, Mono Ink, Glossy, Vaporwave (gelap), Pastel Dream.
+Setiap kartu pratinjau memakai warna Anda saat ini.
+- **🎲 Acak Gaya / ✨ Acak Gaya + Warna** — meracik kombinasi baru tiap klik (praktis tak terbatas).
+- **🛠️ Studio Gaya** — atur sendiri: kelengkungan, kekuatan bayangan, tebal garis, efek kaca, gradien,
+  kerapatan, jenis bayangan (9), pola latar (9), gaya sidebar (5), huruf (13), tombol bulat, sidebar melayang,
+  garis tinta, neon, judul huruf besar.
+
+**3. Ganti Otomatis** — *Kejutan harian*: gaya (atau gaya + warna) berganti sendiri tiap hari, sama untuk semua
+pengguna pada hari itu (tidak berubah di tengah ujian).
+
+**Kode Gaya** — salin/tempel kode untuk membagikan atau mencadangkan tampilan ke perangkat/sekolah lain.
+
+Catatan teknis: tema disimpan di kolom `tema_json` yang sudah ada, **tidak ada perubahan `Code.gs`** (Mode
+Lokal maupun Mode Server). Cukup ganti `index.html`, `app.js`, dan `style.css`. Tema juga di-cache di
+perangkat sehingga tidak berkedip saat dibuka. Font gaya tertentu dimuat dari Google Fonts hanya saat dipakai;
+bila offline otomatis memakai font sistem.
+
+
+## ⭐ Baru: Cari Siswa, Filter Per Kelas & Unduh Nilai Per Kelas/Keseluruhan
+
+Di tab **Rekap Nilai, Pemantauan Ujian, Log Pelanggaran, Analisis Soal (tabel jawaban siswa), Data Siswa**,
+dan **Status Login** kini ada:
+
+- **Kotak 🔍 Cari** — ketik sebagian nama (Data Siswa/Status Login juga bisa username) untuk menyaring baris.
+- **Filter Kelas** — pilih satu kelas; daftar kelasnya otomatis diambil dari data ujian yang dipilih.
+- Keterangan jumlah ("Menampilkan 12 dari 120 siswa", rata-rata nilai di Rekap, jumlah yang sedang mengerjakan di Pemantauan).
+- Filter ikut bertahan saat tabel diperbarui otomatis (auto-refresh).
+
+**Unduh nilai (Rekap Nilai):**
+
+1. **⬇ Unduh (sesuai filter)** — nilai yang sedang tampil. Pilih satu kelas = nilai kelas itu saja.
+2. **⬇ Semua Kelas** — seluruh siswa pada ujian terpilih: 1 sheet gabungan + 1 sheet per kelas.
+3. **⬇ Semua Ujian** — nilai dari semua ujian sekaligus (mengikuti Filter Kelas), dengan kolom "Ujian";
+   1 sheet gabungan + 1 sheet per kelas.
+
+Catatan: **Hapus Semua Nilai** kini hanya menghapus baris yang sedang tampil bila filter/pencarian aktif.
+Log Pelanggaran kini menampilkan nama & kelas siswa (bukan ID). Unduhan "Analisis Jawaban" mengikuti filter.
+**Tidak ada perubahan `Code.gs`** — cukup ganti `index.html`, `app.js`, dan `style.css`.
+
 
 Aplikasi ujian online (Computer Based Test) berbasis web statis (HTML/CSS/JS).
 
@@ -602,3 +1041,28 @@ Google Apps Script + Sheets **bukan** database production-grade, jadi mohon perh
   sekolah tertutup, tapi sebaiknya di-hash bila memungkinkan).
 - Log lebih rinci (mis. rekam jumlah kali fullscreen keluar per jenis, snapshot webcam)
   bila kebutuhan pengawasan lebih ketat.
+
+## Pesan Hasil Berdasarkan Rentang Nilai (untuk siswa)
+
+Di form **Buat/Ubah Ujian** ada bagian *Pesan untuk Siswa Berdasarkan Rentang Nilai*.
+
+- Setiap rentang nilai (default: 0, 1–5, 6–10, 11–15, ... 91–95, 96–99, dan 100 tersendiri) punya pesan sendiri yang tampil di layar hasil siswa.
+- Sudah terisi **pesan default**. Guru boleh mengubah teksnya, mengubah batas rentang, menambah/menghapus rentang, atau menekan **Kembalikan ke Default**.
+- Pesan yang dikosongkan otomatis memakai pesan default untuk rentang tersebut. Jika guru tidak mengubah apa pun, semua memakai default.
+- Rentang tidak boleh saling tumpang tindih. Nilai desimal dibulatkan dulu sebelum dicocokkan.
+- Kolom *Instruksi Remedial Tambahan* tetap ada dan ditampilkan di bawah pesan, khusus siswa yang belum lulus.
+- Data disimpan di kolom baru `pesan_nilai` pada sheet **Ujian** (dibuat otomatis oleh skema, tidak perlu menambah kolom manual).
+
+## Detail Jawaban untuk Siswa (setelah nilai keluar)
+
+Di layar hasil ada tombol **Lihat Detail Jawaban**. Siswa bisa melihat:
+
+- daftar soal yang salah (tab *Yang Salah*) atau seluruh soal (tab *Semua Soal*);
+- jawaban yang dipilih siswa, kunci jawaban, skor per soal, dan pembahasan (jika diisi guru);
+- opsi ditampilkan dengan urutan acak yang sama seperti saat siswa mengerjakan, jadi mudah dicocokkan.
+
+Tujuannya agar siswa dan guru bisa sama-sama memeriksa jika ada kunci jawaban yang keliru. Jika kunci belum diatur pada suatu soal, siswa akan melihat catatan untuk melapor ke guru.
+
+- Hanya bisa dibuka setelah ujian selesai dan hanya untuk sesi milik siswa itu sendiri.
+- Guru bisa mematikannya per ujian lewat kotak centang *Izinkan siswa melihat detail jawaban* di form ujian (default aktif).
+- Data disimpan di kolom baru `tampil_detail` pada sheet **Ujian** (dibuat otomatis).

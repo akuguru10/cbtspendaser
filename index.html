@@ -28,7 +28,7 @@
      dimuat TANPA memblokir tampilan halaman login (dulu halaman kosong sampai keduanya selesai diunduh). -->
 <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
 <link rel="dns-prefetch" href="https://script.google.com">
-<link rel="stylesheet" href="style.css?v=41">
+<link rel="stylesheet" href="style.css?v=44">
 <!-- Font Awesome: ikon sidebar & tombol (gaya dashboard modern) -->
 <link rel="preload" as="style" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" onload="this.onload=null;this.rel='stylesheet'">
 <!-- KaTeX: render persamaan matematika (LaTeX) di dalam soal -->
@@ -168,6 +168,7 @@
       <button class="nav-tab" data-tab="tab-bank-soal" onclick="UI.gantiTabGuru('tab-bank-soal')"><i class="fa-solid fa-layer-group nav-ico"></i><span>Bank Soal</span></button>
       <button class="nav-tab" data-tab="tab-ujian" onclick="UI.gantiTabGuru('tab-ujian')"><i class="fa-solid fa-calendar-days nav-ico"></i><span>Kelola Ujian</span></button>
       <button class="nav-tab" data-tab="tab-rekap" onclick="UI.gantiTabGuru('tab-rekap')"><i class="fa-solid fa-clipboard-check nav-ico"></i><span>Rekap Nilai</span></button>
+      <button class="nav-tab" data-tab="tab-leaderboard" onclick="UI.gantiTabGuru('tab-leaderboard')"><i class="fa-solid fa-trophy nav-ico"></i><span>Leaderboard</span></button>
       <button class="nav-tab" data-tab="tab-analisis" onclick="UI.gantiTabGuru('tab-analisis')"><i class="fa-solid fa-chart-pie nav-ico"></i><span>Analisis Soal</span></button>
       <button class="nav-tab" data-tab="tab-pelanggaran" onclick="UI.gantiTabGuru('tab-pelanggaran')"><i class="fa-solid fa-triangle-exclamation nav-ico"></i><span>Log Pelanggaran</span></button>
       <button class="nav-tab" data-tab="tab-pemantauan" onclick="UI.gantiTabGuru('tab-pemantauan')"><i class="fa-solid fa-eye nav-ico"></i><span>Pemantauan Ujian</span></button>
@@ -287,6 +288,7 @@
           </div>
           <div class="toolbar-actions">
             <button class="secondary" onclick="Guru.pratinjauKategoriAktif()">👁 Pratinjau Semua Soal</button>
+            <button class="secondary" onclick="Guru.ubahNamaMapel()" title="Ubah nama Mapel ini (mis. salah ketik)">✏ Ubah Nama</button>
             <button class="secondary" onclick="Guru.bukaModalKelolaKategori()">Edit Info</button>
           </div>
         </div>
@@ -415,6 +417,35 @@
           <span class="filter-info" id="kelas-rekap-info"></span>
         </div>
         <div id="tabel-rekap">Pilih ujian terlebih dahulu.</div>
+      </div>
+    </section>
+
+    <!-- ---------- TAB: LEADERBOARD ---------- -->
+    <section id="tab-leaderboard" class="hidden">
+      <div class="lb-head">
+        <div>
+          <h2><i class="fa-solid fa-trophy" style="color:#d4a017"></i> Leaderboard</h2>
+          <p class="subtitle">Peringkat siswa berdasarkan nilai: per tes atau rata-rata seluruh tes, untuk satu kelas atau semua kelas.</p>
+        </div>
+      </div>
+      <div class="panel lb-panel">
+        <div class="lb-controls">
+          <label class="lb-field"><span>Berdasarkan</span>
+            <select id="lb-basis" onchange="Guru.renderLeaderboard_()"><option value="rata">Rata-rata Seluruh Tes</option></select>
+          </label>
+          <label class="lb-field"><span>Kelas</span>
+            <select id="lb-kelas" onchange="Guru.renderLeaderboard_()"><option value="">Semua Kelas</option></select>
+          </label>
+          <label class="lb-field lb-cari"><span>Cari siswa</span>
+            <input type="search" id="lb-cari" placeholder="🔍 Nama siswa..." oninput="Guru.renderLeaderboard_()" autocomplete="off">
+          </label>
+          <label class="filter-cek lb-lengkap" id="lb-lengkap-wrap" title="Rata-rata hanya dihitung untuk siswa yang sudah mengikuti semua tes"><input type="checkbox" id="lb-lengkap" onchange="Guru.renderLeaderboard_()"> Hanya yang ikut semua tes</label>
+          <div class="lb-aksi">
+            <button type="button" class="secondary btn-segarkan" title="Ambil nilai terbaru" onclick="Guru.segarkan('tab-leaderboard', this)"><i class="fa-solid fa-rotate"></i> Segarkan</button><span class="segar-info" id="segar-info-tab-leaderboard" aria-live="polite"></span>
+            <button type="button" class="secondary" onclick="Guru.unduhLeaderboard()" title="Unduh peringkat yang sedang tampil sebagai Excel">⬇ Unduh Excel</button>
+          </div>
+        </div>
+        <div id="lb-isi"><p class="subtitle">Memuat leaderboard...</p></div>
       </div>
     </section>
 
@@ -865,9 +896,13 @@
         <div class="media-upload-box">
           <div class="media-upload-label">🖼 Gambar Soal<br><span>JPG/PNG/WebP · Maks 10 MB</span></div>
           <input type="file" id="soal-gambar-file" accept="image/*" class="hidden" onchange="Guru.uploadGambarSoal(event)">
-          <label for="soal-gambar-file" class="media-upload-dropzone">+ <span>Klik untuk upload</span></label>
+          <label for="soal-gambar-file" id="soal-gambar-dropzone" class="media-upload-dropzone">+ <span>Klik untuk upload</span></label>
           <input type="hidden" id="soal-gambar-url">
           <img id="soal-gambar-preview" class="hidden media-upload-preview-img">
+          <div id="soal-gambar-aksi" class="media-upload-aksi hidden">
+            <label for="soal-gambar-file" class="secondary small media-upload-btn" title="Ganti dengan gambar lain">🔄 Ubah Gambar</label>
+            <button type="button" class="secondary small media-upload-btn danger" onclick="Guru.hapusGambarSoal()" title="Hapus gambar dari soal ini">🗑 Hapus Gambar</button>
+          </div>
         </div>
         <div class="media-upload-box">
           <div class="media-upload-label">🎧 Audio Listening<br><span>MP3/WAV/OGG · Maks 10 MB</span></div>
@@ -1321,6 +1356,6 @@
 </div>
 
 <script src="config.js"></script>
-<script src="app.js?v=41"></script>
+<script src="app.js?v=44"></script>
 </body>
 </html>

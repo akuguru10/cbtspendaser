@@ -1615,6 +1615,17 @@ function ambilMetaMapel_(kategori, tandaiBuatan) {
   if (berubah) { try { localStorage.setItem(MAPEL_META_KEY, JSON.stringify(semua)); } catch (e) {} }
   return semua[kunci];
 }
+// Ganti nama Mapel: token & warna kartu ikut berpindah ke nama baru (kunci meta = nama huruf kecil).
+function pindahMetaMapel_(lama, baru) {
+  const semua = bacaSemuaMetaMapel_();
+  const kl = String(lama || '').toLowerCase(), kb = String(baru || '').toLowerCase();
+  const m = semua[kl];
+  if (!m) return;
+  if (m.buatan) m.buatan = String(baru).trim();
+  if (kl !== kb) delete semua[kl];
+  semua[kb] = m;
+  try { localStorage.setItem(MAPEL_META_KEY, JSON.stringify(semua)); } catch (e) {}
+}
 function hapusMapelBuatan_(kategori) {
   const semua = bacaSemuaMetaMapel_();
   const kunci = String(kategori || '').toLowerCase();
@@ -1687,7 +1698,7 @@ function toast(msg, jenis) {
 // cache, sehingga dialog konfirmasi tampil TANPA gaya (jatuh ke bawah halaman, tombol di belakangnya masih bisa
 // diklik, dialog menumpuk). Dengan disuntik dari app.js, dialog dijamin tampil di tengah layar & menutupi halaman.
 // ----------------------------------------------------------------------------
-const VERSI_APLIKASI = '41';
+const VERSI_APLIKASI = '44';
 const CSS_SEGAR = `
 /* Tombol "Segarkan" di halaman portal guru (Rekap Nilai, Log Pelanggaran, dll.) */
 .btn-segarkan { display: inline-flex; align-items: center; gap: .45rem; white-space: nowrap; }
@@ -2678,6 +2689,15 @@ const LocalBackend = (function () {
         simpan();
         return { ok: true, count: n };
       }
+      case 'ubahNamaKategori': {
+        const lama = String(data.lama || '').trim(), baru = String(data.baru || '').trim();
+        if (!lama || !baru) return { ok: false, error: 'Nama kategori tidak boleh kosong.' };
+        let nSoal = 0, nUjian = 0;
+        D.bankSoal.forEach(s => { if ((!data.guruId || s.guru_id === data.guruId) && samaTeks_(s.kategori, lama)) { s.kategori = baru; nSoal++; } });
+        D.ujian.forEach(u => { if ((!data.guruId || u.guru_id === data.guruId) && samaTeks_(u.kategori, lama)) { u.kategori = baru; nUjian++; } });
+        simpan();
+        return { ok: true, soal: nSoal, ujian: nUjian };
+      }
       case 'getBankSoal': {
         let list = clone(D.bankSoal);
         if (data.guruId) list = list.filter(s => s.guru_id === data.guruId);
@@ -3496,6 +3516,7 @@ const UI = {
     if (tabId === 'tab-bank-soal') Guru.muatBankSoal();
     if (tabId === 'tab-ujian') Guru.muatDaftarUjian();
     if (tabId === 'tab-rekap') Guru.muatPilihanUjianUntukSelect('pilih-ujian-rekap');
+    if (tabId === 'tab-leaderboard') Guru.muatLeaderboard();
     if (tabId === 'tab-analisis') Guru.muatPilihanUjianUntukSelect('pilih-ujian-analisis');
     if (tabId === 'tab-pelanggaran') Guru.muatPilihanUjianUntukSelect('pilih-ujian-log');
     if (tabId === 'tab-pemantauan') Guru.muatPilihanUjianUntukSelect('pilih-ujian-pemantauan');
@@ -3644,6 +3665,9 @@ const UI = {
       const prev = document.getElementById(`soal-${jenis}-preview`);
       if (soal && soal[jenis]) { if (jenis === 'gambar') pasangSrcGambarAman_(prev, soal[jenis]); else prev.src = soal[jenis]; prev.classList.remove('hidden'); } else { prev.classList.add('hidden'); }
     });
+    // Reset input file (agar memilih file yang sama lagi tetap memicu upload) & atur tombol Ubah/Hapus Gambar.
+    const inpGambar = document.getElementById('soal-gambar-file'); if (inpGambar) inpGambar.value = '';
+    UI.aturAksiGambarSoal(!!(soal && soal.gambar));
     UI.renderModalTipeTabs();
     UI.renderFormOpsiSoal(soal);
     document.getElementById('modal-soal').classList.remove('hidden');
@@ -4227,6 +4251,7 @@ const Guru = {
       const jumlahAktif = peta[k].total - peta[k].arsip;
       return `
       <div class="mapel-card" style="--mapel-warna:${meta.warna}">
+        <button type="button" class="mapel-card-hapus mapel-card-ubah" title="Ubah nama Mapel ini (mis. salah ketik)" onclick="event.stopPropagation();Guru.ubahNamaMapel('${escapeHtml_(k).replace(/'/g, "\\'")}')">✏</button>
         <button type="button" class="mapel-card-hapus" title="Arsipkan seluruh soal Mapel ini" onclick="event.stopPropagation();Guru.hapusKategoriSoal('${escapeHtml_(k).replace(/'/g, "\\'")}')">🗑</button>
         <div class="mapel-card-ico">💡</div>
         <div class="mapel-card-badges">
@@ -4246,6 +4271,44 @@ const Guru = {
         <div class="mapel-card-add-ico">+</div>
         <div class="mapel-card-add-label">Tambah Mapel Baru</div>
       </div>`;
+  },
+
+  // Ubah nama Mapel/kategori (mis. salah ketik). Semua soal & ujian yang memakai nama lama ikut diganti.
+  async ubahNamaMapel(kategori) {
+    kategori = kategori || state.guru.kategoriKelola;
+    const labelLama = String(labelKategori(kategori) || '');
+    const input = await Dialog.input({
+      judul: 'Ubah Nama Mapel', ikon: 'fa-pen-to-square',
+      pesan: `Ganti nama mapel **${labelLama}**. Semua soal (termasuk arsip) dan ujian yang memakai mapel ini ikut diperbarui otomatis.`,
+      label: 'Nama Mapel / Kategori', nilai: labelLama, maksimal: 60, wajib: true, pesanWajib: 'Nama mapel tidak boleh kosong.',
+      teksYa: 'Simpan Nama'
+    });
+    if (input === null || input === undefined) return;
+    const baru = String(input).trim().replace(/\s+/g, ' ');
+    if (!baru) return;
+    if (baru === labelLama) { toast('Nama tidak berubah.', 'info'); return; }
+    // Jangan sampai bentrok dengan mapel lain yang sudah ada (itu akan mencampur soal tanpa disengaja).
+    const namaLain = new Set();
+    (state.guru.bankSoal || []).forEach(s => { if (s.kategori && !samaTeks_(s.kategori, kategori)) namaLain.add(String(s.kategori)); });
+    Object.values(bacaSemuaMetaMapel_()).forEach(m => { if (m && m.buatan && !samaTeks_(m.buatan, kategori)) namaLain.add(String(m.buatan)); });
+    const bentrok = [...namaLain].find(k => samaTeks_(k, baru) || samaTeks_(labelKategori(k), baru));
+    if (bentrok) { toast(`Mapel "${labelKategori(bentrok)}" sudah ada. Pakai nama lain agar soalnya tidak tercampur.`, 'error'); return; }
+    toast('Mengubah nama mapel...');
+    const res = await api('ubahNamaKategori', { guruId: state.user.id, lama: String(kategori), baru });
+    if (!res.ok) {
+      const lawas = /tidak dikenal/i.test(String(res.error || ''));
+      toast(lawas ? 'Server belum diperbarui: tempel ulang Code.gs lalu Deploy > Manage deployments > New version.' : 'Gagal mengubah nama: ' + res.error, 'error');
+      return;
+    }
+    pindahMetaMapel_(kategori, baru);
+    if (state.guru.kategoriKelola && samaTeks_(state.guru.kategoriKelola, kategori)) {
+      state.guru.kategoriKelola = baru;
+      const j = document.getElementById('kelola-soal-judul'); if (j) j.textContent = labelKategori(baru);
+      const fs = document.getElementById('filter-kategori-soal'); if (fs) fs.value = baru;
+    }
+    toast(`Nama mapel diubah menjadi "${baru}" (${res.soal || 0} soal, ${res.ujian || 0} ujian diperbarui).`, 'success');
+    await Guru.muatBankSoal();
+    if (state.guru.viewBankSoal === 'kelola') Guru.renderDaftarSoal();
   },
 
   async tambahMapelBaru() {
@@ -4669,6 +4732,15 @@ const Guru = {
     Guru.renderKelolaKategori();
   },
 
+  // Tampilkan tombol "Ubah Gambar" + "Hapus Gambar" bila soal sudah punya gambar;
+  // bila belum, tampilkan kotak "Klik untuk upload".
+  aturAksiGambarSoal(ada) {
+    const dz = document.getElementById('soal-gambar-dropzone');
+    const aksi = document.getElementById('soal-gambar-aksi');
+    if (dz) dz.classList.toggle('hidden', !!ada);
+    if (aksi) aksi.classList.toggle('hidden', !ada);
+  },
+
   bukaEditSoal(id) {
     const soal = state.guru.bankSoal.find(s => s.id === id);
     if (soal) UI.bukaModalSoal(soal);
@@ -4690,14 +4762,27 @@ const Guru = {
         const prev = document.getElementById(`soal-${jenis}-preview`);
         if (jenis === 'gambar') pasangSrcGambarAman_(prev, res.url); else prev.src = res.url;
         prev.classList.remove('hidden');
+        if (jenis === 'gambar') UI.aturAksiGambarSoal(true);
         toast((jenis[0].toUpperCase() + jenis.slice(1)) + ' berhasil diunggah.', 'success');
       } else {
         toast('Gagal mengunggah ' + jenis + ': ' + res.error, 'error');
       }
+      ev.target.value = '';
     };
     reader.readAsDataURL(file);
   },
   async uploadGambarSoal(ev) { return Guru.uploadMediaSoal(ev, 'gambar'); },
+
+  // Hapus gambar soal pada form Ubah/Tambah Soal. Berlaku setelah soal disimpan.
+  hapusGambarSoal() {
+    document.getElementById('soal-gambar-url').value = '';
+    const prev = document.getElementById('soal-gambar-preview');
+    prev.removeAttribute('src'); prev.removeAttribute('data-drive-id');
+    prev.classList.add('hidden');
+    const inp = document.getElementById('soal-gambar-file'); if (inp) inp.value = '';
+    UI.aturAksiGambarSoal(false);
+    toast('Gambar dihapus. Klik Simpan untuk menyimpan perubahan.', 'success');
+  },
 
   async uploadGambarOpsi(ev) {
     const row = ev.target.closest('.opsi-row');
@@ -5195,6 +5280,160 @@ const Guru = {
         <td style="font-size:.8rem;white-space:nowrap">${formatDurasi_(hitungDurasiDetik_(r.mulai, r.selesai))}</td>
         <td class="aksi">${r.sesiId ? `<button class="secondary small" title="Lihat soal yang salah, jawaban siswa, dan kunci (untuk evaluasi)" onclick="Guru.bukaDetailSiswa('${escapeHtml_(r.sesiId)}')">🔍 Detail Jawaban</button><button class="danger small" title="Hapus nilai siswa ini (siswa bisa mengikuti ujian ini lagi)" onclick="Guru.hapusNilaiSatu('${escapeHtml_(r.sesiId)}')">🗑 Hapus</button>` : ''}</td>
       </tr>`).join('') + `</tbody></table>`;
+  },
+
+  // ---------------- LEADERBOARD ----------------
+  // Peringkat siswa: per tes (ujian) atau rata-rata seluruh tes, per kelas atau semua kelas.
+  // Data diambil dari getRekapNilai tiap ujian (di-cache di state.guru._lbData), lalu
+  // dihitung di sisi klien -- jadi mengganti Berdasarkan/Kelas/Cari terasa instan.
+  // Bila siswa punya >1 sesi di satu tes, nilai TERTINGGI yang dipakai.
+  async muatLeaderboard() {
+    const cont = document.getElementById('lb-isi');
+    if (!cont) return false;
+    const daftar = await api('getDaftarUjian', { guruId: state.user.id });
+    if (!daftar.ok) return gagalMuat_(cont, 'Gagal memuat daftar ujian.');
+    const ujianList = [...daftar.data].sort((a, b) => String(a.judul || '').localeCompare(String(b.judul || ''), 'id', { numeric: true }));
+    const hasil = await jalankanParalel_(ujianList, 4, async (u) => {
+      try { const r = await api('getRekapNilai', { ujianId: u.id }); return { u, data: r && r.ok ? r.data : null }; }
+      catch (e) { return { u, data: null }; }
+    });
+    if (hasil.length && hasil.every(h => h.data === null)) return gagalMuat_(cont, 'Gagal memuat nilai.');
+    const baris = [];
+    const ujianAda = [];
+    hasil.forEach(({ u, data }) => {
+      if (!data) return;
+      const valid = data.filter(r => r.nilai !== '' && r.nilai !== null && r.nilai !== undefined && !isNaN(Number(r.nilai)));
+      if (!valid.length) return;
+      ujianAda.push({ id: u.id, judul: u.judul || '(tanpa judul)' });
+      valid.forEach(r => baris.push({ ujianId: u.id, siswaId: r.siswaId || '', nama: r.nama || '(tidak dikenal)', kelas: String(r.kelas || '-').trim(), nilai: Number(r.nilai), lulus: String(r.lulus) === 'true', sesiId: r.sesiId }));
+    });
+    state.guru._lbData = { ujian: ujianAda, baris };
+    // Isi ulang pilihan "Berdasarkan" & "Kelas" (pertahankan pilihan lama bila masih ada).
+    const selB = document.getElementById('lb-basis');
+    const lama = selB.value;
+    selB.innerHTML = '<option value="rata">📊 Rata-rata Seluruh Tes</option>' + ujianAda.map(u => `<option value="${escapeHtml_(u.id)}">📝 ${escapeHtml_(u.judul)}</option>`).join('');
+    selB.value = (lama === 'rata' || ujianAda.some(u => u.id === lama)) ? lama : 'rata';
+    isiOpsiKelas_('lb-kelas', kelasUnikDari_(baris));
+    Guru.renderLeaderboard_();
+    return true;
+  },
+
+  // Menghitung peringkat sesuai pilihan saat ini. Peringkat dihitung SEBELUM kotak cari
+  // diterapkan (mencari nama tidak mengubah nomor peringkat). Nilai sama = peringkat sama.
+  leaderboardHitung_() {
+    const L = state.guru._lbData || { ujian: [], baris: [] };
+    const basis = document.getElementById('lb-basis')?.value || 'rata';
+    const kelas = document.getElementById('lb-kelas')?.value || '';
+    const lengkap = !!document.getElementById('lb-lengkap')?.checked;
+    const per = new Map();
+    L.baris.forEach(b => {
+      const kunci = b.siswaId ? 'id:' + b.siswaId : 'nk:' + b.nama + '|' + b.kelas;
+      let e = per.get(kunci);
+      if (!e) { e = { nama: b.nama, kelas: b.kelas, nilai: {}, lulus: {}, sesiId: {} }; per.set(kunci, e); }
+      if (!(b.ujianId in e.nilai) || b.nilai > e.nilai[b.ujianId]) { e.nilai[b.ujianId] = b.nilai; e.lulus[b.ujianId] = b.lulus; e.sesiId[b.ujianId] = b.sesiId; }
+    });
+    let rows = [...per.values()].filter(e => !kelas || e.kelas === kelas);
+    const bulat2 = n => Math.round(n * 100) / 100;
+    if (basis === 'rata') {
+      rows.forEach(e => {
+        const v = Object.values(e.nilai);
+        e.jml = v.length;
+        e.skor = bulat2(v.reduce((a, b) => a + b, 0) / v.length);
+      });
+      if (lengkap) rows = rows.filter(e => e.jml === L.ujian.length);
+    } else {
+      rows = rows.filter(e => basis in e.nilai);
+      rows.forEach(e => { e.skor = bulat2(e.nilai[basis]); e.statusLulus = e.lulus[basis]; });
+    }
+    rows.sort((a, b) => b.skor - a.skor || String(a.nama).localeCompare(String(b.nama), 'id'));
+    let rank = 0, prev = null;
+    rows.forEach((e, i) => { if (prev === null || e.skor !== prev) { rank = i + 1; prev = e.skor; } e.rank = rank; });
+    return { rows, basis, kelas, ujian: L.ujian };
+  },
+
+  renderLeaderboard_() {
+    const cont = document.getElementById('lb-isi');
+    if (!cont) return;
+    const L = state.guru._lbData;
+    if (!L) return;
+    if (!L.ujian.length) { cont.innerHTML = '<div class="lb-kosong"><i class="fa-solid fa-trophy"></i><p>Belum ada nilai. Leaderboard muncul setelah ada siswa yang menyelesaikan ujian.</p></div>'; return; }
+    const { rows, basis, ujian } = Guru.leaderboardHitung_();
+    const modeRata = basis === 'rata';
+    const wrapLengkap = document.getElementById('lb-lengkap-wrap');
+    if (wrapLengkap) wrapLengkap.classList.toggle('hidden', !modeRata || ujian.length < 2);
+    if (!rows.length) { cont.innerHTML = '<div class="lb-kosong"><i class="fa-solid fa-trophy"></i><p>Tidak ada siswa yang cocok dengan pilihan ini.</p></div>'; return; }
+    const fmt = n => (Math.round(n * 10) / 10).toLocaleString('id-ID', { maximumFractionDigits: 1 });
+    const cari = normCari_(document.getElementById('lb-cari')?.value);
+    const tampil = cari ? rows.filter(e => normCari_(e.nama).includes(cari) || normCari_(e.kelas).includes(cari)) : rows;
+    const skorSemua = rows.map(e => e.skor);
+    const rata = skorSemua.reduce((a, b) => a + b, 0) / skorSemua.length;
+    const judulBasis = modeRata ? 'Rata-rata Seluruh Tes' : (ujian.find(u => u.id === basis)?.judul || '');
+    const medali = r => r === 1 ? '<span class="lb-medal m1"><i class="fa-solid fa-crown"></i></span>' : (r === 2 ? '<span class="lb-medal m2">2</span>' : (r === 3 ? '<span class="lb-medal m3">3</span>' : ''));
+    const kelasAktif = document.getElementById('lb-kelas')?.value || '';
+
+    // Ringkasan
+    let html = `<div class="lb-ringkas">
+      <div><b>${rows.length}</b><span>Peserta</span></div>
+      <div><b>${fmt(Math.max(...skorSemua))}</b><span>Tertinggi</span></div>
+      <div><b>${fmt(rata)}</b><span>Rata-rata</span></div>
+      <div><b>${fmt(Math.min(...skorSemua))}</b><span>Terendah</span></div>
+    </div>
+    <div class="lb-judul-basis"><i class="fa-solid fa-ranking-star"></i> ${escapeHtml_(judulBasis)} <span>• ${kelasAktif ? 'Kelas ' + escapeHtml_(kelasAktif) : 'Semua Kelas'}</span></div>`;
+
+    // Podium 3 teratas (disembunyikan saat mencari nama)
+    if (!cari) {
+      const top = rows.slice(0, 3);
+      const urutan = top.length === 3 ? [top[1], top[0], top[2]] : top;
+      html += `<div class="lb-podium n${top.length}">` + urutan.map(e => `
+        <div class="lb-pod p${e.rank}">
+          <div class="lb-pod-avatar">${medali(e.rank) || e.rank}</div>
+          <div class="lb-pod-nama" title="${escapeHtml_(e.nama)}">${escapeHtml_(e.nama)}</div>
+          <div class="lb-pod-kelas">${escapeHtml_(e.kelas)}</div>
+          <div class="lb-pod-skor">${fmt(e.skor)}</div>
+          <div class="lb-pod-blok">${e.rank}</div>
+        </div>`).join('') + '</div>';
+    }
+
+    // Tabel lengkap peringkat 1..akhir
+    const kolomTes = modeRata ? ujian.map(u => `<th class="lb-num" title="${escapeHtml_(u.judul)}">${escapeHtml_(u.judul.length > 14 ? u.judul.slice(0, 13) + '…' : u.judul)}</th>`).join('') : '';
+    html += `<div class="table-scroll-x"><table class="ledger lb-tabel"><thead><tr>
+      <th style="width:4.2rem">Peringkat</th><th>Nama Siswa</th><th>Kelas</th>${kolomTes}
+      <th>${modeRata ? 'Rata-rata' : 'Hasil Tes'}</th>${modeRata ? '<th class="lb-num">Tes Diikuti</th>' : '<th>Status</th>'}</tr></thead><tbody>` +
+      tampil.map(e => {
+        const sel = modeRata ? ujian.map(u => `<td class="lb-num">${u.id in e.nilai ? fmt(e.nilai[u.id]) : '<span class="lb-strip">–</span>'}</td>`).join('') : '';
+        const lebar = Math.max(0, Math.min(100, e.skor));
+        return `<tr class="${e.rank <= 3 ? 'lb-top lb-top' + e.rank : ''}">
+          <td><span class="lb-rank">${e.rank <= 3 ? medali(e.rank) : e.rank}</span></td>
+          <td class="lb-nama">${escapeHtml_(e.nama)}</td><td>${escapeHtml_(e.kelas)}</td>${sel}
+          <td><div class="lb-skor"><strong>${fmt(e.skor)}</strong><span class="lb-bar"><i style="width:${lebar}%"></i></span></div></td>
+          ${modeRata ? `<td class="lb-num">${e.jml}/${ujian.length}</td>` : `<td><span class="badge ${e.statusLulus ? 'ok' : 'no'}">${e.statusLulus ? 'Lulus' : 'Remedial'}</span></td>`}
+        </tr>`;
+      }).join('') + '</tbody></table></div>' +
+      (cari ? `<p class="subtitle" style="margin-top:.6rem">Menampilkan ${tampil.length} dari ${rows.length} siswa. Nomor peringkat tetap sesuai urutan seluruh siswa.</p>` : '') +
+      (modeRata ? '<p class="subtitle" style="margin-top:.6rem">Rata-rata dihitung dari tes yang diikuti masing-masing siswa. Nilai sama berarti peringkat sama.</p>' : '<p class="subtitle" style="margin-top:.6rem">Nilai sama berarti peringkat sama.</p>');
+    cont.innerHTML = html;
+  },
+
+  async unduhLeaderboard() {
+    const L = state.guru._lbData;
+    if (!L || !L.ujian.length) { toast('Belum ada data leaderboard.', 'error'); return; }
+    try { await muatPustaka_('xlsx'); } catch (e) { toast(e.message, 'error'); return; }
+    const { rows, basis, kelas, ujian } = Guru.leaderboardHitung_();
+    if (!rows.length) { toast('Tidak ada data untuk diunduh.', 'error'); return; }
+    const modeRata = basis === 'rata';
+    const judulBasis = modeRata ? 'Rata-rata Seluruh Tes' : (ujian.find(u => u.id === basis)?.judul || 'Tes');
+    const head = ['Peringkat', 'Nama Siswa', 'Kelas'].concat(modeRata ? ujian.map(u => u.judul) : [], [modeRata ? 'Rata-rata' : 'Nilai'], modeRata ? ['Tes Diikuti'] : ['Status']);
+    const data = rows.map(e => [e.rank, e.nama, e.kelas].concat(
+      modeRata ? ujian.map(u => (u.id in e.nilai ? e.nilai[u.id] : '')) : [],
+      [e.skor], modeRata ? [e.jml + '/' + ujian.length] : [e.statusLulus ? 'Lulus' : 'Remedial']));
+    const ws = XLSX.utils.aoa_to_sheet([['Leaderboard — ' + judulBasis + ' — ' + (kelas ? 'Kelas ' + kelas : 'Semua Kelas')], [], head, ...data]);
+    ws['!cols'] = [10, 32, 10].concat(modeRata ? ujian.map(() => 14) : [], [12, 14]).map(w => ({ wch: w }));
+    ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: head.length - 1 } }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Leaderboard');
+    const bersih = t => String(t).replace(/[\\/:*?"<>|]+/g, '-').trim().slice(0, 50);
+    XLSX.writeFile(wb, 'leaderboard-' + bersih(judulBasis) + '-' + (kelas ? bersih(kelas) : 'semua-kelas') + '.xlsx');
+    toast('Leaderboard ' + rows.length + ' siswa berhasil diunduh.', 'success');
   },
 
   // ---------------- DETAIL JAWABAN PER SISWA (Rekap Nilai) ----------------
@@ -6691,6 +6930,7 @@ const Guru = {
       'tab-siswa': () => Guru.muatDaftarSiswa(),
       'tab-login': () => Guru.muatStatusLogin(),
       'tab-rekap': () => Guru.muatRekap(),
+      'tab-leaderboard': () => Guru.muatLeaderboard(),
       'tab-analisis': () => Guru.muatAnalisisSoal(),
       'tab-pelanggaran': () => Guru.muatLogPelanggaran(),
       'tab-pemantauan': () => Guru.muatPemantauan()
@@ -6727,6 +6967,7 @@ const Guru = {
       'tab-siswa': () => Guru.muatDaftarSiswa(),
       'tab-login': () => Guru.muatStatusLogin(),
       'tab-rekap': () => { const v = document.getElementById('pilih-ujian-rekap').value; v ? Guru.muatRekap() : Guru.muatPilihanUjianUntukSelect('pilih-ujian-rekap'); },
+      'tab-leaderboard': () => Guru.muatLeaderboard(),
       'tab-analisis': () => { const v = document.getElementById('pilih-ujian-analisis').value; v ? Guru.muatAnalisisSoal() : Guru.muatPilihanUjianUntukSelect('pilih-ujian-analisis'); },
       'tab-pelanggaran': () => { const v = document.getElementById('pilih-ujian-log').value; v ? Guru.muatLogPelanggaran() : Guru.muatPilihanUjianUntukSelect('pilih-ujian-log'); },
       'tab-pemantauan': () => { const v = document.getElementById('pilih-ujian-pemantauan').value; v ? Guru.muatPemantauan() : Guru.muatPilihanUjianUntukSelect('pilih-ujian-pemantauan'); },
