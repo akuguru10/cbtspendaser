@@ -28,7 +28,7 @@
      dimuat TANPA memblokir tampilan halaman login (dulu halaman kosong sampai keduanya selesai diunduh). -->
 <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
 <link rel="dns-prefetch" href="https://script.google.com">
-<link rel="stylesheet" href="style.css?v=44">
+<link rel="stylesheet" href="style.css?v=45">
 <!-- Font Awesome: ikon sidebar & tombol (gaya dashboard modern) -->
 <link rel="preload" as="style" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" onload="this.onload=null;this.rel='stylesheet'">
 <!-- KaTeX: render persamaan matematika (LaTeX) di dalam soal -->
@@ -433,13 +433,18 @@
           <label class="lb-field"><span>Berdasarkan</span>
             <select id="lb-basis" onchange="Guru.renderLeaderboard_()"><option value="rata">Rata-rata Seluruh Tes</option></select>
           </label>
-          <label class="lb-field"><span>Kelas</span>
+          <label class="lb-field"><span>Tingkat</span>
+            <select id="lb-tingkat" onchange="Guru.gantiTingkatLeaderboard_()"><option value="">Semua Tingkat</option></select>
+          </label>
+          <label class="lb-field"><span>Kelas / Rombel</span>
             <select id="lb-kelas" onchange="Guru.renderLeaderboard_()"><option value="">Semua Kelas</option></select>
           </label>
           <label class="lb-field lb-cari"><span>Cari siswa</span>
             <input type="search" id="lb-cari" placeholder="🔍 Nama siswa..." oninput="Guru.renderLeaderboard_()" autocomplete="off">
           </label>
-          <label class="filter-cek lb-lengkap" id="lb-lengkap-wrap" title="Rata-rata hanya dihitung untuk siswa yang sudah mengikuti semua tes"><input type="checkbox" id="lb-lengkap" onchange="Guru.renderLeaderboard_()"> Hanya yang ikut semua tes</label>
+          <label class="lb-field" id="lb-min-wrap" title="Peringkat rata-rata hanya untuk siswa yang mengikuti minimal sekian tes, supaya yang jarang ikut tes tidak mengalahkan yang rajin."><span>Syarat minimal tes</span>
+            <select id="lb-min" onchange="Guru.renderLeaderboard_()"><option value="auto">Otomatis</option></select>
+          </label>
           <div class="lb-aksi">
             <button type="button" class="secondary btn-segarkan" title="Ambil nilai terbaru" onclick="Guru.segarkan('tab-leaderboard', this)"><i class="fa-solid fa-rotate"></i> Segarkan</button><span class="segar-info" id="segar-info-tab-leaderboard" aria-live="polite"></span>
             <button type="button" class="secondary" onclick="Guru.unduhLeaderboard()" title="Unduh peringkat yang sedang tampil sebagai Excel">⬇ Unduh Excel</button>
@@ -1356,6 +1361,6 @@
 </div>
 
 <script src="config.js"></script>
-<script src="app.js?v=44"></script>
+<script src="app.js?v=45"></script>
 </body>
 </html>

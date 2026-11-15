@@ -192,6 +192,16 @@ function kelasUnikDari_(list) {
     .sort((a, b) => a.localeCompare(b, 'id', { numeric: true }));
 }
 
+// Tingkat dari nama kelas: "8E" -> "8", "Kelas 9A" -> "9", "VIII-B" -> "8". Kosong bila tak terbaca.
+function tingkatKelas_(kelas) {
+  const k = String(kelas || '').trim();
+  let m = k.match(/^(?:kelas\s*)?(\d{1,2})/i);
+  if (m) return String(Number(m[1]));
+  m = k.match(/^(?:kelas\s*)?(XII|XI|X|IX|VIII|VII|VI|V|IV|III|II|I)(?![A-Za-z])/i);
+  if (m) return String({ I: 1, II: 2, III: 3, IV: 4, V: 5, VI: 6, VII: 7, VIII: 8, IX: 9, X: 10, XI: 11, XII: 12 }[m[1].toUpperCase()]);
+  return '';
+}
+
 // Isi <select> filter kelas, pertahankan pilihan lama kalau masih ada.
 // Gagal memuat ulang: bila tabel sebelumnya masih tampil, biarkan (jangan dikosongkan) dan beri tahu lewat toast.
 function gagalMuat_(cont, pesan) {
@@ -1698,7 +1708,7 @@ function toast(msg, jenis) {
 // cache, sehingga dialog konfirmasi tampil TANPA gaya (jatuh ke bawah halaman, tombol di belakangnya masih bisa
 // diklik, dialog menumpuk). Dengan disuntik dari app.js, dialog dijamin tampil di tengah layar & menutupi halaman.
 // ----------------------------------------------------------------------------
-const VERSI_APLIKASI = '44';
+const VERSI_APLIKASI = '45';
 const CSS_SEGAR = `
 /* Tombol "Segarkan" di halaman portal guru (Rekap Nilai, Log Pelanggaran, dll.) */
 .btn-segarkan { display: inline-flex; align-items: center; gap: .45rem; white-space: nowrap; }
@@ -5313,18 +5323,38 @@ const Guru = {
     const lama = selB.value;
     selB.innerHTML = '<option value="rata">📊 Rata-rata Seluruh Tes</option>' + ujianAda.map(u => `<option value="${escapeHtml_(u.id)}">📝 ${escapeHtml_(u.judul)}</option>`).join('');
     selB.value = (lama === 'rata' || ujianAda.some(u => u.id === lama)) ? lama : 'rata';
-    isiOpsiKelas_('lb-kelas', kelasUnikDari_(baris));
+    Guru.isiFilterKelasLeaderboard_();
     Guru.renderLeaderboard_();
     return true;
   },
 
+  // Isi pilihan Tingkat (7/8/9 dst., diambil dari angka di depan nama kelas) dan Kelas (8A, 8B, ...).
+  // Pilihan Kelas hanya menampilkan kelas pada tingkat yang dipilih.
+  isiFilterKelasLeaderboard_() {
+    const baris = (state.guru._lbData || {}).baris || [];
+    const selT = document.getElementById('lb-tingkat');
+    if (!selT) return;
+    const daftarT = [...new Set(baris.map(b => tingkatKelas_(b.kelas)).filter(Boolean))].sort((a, b) => Number(a) - Number(b));
+    const lama = selT.value;
+    selT.innerHTML = '<option value="">Semua Tingkat</option>' + daftarT.map(t => `<option value="${t}">Kelas ${t} saja</option>`).join('');
+    selT.value = daftarT.includes(lama) ? lama : '';
+    const t = selT.value;
+    isiOpsiKelas_('lb-kelas', kelasUnikDari_(baris.filter(b => !t || tingkatKelas_(b.kelas) === t)));
+  },
+
+  gantiTingkatLeaderboard_() { Guru.isiFilterKelasLeaderboard_(); Guru.renderLeaderboard_(); },
+
   // Menghitung peringkat sesuai pilihan saat ini. Peringkat dihitung SEBELUM kotak cari
   // diterapkan (mencari nama tidak mengubah nomor peringkat). Nilai sama = peringkat sama.
+  // Mode rata-rata: hanya siswa yang ikut minimal `minTes` tes yang diberi peringkat (supaya
+  // siswa yang hanya ikut 1 tes dengan nilai tinggi tidak mengalahkan yang rajin ikut tes);
+  // sisanya tetap tampil di bagian bawah tanpa nomor peringkat.
   leaderboardHitung_() {
     const L = state.guru._lbData || { ujian: [], baris: [] };
     const basis = document.getElementById('lb-basis')?.value || 'rata';
+    const tingkat = document.getElementById('lb-tingkat')?.value || '';
     const kelas = document.getElementById('lb-kelas')?.value || '';
-    const lengkap = !!document.getElementById('lb-lengkap')?.checked;
+    const pilihMin = document.getElementById('lb-min')?.value || 'auto';
     const per = new Map();
     L.baris.forEach(b => {
       const kunci = b.siswaId ? 'id:' + b.siswaId : 'nk:' + b.nama + '|' + b.kelas;
@@ -5332,23 +5362,43 @@ const Guru = {
       if (!e) { e = { nama: b.nama, kelas: b.kelas, nilai: {}, lulus: {}, sesiId: {} }; per.set(kunci, e); }
       if (!(b.ujianId in e.nilai) || b.nilai > e.nilai[b.ujianId]) { e.nilai[b.ujianId] = b.nilai; e.lulus[b.ujianId] = b.lulus; e.sesiId[b.ujianId] = b.sesiId; }
     });
-    let rows = [...per.values()].filter(e => !kelas || e.kelas === kelas);
+    let rows = [...per.values()].filter(e => (!tingkat || tingkatKelas_(e.kelas) === tingkat) && (!kelas || e.kelas === kelas));
     const bulat2 = n => Math.round(n * 100) / 100;
+    let minTes = 1, maxJml = 1, ujianRelevan = L.ujian;
     if (basis === 'rata') {
       rows.forEach(e => {
         const v = Object.values(e.nilai);
         e.jml = v.length;
         e.skor = bulat2(v.reduce((a, b) => a + b, 0) / v.length);
       });
-      if (lengkap) rows = rows.filter(e => e.jml === L.ujian.length);
+      maxJml = rows.length ? Math.max(...rows.map(e => e.jml)) : 1;
+      // Hanya tes yang memang diikuti oleh siswa pada kelompok ini yang jadi kolom/penyebut.
+      const dipakai = new Set();
+      rows.forEach(e => Object.keys(e.nilai).forEach(id => dipakai.add(id)));
+      ujianRelevan = L.ujian.filter(u => dipakai.has(u.id));
+      // Syarat dihitung PER TINGKAT (kelas 8 dan 9 bisa mendapat tes berbeda): otomatis = 75% dari
+      // jumlah tes terbanyak yang diikuti siswa di tingkat yang sama. Pilihan manual berlaku untuk semua
+      // tingkat (tidak melebihi tes terbanyak di tingkat itu).
+      const maksTingkat = {};
+      rows.forEach(e => { const t = tingkatKelas_(e.kelas) || '?'; e._t = t; maksTingkat[t] = Math.max(maksTingkat[t] || 0, e.jml); });
+      const manual = pilihMin === 'auto' ? 0 : Math.max(1, Number(pilihMin) || 1);
+      const syarat = t => Math.min(maksTingkat[t], manual || Math.max(1, Math.ceil(maksTingkat[t] * 0.75)));
+      rows.forEach(e => { e.min = syarat(e._t); e.layak = e.jml >= e.min; });
+      const uniknya = new Set(rows.map(e => e.min));
+      minTes = uniknya.size === 1 ? [...uniknya][0] : 0; // 0 = berbeda per tingkat
     } else {
       rows = rows.filter(e => basis in e.nilai);
-      rows.forEach(e => { e.skor = bulat2(e.nilai[basis]); e.statusLulus = e.lulus[basis]; });
+      rows.forEach(e => { e.skor = bulat2(e.nilai[basis]); e.statusLulus = e.lulus[basis]; e.layak = true; });
     }
-    rows.sort((a, b) => b.skor - a.skor || String(a.nama).localeCompare(String(b.nama), 'id'));
-    let rank = 0, prev = null;
-    rows.forEach((e, i) => { if (prev === null || e.skor !== prev) { rank = i + 1; prev = e.skor; } e.rank = rank; });
-    return { rows, basis, kelas, ujian: L.ujian };
+    rows.sort((a, b) => (b.layak - a.layak) || (b.skor - a.skor) || ((b.jml || 0) - (a.jml || 0)) || String(a.nama).localeCompare(String(b.nama), 'id'));
+    let rank = 0, prev = null, urut = 0;
+    rows.forEach(e => {
+      if (!e.layak) { e.rank = null; return; }
+      urut++;
+      if (prev === null || e.skor !== prev) { rank = urut; prev = e.skor; }
+      e.rank = rank;
+    });
+    return { rows, basis, tingkat, kelas, ujian: ujianRelevan, minTes, maxJml };
   },
 
   renderLeaderboard_() {
@@ -5357,10 +5407,19 @@ const Guru = {
     const L = state.guru._lbData;
     if (!L) return;
     if (!L.ujian.length) { cont.innerHTML = '<div class="lb-kosong"><i class="fa-solid fa-trophy"></i><p>Belum ada nilai. Leaderboard muncul setelah ada siswa yang menyelesaikan ujian.</p></div>'; return; }
-    const { rows, basis, ujian } = Guru.leaderboardHitung_();
+    const { rows, basis, tingkat, kelas, ujian, minTes, maxJml } = Guru.leaderboardHitung_();
     const modeRata = basis === 'rata';
-    const wrapLengkap = document.getElementById('lb-lengkap-wrap');
-    if (wrapLengkap) wrapLengkap.classList.toggle('hidden', !modeRata || ujian.length < 2);
+    // Pilihan "Syarat minimal tes" (hanya mode rata-rata).
+    const wrapMin = document.getElementById('lb-min-wrap');
+    const selMin = document.getElementById('lb-min');
+    if (wrapMin) wrapMin.classList.toggle('hidden', !modeRata);
+    if (selMin && modeRata) {
+      const lama = selMin.value || 'auto';
+      let o = `<option value="auto">Otomatis (${minTes ? 'min. ' + minTes + ' tes' : 'per tingkat'})</option><option value="1">Tanpa syarat</option>`;
+      for (let n = 2; n <= maxJml; n++) o += `<option value="${n}">Minimal ${n} tes</option>`;
+      selMin.innerHTML = o;
+      selMin.value = [...selMin.options].some(op => op.value === lama) ? lama : 'auto';
+    }
     if (!rows.length) { cont.innerHTML = '<div class="lb-kosong"><i class="fa-solid fa-trophy"></i><p>Tidak ada siswa yang cocok dengan pilihan ini.</p></div>'; return; }
     const fmt = n => (Math.round(n * 10) / 10).toLocaleString('id-ID', { maximumFractionDigits: 1 });
     const cari = normCari_(document.getElementById('lb-cari')?.value);
@@ -5369,20 +5428,19 @@ const Guru = {
     const rata = skorSemua.reduce((a, b) => a + b, 0) / skorSemua.length;
     const judulBasis = modeRata ? 'Rata-rata Seluruh Tes' : (ujian.find(u => u.id === basis)?.judul || '');
     const medali = r => r === 1 ? '<span class="lb-medal m1"><i class="fa-solid fa-crown"></i></span>' : (r === 2 ? '<span class="lb-medal m2">2</span>' : (r === 3 ? '<span class="lb-medal m3">3</span>' : ''));
-    const kelasAktif = document.getElementById('lb-kelas')?.value || '';
+    const labelKelompok = kelas ? 'Kelas ' + escapeHtml_(kelas) : (tingkat ? 'Kelas ' + escapeHtml_(tingkat) + ' (semua rombel)' : 'Semua Kelas');
 
-    // Ringkasan
     let html = `<div class="lb-ringkas">
       <div><b>${rows.length}</b><span>Peserta</span></div>
       <div><b>${fmt(Math.max(...skorSemua))}</b><span>Tertinggi</span></div>
       <div><b>${fmt(rata)}</b><span>Rata-rata</span></div>
       <div><b>${fmt(Math.min(...skorSemua))}</b><span>Terendah</span></div>
     </div>
-    <div class="lb-judul-basis"><i class="fa-solid fa-ranking-star"></i> ${escapeHtml_(judulBasis)} <span>• ${kelasAktif ? 'Kelas ' + escapeHtml_(kelasAktif) : 'Semua Kelas'}</span></div>`;
+    <div class="lb-judul-basis"><i class="fa-solid fa-ranking-star"></i> ${escapeHtml_(judulBasis)} <span>• ${labelKelompok}</span></div>`;
 
-    // Podium 3 teratas (disembunyikan saat mencari nama)
+    // Podium 3 teratas (hanya yang memenuhi syarat; disembunyikan saat mencari nama)
     if (!cari) {
-      const top = rows.slice(0, 3);
+      const top = rows.filter(e => e.layak).slice(0, 3);
       const urutan = top.length === 3 ? [top[1], top[0], top[2]] : top;
       html += `<div class="lb-podium n${top.length}">` + urutan.map(e => `
         <div class="lb-pod p${e.rank}">
@@ -5394,23 +5452,32 @@ const Guru = {
         </div>`).join('') + '</div>';
     }
 
-    // Tabel lengkap peringkat 1..akhir
+    const jmlKolom = 3 + (modeRata ? ujian.length : 0) + 2;
     const kolomTes = modeRata ? ujian.map(u => `<th class="lb-num" title="${escapeHtml_(u.judul)}">${escapeHtml_(u.judul.length > 14 ? u.judul.slice(0, 13) + '…' : u.judul)}</th>`).join('') : '';
+    let sudahPisah = false;
     html += `<div class="table-scroll-x"><table class="ledger lb-tabel"><thead><tr>
       <th style="width:4.2rem">Peringkat</th><th>Nama Siswa</th><th>Kelas</th>${kolomTes}
       <th>${modeRata ? 'Rata-rata' : 'Hasil Tes'}</th>${modeRata ? '<th class="lb-num">Tes Diikuti</th>' : '<th>Status</th>'}</tr></thead><tbody>` +
       tampil.map(e => {
+        let pisah = '';
+        if (!e.layak && !sudahPisah) {
+          sudahPisah = true;
+          pisah = `<tr class="lb-pemisah"><td colspan="${jmlKolom}"><i class="fa-solid fa-circle-info"></i> Belum diberi peringkat: jumlah tes yang diikuti belum mencapai syarat minimal${minTes ? ' (' + minTes + ' tes)' : ''}. Mereka tetap tampil di sini dan masuk peringkat setelah mengikuti lebih banyak tes.</td></tr>`;
+        }
         const sel = modeRata ? ujian.map(u => `<td class="lb-num">${u.id in e.nilai ? fmt(e.nilai[u.id]) : '<span class="lb-strip">–</span>'}</td>`).join('') : '';
         const lebar = Math.max(0, Math.min(100, e.skor));
-        return `<tr class="${e.rank <= 3 ? 'lb-top lb-top' + e.rank : ''}">
-          <td><span class="lb-rank">${e.rank <= 3 ? medali(e.rank) : e.rank}</span></td>
+        const kls = !e.layak ? 'lb-belum' : (e.rank <= 3 ? 'lb-top lb-top' + e.rank : '');
+        return pisah + `<tr class="${kls}">
+          <td><span class="lb-rank">${!e.layak ? '–' : (e.rank <= 3 ? medali(e.rank) : e.rank)}</span></td>
           <td class="lb-nama">${escapeHtml_(e.nama)}</td><td>${escapeHtml_(e.kelas)}</td>${sel}
           <td><div class="lb-skor"><strong>${fmt(e.skor)}</strong><span class="lb-bar"><i style="width:${lebar}%"></i></span></div></td>
-          ${modeRata ? `<td class="lb-num">${e.jml}/${ujian.length}</td>` : `<td><span class="badge ${e.statusLulus ? 'ok' : 'no'}">${e.statusLulus ? 'Lulus' : 'Remedial'}</span></td>`}
+          ${modeRata ? `<td class="lb-num"${e.layak ? '' : ` title="Syarat minimal ${e.min} tes"`}>${e.jml}/${ujian.length}</td>` : `<td><span class="badge ${e.statusLulus ? 'ok' : 'no'}">${e.statusLulus ? 'Lulus' : 'Remedial'}</span></td>`}
         </tr>`;
       }).join('') + '</tbody></table></div>' +
       (cari ? `<p class="subtitle" style="margin-top:.6rem">Menampilkan ${tampil.length} dari ${rows.length} siswa. Nomor peringkat tetap sesuai urutan seluruh siswa.</p>` : '') +
-      (modeRata ? '<p class="subtitle" style="margin-top:.6rem">Rata-rata dihitung dari tes yang diikuti masing-masing siswa. Nilai sama berarti peringkat sama.</p>' : '<p class="subtitle" style="margin-top:.6rem">Nilai sama berarti peringkat sama.</p>');
+      (modeRata
+        ? `<p class="subtitle" style="margin-top:.6rem">Rata-rata dihitung dari tes yang diikuti masing-masing siswa. Peringkat hanya untuk siswa yang mengikuti jumlah tes minimal${minTes ? ' <strong>' + minTes + '</strong> tes' : ' (otomatis 75% dari tes terbanyak di tingkatnya)'} (bisa diubah di <em>Syarat minimal tes</em>). Nilai sama = peringkat sama; bila rata-rata sama, yang lebih banyak ikut tes tampil lebih dulu.</p>`
+        : '<p class="subtitle" style="margin-top:.6rem">Nilai sama berarti peringkat sama.</p>');
     cont.innerHTML = html;
   },
 
@@ -5418,21 +5485,22 @@ const Guru = {
     const L = state.guru._lbData;
     if (!L || !L.ujian.length) { toast('Belum ada data leaderboard.', 'error'); return; }
     try { await muatPustaka_('xlsx'); } catch (e) { toast(e.message, 'error'); return; }
-    const { rows, basis, kelas, ujian } = Guru.leaderboardHitung_();
+    const { rows, basis, tingkat, kelas, ujian } = Guru.leaderboardHitung_();
     if (!rows.length) { toast('Tidak ada data untuk diunduh.', 'error'); return; }
     const modeRata = basis === 'rata';
     const judulBasis = modeRata ? 'Rata-rata Seluruh Tes' : (ujian.find(u => u.id === basis)?.judul || 'Tes');
-    const head = ['Peringkat', 'Nama Siswa', 'Kelas'].concat(modeRata ? ujian.map(u => u.judul) : [], [modeRata ? 'Rata-rata' : 'Nilai'], modeRata ? ['Tes Diikuti'] : ['Status']);
-    const data = rows.map(e => [e.rank, e.nama, e.kelas].concat(
+    const namaKelompok = kelas ? 'Kelas ' + kelas : (tingkat ? 'Kelas ' + tingkat + ' (semua rombel)' : 'Semua Kelas');
+    const head = ['Peringkat', 'Nama Siswa', 'Kelas'].concat(modeRata ? ujian.map(u => u.judul) : [], [modeRata ? 'Rata-rata' : 'Nilai'], modeRata ? ['Tes Diikuti', 'Keterangan'] : ['Status']);
+    const data = rows.map(e => [e.layak ? e.rank : '', e.nama, e.kelas].concat(
       modeRata ? ujian.map(u => (u.id in e.nilai ? e.nilai[u.id] : '')) : [],
-      [e.skor], modeRata ? [e.jml + '/' + ujian.length] : [e.statusLulus ? 'Lulus' : 'Remedial']));
-    const ws = XLSX.utils.aoa_to_sheet([['Leaderboard — ' + judulBasis + ' — ' + (kelas ? 'Kelas ' + kelas : 'Semua Kelas')], [], head, ...data]);
-    ws['!cols'] = [10, 32, 10].concat(modeRata ? ujian.map(() => 14) : [], [12, 14]).map(w => ({ wch: w }));
+      [e.skor], modeRata ? [e.jml + '/' + ujian.length, e.layak ? '' : 'Belum memenuhi syarat (min. ' + e.min + ' tes)'] : [e.statusLulus ? 'Lulus' : 'Remedial']));
+    const ws = XLSX.utils.aoa_to_sheet([['Leaderboard — ' + judulBasis + ' — ' + namaKelompok], [], head, ...data]);
+    ws['!cols'] = [10, 32, 10].concat(modeRata ? ujian.map(() => 14) : [], [12, 14], modeRata ? [34] : []).map(w => ({ wch: w }));
     ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: head.length - 1 } }];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Leaderboard');
     const bersih = t => String(t).replace(/[\\/:*?"<>|]+/g, '-').trim().slice(0, 50);
-    XLSX.writeFile(wb, 'leaderboard-' + bersih(judulBasis) + '-' + (kelas ? bersih(kelas) : 'semua-kelas') + '.xlsx');
+    XLSX.writeFile(wb, 'leaderboard-' + bersih(judulBasis) + '-' + bersih(kelas ? kelas : (tingkat ? 'kelas-' + tingkat : 'semua-kelas')) + '.xlsx');
     toast('Leaderboard ' + rows.length + ' siswa berhasil diunduh.', 'success');
   },
 

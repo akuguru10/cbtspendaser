@@ -8,7 +8,7 @@
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap');
 
 :root {
-  --versi-css: "44"; /* harus sama dengan VERSI_APLIKASI di app.js (deteksi style.css usang di cache) */
+  --versi-css: "45"; /* harus sama dengan VERSI_APLIKASI di app.js (deteksi style.css usang di cache) */
   /* --- warna dasar (ditimpa JS: lihat Tampilan.terapkan di app.js) --- */
   --c-primary: #e58a72;
   --c-secondary: #6f9f94;
@@ -1909,3 +1909,9 @@ details.tm-det > summary { cursor: pointer; font-weight: 700; font-size: .88rem;
   .lb-pod.p1 .lb-pod-avatar { width: 54px; height: 54px; }
   .lb-pod-nama { font-size: .76rem; } .lb-pod-skor { font-size: 1.1rem; }
 }
+
+.lb-belum td { color: var(--c-muted); }
+.lb-belum .lb-nama { font-weight: 500; }
+.lb-belum .lb-bar i { background: var(--c-muted); opacity: .5; }
+.lb-tabel tr.lb-pemisah td { background: var(--c-warn-bg); color: var(--c-warn-ink); font-size: .78rem; font-weight: 600; padding: .55rem .8rem; border-top: 2px solid var(--c-line); }
+.lb-tabel tr.lb-pemisah:hover td { background: var(--c-warn-bg); }
